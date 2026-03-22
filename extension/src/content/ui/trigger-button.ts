@@ -47,19 +47,29 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   const platform = adapter.getPlatform()
   if (platform === 'claude') {
     button.classList.add('promptpilot-trigger-btn--claude')
-    // Insert left of the model selector ("Sonnet 4.6" button)
-    // The model selector is typically a button with the model name inside the bottom bar
+    // Find the model selector text (Sonnet/Haiku/Opus) and insert inline to its left
     const input = adapter.getInputElement()
     const composer = input?.closest('fieldset') ?? input?.closest('form') ?? input?.parentElement?.parentElement?.parentElement
-    const modelSelector = composer?.querySelector<HTMLElement>('button[data-testid="model-selector"]')
-      ?? composer?.querySelector<HTMLElement>('button[class*="model"]')
-      ?? Array.from(composer?.querySelectorAll('button') ?? []).find(
-        (btn) => btn.textContent?.includes('Sonnet') || btn.textContent?.includes('Haiku') || btn.textContent?.includes('Opus')
-      )
-    if (modelSelector) {
-      modelSelector.parentElement?.insertBefore(button, modelSelector)
+    // Find the element containing the model name text
+    const allElements = composer?.querySelectorAll('*') ?? []
+    let modelEl: HTMLElement | null = null
+    for (const el of allElements) {
+      const text = (el as HTMLElement).textContent?.trim() ?? ''
+      if ((text.includes('Sonnet') || text.includes('Haiku') || text.includes('Opus')) && el.children.length === 0) {
+        // Walk up to the clickable button/container
+        modelEl = (el as HTMLElement).closest('button') ?? (el as HTMLElement).parentElement
+        break
+      }
+    }
+    if (modelEl) {
+      // Insert into the same flex row, right before the model selector's container
+      const row = modelEl.parentElement
+      if (row) {
+        row.insertBefore(button, modelEl)
+      } else {
+        sendButton.parentElement?.insertBefore(button, sendButton)
+      }
     } else {
-      // Fallback: insert before send button
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else {

@@ -175,10 +175,29 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 
 ---
 
+## Phase 11 — Free Tier Integration
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `dd601dc` | `feat(extension): integrate free tier with synced rate limit tracking` | `feat/phase-11/free-tier-integration` |
+
+**What was done:**
+- Service worker `handleFreeTier()` routes free-mode requests through backend `POST /api/enhance`
+- Parses backend SSE format (`{"type":"token","text":"..."}`) and forwards as TOKEN messages
+- Syncs `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers to `chrome.storage.local`
+- 429 response shows "Free tier limit reached" toast with upgrade message
+- Offline detection via `navigator.onLine` — shows "No connection" toast before fetch
+- Network error handling for unreachable backend
+- Popup listens to `chrome.storage.local.onChanged` for live usage counter updates
+- Usage counter auto-resets when `usageResetTime` expires
+- BYOK mode bypasses backend entirely — direct API call to provider
+- DONE message includes `rateLimitRemaining`/`rateLimitReset` for content script awareness
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 11 | `feat(extension): integrate free tier with synced rate limit tracking` |
 | 12 | `feat(claude-adapter): implement full platform adapter for Claude.ai` |
 | 13 | `feat(gemini): implement adapter and polish all platforms` |

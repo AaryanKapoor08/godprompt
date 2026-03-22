@@ -25,7 +25,7 @@ const MODELS: Record<string, { label: string; value: string }[]> = {
   ],
   openrouter: [
     { label: 'Nemotron Nano (free)', value: 'nvidia/nemotron-3-nano-30b-a3b:free' },
-    { label: 'Claude Haiku 4.5', value: 'anthropic/claude-haiku-4-5-20251001' },
+    { label: 'Claude Haiku 3.5', value: 'anthropic/claude-3.5-haiku' },
     { label: 'GPT-4o-mini', value: 'openai/gpt-4o-mini' },
   ],
 }

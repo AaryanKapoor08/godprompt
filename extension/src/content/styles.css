@@ -30,6 +30,12 @@
   align-self: center;
 }
 
+/* Perplexity: inline left of Model selector */
+.promptpilot-trigger-btn--perplexity {
+  margin: 0 4px 0 0;
+  align-self: center;
+}
+
 .promptpilot-trigger-btn:hover {
   opacity: 0.85;
   transform: scale(1.05);

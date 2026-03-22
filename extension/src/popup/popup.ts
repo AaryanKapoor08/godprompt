@@ -42,7 +42,7 @@ let currentProvider: Provider | null = null
 
 // --- Init: Load saved settings ---
 chrome.storage.local.get(
-  ['mode', 'apiKey', 'provider', 'model', 'usageCount', 'rateLimitMax'],
+  ['mode', 'apiKey', 'provider', 'model', 'usageCount', 'usageResetTime', 'rateLimitMax'],
   (result) => {
     // Set mode
     currentMode = result.mode === 'byok' ? 'byok' : 'free'
@@ -56,10 +56,25 @@ chrome.storage.local.get(
       updateModelDropdown(result.provider, result.model)
     }
 
-    // Set usage counter
-    updateUsageCounter(result.usageCount ?? 0, result.rateLimitMax ?? 10)
+    // Check if usage window has expired — reset counter if so
+    const usageResetTime = result.usageResetTime ?? 0
+    const usageCount = (usageResetTime > 0 && Date.now() > usageResetTime)
+      ? 0
+      : (result.usageCount ?? 0)
+
+    updateUsageCounter(usageCount, result.rateLimitMax ?? 10)
   }
 )
+
+// Listen for storage changes so usage counter updates live
+// (e.g., when service worker syncs rate limit headers after an enhancement)
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (changes.usageCount || changes.rateLimitMax) {
+    const usageCount = changes.usageCount?.newValue ?? 0
+    const rateLimitMax = changes.rateLimitMax?.newValue ?? 10
+    updateUsageCounter(usageCount, rateLimitMax)
+  }
+})
 
 // --- Mode Toggle ---
 modeFreeBtn.addEventListener('click', () => {

@@ -17,16 +17,16 @@ if (adapter) {
   const platform = adapter.getPlatform()
   console.info({ platform }, '[PromptPilot] Content script loaded')
 
-  // Wait for platform's React hydration before injecting UI
+  // Wait for platform's hydration before injecting UI
   function waitForInputAndInject(attempt: number): void {
     const inputElement = adapter!.getInputElement()
 
-    if (!inputElement && attempt < 5) {
+    if (!inputElement && attempt < 10) {
       console.info(
         { attempt, platform },
         '[PromptPilot] Input not ready, retrying...'
       )
-      setTimeout(() => waitForInputAndInject(attempt + 1), 1000)
+      setTimeout(() => waitForInputAndInject(attempt + 1), 500)
       return
     }
 
@@ -40,7 +40,7 @@ if (adapter) {
     registerShortcut(adapter!)
   }
 
-  setTimeout(() => waitForInputAndInject(1), 2000)
+  setTimeout(() => waitForInputAndInject(1), 500)
 } else {
   console.info('[PromptPilot] Content script loaded on unrecognized platform')
 }

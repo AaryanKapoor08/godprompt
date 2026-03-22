@@ -41,8 +41,15 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
 
   button.addEventListener('click', () => handleEnhanceClick(adapter))
 
-  // Insert before the send button
-  sendButton.parentElement?.insertBefore(button, sendButton)
+  // Platform-specific insertion:
+  // ChatGPT: insert before send button (left of it)
+  // Claude: insert after send button (right of it) to avoid overlapping model selector
+  const platform = adapter.getPlatform()
+  if (platform === 'claude') {
+    sendButton.parentElement?.insertBefore(button, sendButton.nextSibling)
+  } else {
+    sendButton.parentElement?.insertBefore(button, sendButton)
+  }
   injectedButton = button
 
   console.info({ platform: adapter.getPlatform() }, '[PromptPilot] Trigger button injected')

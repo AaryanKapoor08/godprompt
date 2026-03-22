@@ -18,6 +18,15 @@
   flex-shrink: 0;
 }
 
+/* Claude.ai: position in top-right of composer to avoid overlapping model selector and voice button */
+.promptpilot-trigger-btn--claude {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  margin: 0;
+  z-index: 10;
+}
+
 .promptpilot-trigger-btn:hover {
   opacity: 0.85;
   transform: scale(1.05);

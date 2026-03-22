@@ -71,6 +71,13 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
   // Set loading state
   setLoading(true)
 
+  // Guard against stale content script after extension reload
+  if (!chrome?.runtime?.connect) {
+    showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+    setLoading(false)
+    return
+  }
+
   // Open port to service worker for streaming
   const port = chrome.runtime.connect({ name: 'enhance' })
   activePort = port
@@ -84,12 +91,34 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
   }
   port.postMessage(message)
 
+  // Accumulate streamed tokens for DOM replacement
+  let accumulatedText = ''
+  let firstToken = true
+
   // Listen for TOKEN, DONE, ERROR from service worker
   port.onMessage.addListener((msg: ServiceWorkerMessage) => {
     if (msg.type === 'TOKEN') {
-      console.info({ text: msg.text }, '[PromptPilot] Received token')
+      accumulatedText += msg.text
+
+      try {
+        adapter.setPromptText(accumulatedText)
+      } catch (error) {
+        console.error({ cause: error }, '[PromptPilot] Failed to update input field')
+        showToast({ message: 'Input field disappeared during enhancement', variant: 'error' })
+        port.disconnect()
+        cleanupPort()
+        return
+      }
+
+      if (firstToken) {
+        console.info('[PromptPilot] Streaming started — first token received')
+        firstToken = false
+      }
     } else if (msg.type === 'DONE') {
-      console.info('[PromptPilot] Enhancement complete')
+      console.info(
+        { enhancedLength: accumulatedText.length },
+        '[PromptPilot] Enhancement complete'
+      )
       cleanupPort()
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptPilot] Enhancement error')

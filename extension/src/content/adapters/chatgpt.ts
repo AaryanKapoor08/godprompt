@@ -1,4 +1,5 @@
 import type { PlatformAdapter, ConversationContext } from './types'
+import { replaceText } from '../dom-utils'
 
 export class ChatGPTAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -25,9 +26,16 @@ export class ChatGPTAdapter implements PlatformAdapter {
     return input.textContent?.trim() ?? ''
   }
 
-  setPromptText(_text: string): void {
-    // Stub — implemented in Phase 6
-    throw new Error('[ChatGPTAdapter] setPromptText not implemented yet')
+  setPromptText(text: string): void {
+    const input = this.getInputElement()
+    if (!input) {
+      throw new Error('[ChatGPTAdapter] Input element not found during text replacement')
+    }
+
+    const success = replaceText(input, text)
+    if (!success) {
+      throw new Error('[ChatGPTAdapter] Failed to insert text into input element')
+    }
   }
 
   getSendButton(): HTMLElement | null {

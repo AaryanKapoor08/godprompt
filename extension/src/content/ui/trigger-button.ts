@@ -127,8 +127,58 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'perplexity') {
-    // Perplexity: insert before send button
-    sendButton.parentElement?.insertBefore(button, sendButton)
+    // Perplexity bottom bar: [+] [Model ▾] [Computer] [mic] [send]
+    // Insert left of the "Model" text (same DOM-walking pattern as Claude/Gemini)
+    button.classList.add('promptpilot-trigger-btn--perplexity')
+    const input = adapter.getInputElement()
+    const composer = input?.closest('form, [class*="input"], [class*="composer"]')
+      ?? input?.parentElement?.parentElement?.parentElement
+
+    // Search for the model selector — Perplexity shows the active model name (e.g. "Claude Sonnet 4.6")
+    // rather than a static "Model" label
+    const searchRoot = composer ?? document.body
+    const allEls = Array.from(searchRoot.querySelectorAll('*'))
+    const modelEl = allEls.find((el) => {
+      const text = (el as HTMLElement).textContent?.trim() ?? ''
+      // Match model name leaf nodes: Claude variants, GPT variants, Sonar, etc.
+      return (
+        el.children.length === 0 &&
+        (text === 'Model' ||
+          text.includes('Sonnet') ||
+          text.includes('Haiku') ||
+          text.includes('Opus') ||
+          text.includes('GPT') ||
+          text.includes('Sonar') ||
+          text.includes('o1') ||
+          text.includes('o3'))
+      )
+    }) as HTMLElement | undefined
+
+    if (modelEl) {
+      // Walk up to the clickable button/link
+      const modelButton = (modelEl.closest('button, [role="button"]') as HTMLElement)
+        ?? (modelEl.parentElement as HTMLElement)
+      // Walk up to find the flex row that also contains the send button
+      let container = modelButton?.parentElement
+      while (container && !container.contains(sendButton)) {
+        container = container.parentElement
+      }
+      if (container) {
+        let directChild: HTMLElement | null = modelButton
+        while (directChild && directChild.parentElement !== container) {
+          directChild = directChild.parentElement
+        }
+        if (directChild) {
+          container.insertBefore(button, directChild)
+        } else {
+          sendButton.parentElement?.insertBefore(button, sendButton)
+        }
+      } else {
+        sendButton.parentElement?.insertBefore(button, sendButton)
+      }
+    } else {
+      sendButton.parentElement?.insertBefore(button, sendButton)
+    }
   } else {
     sendButton.parentElement?.insertBefore(button, sendButton)
   }

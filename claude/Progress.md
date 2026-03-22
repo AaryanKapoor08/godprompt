@@ -15,18 +15,18 @@ Update this file as you complete each phase.
 - [x] Clicking the extension icon shows the popup
 - [x] Console shows content script log on ChatGPT/Claude/Gemini pages
 - [x] `.gitignore` excludes node_modules, dist, .env
-- [ ] Commit: `chore(extension): scaffold project with Vite and Manifest V3`
+- [x] Commit: `chore(extension): scaffold project with Vite and Manifest V3`
 - Notes: Verified working on ChatGPT and Claude. CRXJS needed named import `{ crx }` not default import.
 
-### PHASE 2 — ChatGPT Adapter (Read Only) [not started]
+### PHASE 2 — ChatGPT Adapter (Read Only) [in progress]
 
-- [ ] `adapter.matches()` returns true on `chatgpt.com`
+- [x] `adapter.matches()` returns true on `chatgpt.com`
 - [ ] `adapter.getPromptText()` returns the exact text typed in the input field
 - [ ] `adapter.getSendButton()` finds the send button element
 - [ ] `adapter.getConversationContext()` returns correct `isNewConversation` and `conversationLength`
-- [ ] Structured log appears in console with platform, prompt length, and context
+- [x] Structured log appears in console with platform, prompt length, and context
 - [ ] Commit: `feat(chatgpt): implement read-only platform adapter with conversation context`
-- Notes:
+- Notes: Code implemented, build passes. matches() and structured log verified in Chrome. Remaining items need manual console verification.
 
 ### PHASE 3 — Trigger Button + Error Toast [not started]
 

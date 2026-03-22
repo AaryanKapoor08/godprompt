@@ -59,7 +59,7 @@ Track of all commits pushed to GitHub, organized by phase.
 
 | Hash | Message | Branch |
 |------|---------|--------|
-| `pending` | `feat(service-worker): implement port-based message passing for streaming` | `feat/phase-4/service-worker-ports` |
+| `cd90c0b` | `feat(service-worker): implement port-based message passing for streaming` | `feat/phase-4/service-worker-ports` |
 
 **What was done:**
 - Defined message types in `src/lib/types.ts`: `ENHANCE`, `TOKEN`, `DONE`, `ERROR`

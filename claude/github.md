@@ -36,6 +36,25 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 3 — Trigger Button + Error Toast
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `c396f7f` | `feat(content): inject trigger button with toast and smart skip` | `feat/phase-3/trigger-button-toast` |
+
+**What was done:**
+- Trigger button injected next to ChatGPT send button (purple sparkle icon)
+- Loading spinner + disabled state on click (2s temp reset)
+- Double-click guard via `isEnhancing` flag
+- `Ctrl+Shift+E` keyboard shortcut
+- `MutationObserver` re-injects button after SPA navigation
+- Toast component with info/error/warning variants, auto-dismiss
+- `shouldSkipEnhancement()` — skips prompts < 3 words
+- 9 unit tests passing (vitest)
+- Added `PromptPilot_Techniques_to_Codebase_Guide.md` for Phase 5 meta-prompt work
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |

@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 14**
+**Current Phase: 15**
 
 ---
 
@@ -176,3 +176,20 @@ Update this file as you complete each phase.
 - [ ] Error toast appears if input element not found
 - [x] Commit: `feat(perplexity): implement platform adapter for Perplexity.ai`
 - Notes: PerplexityAdapter implements PlatformAdapter. Handles both textarea (native setter via Object.getOwnPropertyDescriptor) and contenteditable input. Send button via aria-label Submit/Send or type=submit. Platform type extended to include 'perplexity'. Manifest updated with perplexity.ai host permissions. Server validate.ts updated to accept 'perplexity'. Remaining checkpoints need manual Chrome verification on perplexity.ai.
+
+### PHASE 15 — Perplexity Verification + Backend Deployment + Chrome Web Store [not started]
+
+- [ ] Perplexity trigger button appears and is correctly placed
+- [ ] Full enhancement flow works on Perplexity (streaming + undo)
+- [ ] Backend deployed to Railway with real `ANTHROPIC_API_KEY`
+- [ ] `GET /health` returns ok on production URL
+- [ ] Free tier works end-to-end through deployed backend
+- [ ] `BACKEND_URL` in `extension/src/config.ts` updated to production URL
+- [ ] CORS locked to extension ID in production
+- [ ] Placeholder icons replaced with real branded icons
+- [ ] `dist/` zipped and uploaded to Chrome Web Store
+- [ ] Privacy policy hosted and linked in store listing
+- [ ] Extension submitted for review
+- [ ] After approval: `ALLOWED_ORIGINS` updated with real extension ID
+- [ ] Published extension tested end-to-end
+- Notes: See `claude/BuildFlow.md` Phase 15 for detailed step-by-step instructions.

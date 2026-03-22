@@ -434,6 +434,123 @@ A phase is done when the checkpoint passes, not when the code is written.
 
 ---
 
+## PHASE 15 — Perplexity Verification + Backend Deployment + Chrome Web Store
+
+**Goal:** Verify Perplexity works end-to-end, deploy backend, publish extension.
+
+---
+
+### Step 1 — Verify Perplexity adapter in Chrome
+
+Code is written. Load the built extension (`dist/`) and test manually on perplexity.ai:
+
+- [ ] Reload extension in `chrome://extensions` after `pnpm build`
+- [ ] Go to `perplexity.ai` — trigger button appears near the submit button
+- [ ] If button doesn't appear, open DevTools console and check for `[PromptPilot]` logs
+- [ ] If selectors are wrong, inspect the DOM and update `extension/src/content/adapters/perplexity.ts`
+- [ ] Adjust button placement in `trigger-button.ts` if positioning is off (see how Claude/Gemini were fixed)
+- [ ] Type a prompt → click enhance → streaming text replaces input → undo works
+
+---
+
+### Step 2 — Deploy backend to Railway (recommended)
+
+The free tier won't work until the backend is running. Steps:
+
+1. **Create account** at railway.app
+2. **Create new project** → Deploy from GitHub repo
+3. **Set root directory** to `server/`
+4. **Set environment variables** in Railway dashboard:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+   RATE_LIMIT_PER_HOUR=10
+   MAX_PROMPT_LENGTH=10000
+   ALLOWED_ORIGINS=*
+   NODE_ENV=production
+   PORT=3000
+   ```
+5. **Deploy** — Railway auto-detects Node.js, runs `pnpm dev`
+6. **Note the public URL** Railway gives you (e.g. `https://promptpilot-server.up.railway.app`)
+7. **Update `extension/src/config.ts`:**
+   ```typescript
+   export const BACKEND_URL = 'https://your-railway-url.up.railway.app'
+   ```
+8. `pnpm build` the extension again with the new URL
+9. Test free tier: set mode to "Free tier" in popup, enhance a prompt — should work
+
+**Checkpoint:**
+- [ ] `GET https://your-url/health` returns `{ status: 'ok' }` in browser
+- [ ] Free tier enhancement works end-to-end without an API key
+- [ ] 11th enhancement shows rate limit toast
+- [ ] Commit: `feat(config): point backend URL to production server`
+
+---
+
+### Step 3 — Lock CORS to extension ID (production hardening)
+
+Once you have the extension ID from the Web Store:
+
+1. Note your extension's published ID from the Chrome Web Store dashboard
+2. Update Railway env var:
+   ```
+   ALLOWED_ORIGINS=chrome-extension://YOUR_EXTENSION_ID_HERE
+   ```
+3. Redeploy backend (Railway auto-deploys on env var change)
+
+**Checkpoint:**
+- [ ] Backend rejects requests from non-extension origins
+- [ ] Extension still works normally
+
+---
+
+### Step 4 — Chrome Web Store submission
+
+**Prerequisites before submitting:**
+- [ ] Replace placeholder icons (`assets/icon-16.png`, `icon-48.png`, `icon-128.png`) with real branded icons
+- [ ] Update `manifest.json` version to `"1.0.0"` (already set)
+- [ ] Run `pnpm build` — confirm clean output
+- [ ] Zip the `dist/` folder: `Compress-Archive dist/* promptpilot.zip` (Windows) or `cd dist && zip -r ../promptpilot.zip .` (Mac/Linux)
+
+**Submission steps:**
+1. Go to [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole)
+2. Pay one-time $5 developer registration fee
+3. Click **New Item** → upload `promptpilot.zip`
+4. Fill in:
+   - **Name:** PromptPilot
+   - **Short description:** Make your AI prompts smarter with one click
+   - **Detailed description:** Explain what it does, mention ChatGPT / Claude / Gemini / Perplexity support, BYOK and free tier
+   - **Category:** Productivity
+   - **Screenshots:** At least 1280×800 screenshot of the button in action on ChatGPT
+5. **Privacy policy:** Required. Host a simple page at any URL explaining:
+   - API keys stored locally only (`chrome.storage.local`), never sent to our servers
+   - Prompts sent to Anthropic/OpenAI (BYOK) or our proxy (free tier) for enhancement
+   - No user accounts, no tracking
+6. Submit for review — usually 1-3 business days
+
+**After approval:**
+- [ ] Note the permanent extension ID from the Web Store
+- [ ] Update `ALLOWED_ORIGINS` in Railway with the real ID
+- [ ] Test the published version end-to-end
+
+---
+
+### Step 5 — Version updates (how to ship changes after launch)
+
+When you make code changes:
+
+1. Bump version in `manifest.json`: `"1.0.0"` → `"1.0.1"` (patch) or `"1.1.0"` (minor feature)
+2. `pnpm build` → zip `dist/`
+3. Upload new zip in the Chrome Web Store Developer Console → **Submit for review**
+4. Google reviews updates faster (often same day)
+5. Chrome auto-updates the extension for all users silently — they don't need to reinstall
+
+**Versioning convention:**
+- `1.0.x` — bug fixes and selector updates (platform DOM changed)
+- `1.x.0` — new features (new platform, new model support)
+- `x.0.0` — major redesign
+
+---
+
 ## Common Problems
 
 | Problem | Likely Cause | Fix |

@@ -8,6 +8,7 @@ import { buildMetaPrompt } from './lib/meta-prompt'
 import {
   buildUserMessage,
   callAnthropicAPI,
+  callOpenAIAPI,
   callOpenRouterAPI,
   parseAnthropicStream,
   parseOpenAIStream,
@@ -41,17 +42,22 @@ async function handleEnhance(
   )
 
   try {
-    // Read API key and provider from storage — never cache it
-    const { apiKey, provider } = await chrome.storage.local.get(['apiKey', 'provider']) as {
+    // Read settings from storage on each request — never cache
+    const { apiKey, provider, model, mode } = await chrome.storage.local.get(
+      ['apiKey', 'provider', 'model', 'mode']
+    ) as {
       apiKey?: string
       provider?: Provider
+      model?: string
+      mode?: 'free' | 'byok'
     }
 
-    if (!apiKey) {
+    // Free tier mode — backend proxy (Phase 11)
+    if (mode === 'free' || !apiKey) {
       sendMessage(port, {
         type: 'ERROR',
-        message: 'No API key set. Click the PromptPilot icon to add your API key.',
-        code: 'NO_API_KEY',
+        message: 'Free tier not available yet. Switch to BYOK mode and add your API key.',
+        code: 'FREE_TIER_NOT_READY',
       })
       port.disconnect()
       return
@@ -71,21 +77,27 @@ async function handleEnhance(
       '[PromptPilot] Calling LLM API'
     )
 
-    // Route to the correct provider
+    // Route to the correct provider, passing the selected model
     if (provider === 'openrouter') {
-      const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage)
+      const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
       for await (const text of parseOpenAIStream(response)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else if (provider === 'anthropic') {
-      const response = await callAnthropicAPI(apiKey, systemPrompt, userMessage)
+      const response = await callAnthropicAPI(apiKey, systemPrompt, userMessage, model)
       for await (const text of parseAnthropicStream(response)) {
+        sendMessage(port, { type: 'TOKEN', text })
+      }
+    } else if (provider === 'openai') {
+      // OpenAI uses same format as OpenRouter but different endpoint
+      const response = await callOpenAIAPI(apiKey, systemPrompt, userMessage, model)
+      for await (const text of parseOpenAIStream(response)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else {
       sendMessage(port, {
         type: 'ERROR',
-        message: `Unsupported provider: ${provider}. Use an Anthropic or OpenRouter key.`,
+        message: `Unsupported provider: ${provider}. Use an Anthropic, OpenAI, or OpenRouter key.`,
         code: 'UNSUPPORTED_PROVIDER',
       })
       port.disconnect()

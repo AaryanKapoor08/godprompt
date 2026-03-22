@@ -167,6 +167,39 @@ export async function callAnthropicAPI(
   return response
 }
 
+// Make a streaming request to the OpenAI API
+export async function callOpenAIAPI(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string = 'gpt-4o-mini'
+): Promise<Response> {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      stream: true,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    throw new Error(`[LLMClient] OpenAI API returned ${response.status}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+
+  return response
+}
+
 // Make a streaming request to OpenRouter (OpenAI-compatible format)
 export async function callOpenRouterAPI(
   apiKey: string,

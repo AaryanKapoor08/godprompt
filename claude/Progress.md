@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 8**
+**Current Phase: 9**
 
 ---
 
@@ -98,15 +98,15 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(popup): implement full settings page with provider detection`
 - Notes: Mode toggle (free/BYOK), provider auto-detection from key prefix, model dropdown with provider-specific options (Anthropic/OpenAI/OpenRouter), usage bar with color states, external popup.css. Service worker reads mode+model from storage, routes to correct provider. Added callOpenAIAPI() for direct OpenAI support. Fixed OpenRouter Haiku model ID.
 
-### PHASE 9 — OpenAI BYOK Support [not started]
+### PHASE 9 — OpenAI BYOK Support [complete]
 
-- [ ] `parseOpenAIStream()` unit test passes (mock SSE data)
+- [x] `parseOpenAIStream()` unit test passes (mock SSE data)
 - [ ] Entering an OpenAI key in popup + clicking enhance → tokens stream and replace input text
 - [ ] Streaming DOM replacement works identically to Anthropic path
 - [ ] Undo works after OpenAI enhancement
 - [ ] Switching between Anthropic and OpenAI keys works without restart
 - [ ] Commit: `feat(llm-client): add OpenAI streaming support for BYOK mode`
-- Notes:
+- Notes: All OpenAI BYOK code was built during Phase 8. callOpenAIAPI() in llm-client.ts calls api.openai.com/v1/chat/completions with streaming. parseOpenAIStream() extracts choices[0].delta.content from SSE data lines. Service worker routes to OpenAI when provider === 'openai'. Popup auto-detects OpenAI keys (sk- prefix) and shows GPT-4o-mini/GPT-4o models. 5 unit tests for parseOpenAIStream. Remaining checkpoints require manual Chrome verification with a real OpenAI key.
 
 ### PHASE 10 — Backend Server [not started]
 

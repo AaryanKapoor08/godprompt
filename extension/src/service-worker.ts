@@ -73,7 +73,7 @@ async function handleEnhance(
     const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context)
 
     console.info(
-      { platform: msg.platform, provider },
+      { platform: msg.platform, provider, model },
       '[PromptPilot] Calling LLM API'
     )
 

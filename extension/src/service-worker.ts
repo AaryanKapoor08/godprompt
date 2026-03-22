@@ -3,6 +3,15 @@
 // Uses chrome.runtime.connect (ports) for streaming, NOT sendMessage
 
 import type { ContentMessage, ServiceWorkerMessage } from './lib/types'
+import type { Provider } from './lib/llm-client'
+import { buildMetaPrompt } from './lib/meta-prompt'
+import {
+  buildUserMessage,
+  callAnthropicAPI,
+  callOpenRouterAPI,
+  parseAnthropicStream,
+  parseOpenAIStream,
+} from './lib/llm-client'
 
 console.info('[PromptPilot] Service worker started')
 
@@ -32,18 +41,61 @@ async function handleEnhance(
   )
 
   try {
-    // Phase 4: Mock streaming — sends 3 tokens at 200ms intervals, then DONE
-    // Replaced with real LLM call in Phase 5
-    const mockTokens = ['Enhanced: ', msg.rawPrompt, ' (improved)']
-
-    for (const token of mockTokens) {
-      await delay(200)
-      sendMessage(port, { type: 'TOKEN', text: token })
+    // Read API key and provider from storage — never cache it
+    const { apiKey, provider } = await chrome.storage.local.get(['apiKey', 'provider']) as {
+      apiKey?: string
+      provider?: Provider
     }
 
-    await delay(200)
+    if (!apiKey) {
+      sendMessage(port, {
+        type: 'ERROR',
+        message: 'No API key set. Click the PromptPilot icon to add your API key.',
+        code: 'NO_API_KEY',
+      })
+      port.disconnect()
+      return
+    }
+
+    // Build the meta-prompt with platform and conversation context
+    const systemPrompt = buildMetaPrompt(
+      msg.platform,
+      msg.context.isNewConversation,
+      msg.context.conversationLength
+    )
+
+    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context)
+
+    console.info(
+      { platform: msg.platform, provider },
+      '[PromptPilot] Calling LLM API'
+    )
+
+    // Route to the correct provider
+    if (provider === 'openrouter') {
+      const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage)
+      for await (const text of parseOpenAIStream(response)) {
+        sendMessage(port, { type: 'TOKEN', text })
+      }
+    } else if (provider === 'anthropic') {
+      const response = await callAnthropicAPI(apiKey, systemPrompt, userMessage)
+      for await (const text of parseAnthropicStream(response)) {
+        sendMessage(port, { type: 'TOKEN', text })
+      }
+    } else {
+      sendMessage(port, {
+        type: 'ERROR',
+        message: `Unsupported provider: ${provider}. Use an Anthropic or OpenRouter key.`,
+        code: 'UNSUPPORTED_PROVIDER',
+      })
+      port.disconnect()
+      return
+    }
+
     sendMessage(port, { type: 'DONE' })
     port.disconnect()
+
+    console.info('[PromptPilot] Enhancement complete')
   } catch (error) {
     console.error('[PromptPilot] Enhancement failed', error)
     sendMessage(port, {
@@ -61,8 +113,4 @@ function sendMessage(port: chrome.runtime.Port, msg: ServiceWorkerMessage): void
     // Port may have been disconnected by the content script
     console.info({ cause: error }, '[PromptPilot] Could not send message — port disconnected')
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

@@ -72,11 +72,32 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 5 — LLM Integration (BYOK) + Minimal Popup
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `pending` | `feat(service-worker): integrate Anthropic streaming API with minimal popup` | `feat/phase-5/llm-integration` |
+
+**What was done:**
+- Minimal popup with API key input (saves to `chrome.storage.local`)
+- Meta-prompt (~600 tokens) distilled from techniques guide with domain checklists and anti-pattern rules
+- `buildMetaPrompt()` — interpolates platform and conversation context
+- `buildUserMessage()` — passes raw prompt to LLM
+- `validateApiKey()` — detects Anthropic (`sk-ant-`), OpenRouter (`sk-or-`), OpenAI (`sk-`)
+- `callAnthropicAPI()` — Anthropic Messages API with streaming
+- `callOpenRouterAPI()` — OpenAI-compatible streaming via OpenRouter
+- `parseAnthropicStream()` — extracts `content_block_delta` text chunks
+- `parseOpenAIStream()` — extracts `choices[0].delta.content` chunks
+- Service worker routes to correct provider based on stored key
+- 36 unit tests passing (smart-skip, validate-api-key, build-user-message, meta-prompt, parse-sse-stream, parse-openai-stream)
+- Verified end-to-end with OpenRouter free model on chatgpt.com
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 5 | `feat(service-worker): integrate Anthropic streaming API with minimal popup` |
 | 6 | `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback` |
 | 7 | `feat(undo): implement undo button with auto-dismiss and interrupt handling` |
 | 8 | `feat(popup): implement full settings page with provider detection` |

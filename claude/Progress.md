@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 4**
+**Current Phase: 5**
 
 ---
 
@@ -53,17 +53,17 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(service-worker): implement port-based message passing for streaming`
 - Notes: Port-based streaming verified in Chrome. Service worker sends 3 mock tokens at 200ms intervals. Content script logs each token and completion. Error path sends ERROR message and disconnects port. onDisconnect handler catches unexpected disconnections.
 
-### PHASE 5 — LLM Integration (BYOK) + Minimal Popup [not started]
+### PHASE 5 — LLM Integration (BYOK) + Minimal Popup [complete]
 
-- [ ] Minimal popup shows API key input, saves to `chrome.storage.local`
-- [ ] `buildUserMessage()` unit test passes
-- [ ] Anthropic SSE parser unit test passes (mock SSE data)
-- [ ] `validateApiKey()` unit test passes
-- [ ] Clicking trigger button with a real Anthropic key → tokens stream back via port
-- [ ] Meta-prompt template interpolates platform and context correctly
-- [ ] No API key is committed to git
-- [ ] Commit: `feat(service-worker): integrate Anthropic streaming API with minimal popup`
-- Notes: USE `PromptPilot_Techniques_to_Codebase_Guide.md` (project root) when building the meta-prompt. It maps prompting techniques to code: domain-specific gap checklists, anti-pattern rules, technique priority order. The doc is the knowledge base — distill it into ~500-800 token system prompt in `src/lib/meta-prompt.ts`.
+- [x] Minimal popup shows API key input, saves to `chrome.storage.local`
+- [x] `buildUserMessage()` unit test passes
+- [x] Anthropic SSE parser unit test passes (mock SSE data)
+- [x] `validateApiKey()` unit test passes
+- [x] Clicking trigger button with a real API key → tokens stream back via port
+- [x] Meta-prompt template interpolates platform and context correctly
+- [x] No API key is committed to git
+- [x] Commit: `feat(service-worker): integrate Anthropic streaming API with minimal popup`
+- Notes: Added OpenRouter support (sk-or- keys) alongside Anthropic and OpenAI. Tested with OpenRouter free model (nvidia/nemotron). 36 unit tests passing. Meta-prompt distilled from PromptPilot_Techniques_to_Codebase_Guide.md with domain-specific gap checklists, anti-pattern rules, and technique priority order. OpenAI SSE parser also added (used by OpenRouter).
 
 ### PHASE 6 — Streaming DOM Replacement [not started]
 

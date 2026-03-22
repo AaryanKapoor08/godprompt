@@ -130,11 +130,31 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 8 — Full Popup Settings
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `baf8da9` | `feat(popup): implement full settings page with provider detection` | `feat/phase-8/full-popup-settings` |
+| `a7430f3` | `fix(popup): correct OpenRouter Haiku model ID` | `feat/phase-8/full-popup-settings` |
+
+**What was done:**
+- Full popup with mode toggle (Free tier / BYOK), defaults to Free tier
+- BYOK section: API key input with green/red validation borders, model dropdown
+- Provider auto-detection from key prefix: `sk-ant-` → Anthropic, `sk-or-` → OpenRouter, `sk-` → OpenAI
+- Model dropdown shows provider-specific models (Haiku/Sonnet, GPT-4o/mini, Nemotron/Haiku/GPT-4o-mini)
+- Usage bar with normal/warning/full color states (synced from server in Phase 11)
+- External `popup.css` for cleaner separation
+- Service worker reads `mode` and `model` from storage on each request
+- Added `callOpenAIAPI()` for direct OpenAI API streaming
+- Service worker logs model in use for debugging
+- Fixed OpenRouter Haiku model ID (`anthropic/claude-3.5-haiku`)
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 8 | `feat(popup): implement full settings page with provider detection` |
 | 9 | `feat(llm-client): add OpenAI streaming support for BYOK mode` |
 | 10 | `feat(backend): implement Hono server with validation, rate limiting, and headers` |
 | 11 | `feat(extension): integrate free tier with synced rate limit tracking` |

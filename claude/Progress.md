@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 7**
+**Current Phase: 8**
 
 ---
 
@@ -87,16 +87,16 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(undo): implement undo button with auto-dismiss and interrupt handling`
 - Notes: Undo button positioned below composer with fade-in animation. Dismisses on keydown (user edit), send button click, empty input detection (MutationObserver), or 10s timeout. Original prompt cached before first TOKEN.
 
-### PHASE 8 — Full Popup Settings [not started]
+### PHASE 8 — Full Popup Settings [complete]
 
-- [ ] Popup opens with mode toggle defaulting to "Free tier"
-- [ ] Switching to BYOK shows API key input and model dropdown
-- [ ] Entering an Anthropic key shows Claude models; entering an OpenAI key shows GPT models
-- [ ] API key validates format on input (visual feedback)
-- [ ] Settings persist after closing and reopening popup
-- [ ] Service worker reads stored settings and routes accordingly
-- [ ] Commit: `feat(popup): implement full settings page with provider detection`
-- Notes:
+- [x] Popup opens with mode toggle defaulting to "Free tier"
+- [x] Switching to BYOK shows API key input and model dropdown
+- [x] Entering an Anthropic key shows Claude models; entering an OpenAI key shows GPT models
+- [x] API key validates format on input (visual feedback)
+- [x] Settings persist after closing and reopening popup
+- [x] Service worker reads stored settings and routes accordingly
+- [x] Commit: `feat(popup): implement full settings page with provider detection`
+- Notes: Mode toggle (free/BYOK), provider auto-detection from key prefix, model dropdown with provider-specific options (Anthropic/OpenAI/OpenRouter), usage bar with color states, external popup.css. Service worker reads mode+model from storage, routes to correct provider. Added callOpenAIAPI() for direct OpenAI support. Fixed OpenRouter Haiku model ID.
 
 ### PHASE 9 — OpenAI BYOK Support [not started]
 

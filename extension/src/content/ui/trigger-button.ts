@@ -86,21 +86,44 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'gemini') {
-    // Gemini: the send button container clips overflow — use absolute positioning
-    // instead. Attach to the input element's nearest scrollable ancestor.
+    // Gemini bottom bar: [+] [Tools] ... [Fast] [send] [mic]
+    // Insert left of the "Fast" model/speed selector text
     button.classList.add('promptpilot-trigger-btn--gemini')
     const input = adapter.getInputElement()
-    // Walk up to find a container with known size (usually 3-4 levels up from ql-editor)
-    const anchor = input?.closest('.input-area-container, [class*="input-area"], form, [class*="composer"]')
+    const composer = input?.closest('form, [class*="input-area"], [class*="composer"]')
       ?? input?.parentElement?.parentElement?.parentElement
-      ?? input?.parentElement
-    if (anchor) {
-      const anchorEl = anchor as HTMLElement
-      if (window.getComputedStyle(anchorEl).position === 'static') {
-        anchorEl.style.position = 'relative'
+
+    // Find the element that contains "Fast" or other model selector text
+    const allEls = Array.from(composer?.querySelectorAll('*') ?? [])
+    const fastEl = allEls.find((el) => {
+      const text = (el as HTMLElement).textContent?.trim() ?? ''
+      return (text === 'Fast' || text === '1.5 Flash' || text === 'Flash' || text === '2.0 Flash')
+        && el.children.length === 0
+    }) as HTMLElement | undefined
+
+    if (fastEl) {
+      // Walk up to the clickable button/link
+      const fastButton = fastEl.closest('button, [role="button"]') as HTMLElement ?? fastEl.parentElement as HTMLElement
+      // Walk up to find the flex row that also contains the send button
+      let container = fastButton?.parentElement
+      while (container && container !== composer && !container.contains(sendButton)) {
+        container = container.parentElement
       }
-      anchorEl.appendChild(button)
+      if (container) {
+        let directChild: HTMLElement | null = fastButton
+        while (directChild && directChild.parentElement !== container) {
+          directChild = directChild.parentElement
+        }
+        if (directChild) {
+          container.insertBefore(button, directChild)
+        } else {
+          sendButton.parentElement?.insertBefore(button, sendButton)
+        }
+      } else {
+        sendButton.parentElement?.insertBefore(button, sendButton)
+      }
     } else {
+      // Fallback: insert before send button
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else {

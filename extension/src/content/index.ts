@@ -2,11 +2,13 @@
 
 import type { PlatformAdapter } from './adapters/types'
 import { ChatGPTAdapter } from './adapters/chatgpt'
+import { ClaudeAdapter } from './adapters/claude'
 import { injectTriggerButton, observeComposer, registerShortcut } from './ui/trigger-button'
 
 const adapters: PlatformAdapter[] = [
   new ChatGPTAdapter(),
-  // Claude and Gemini adapters added in Phases 12-13
+  new ClaudeAdapter(),
+  // Gemini adapter added in Phase 13
 ]
 
 const adapter = adapters.find((a) => a.matches()) ?? null

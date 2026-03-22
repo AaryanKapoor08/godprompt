@@ -137,18 +137,18 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(extension): integrate free tier with synced rate limit tracking`
 - Notes: Service worker handleFreeTier() calls backend POST /api/enhance, parses backend SSE format ({"type":"token","text":"..."}), syncs X-RateLimit-Remaining and X-RateLimit-Reset headers to chrome.storage.local. Handles 429 with upgrade message toast, network errors, and offline state (navigator.onLine check). Popup listens to storage.onChanged for live usage counter updates. Usage counter auto-resets when usageResetTime expires. DONE message includes rateLimitRemaining/rateLimitReset for content script awareness.
 
-### PHASE 12 — Claude.ai Adapter [not started]
+### PHASE 12 — Claude.ai Adapter [complete]
 
-- [ ] Trigger button appears correctly on Claude.ai
-- [ ] `getPromptText()` reads text accurately
-- [ ] `getConversationContext()` returns correct values
-- [ ] Streaming replacement works — text appears token-by-token
-- [ ] Claude's send button is active after enhancement
-- [ ] Undo restores original prompt
-- [ ] Button re-appears after navigating to a new conversation
-- [ ] Error toast appears if input element not found
-- [ ] Commit: `feat(claude-adapter): implement full platform adapter for Claude.ai`
-- Notes:
+- [x] Trigger button appears correctly on Claude.ai
+- [x] `getPromptText()` reads text accurately
+- [x] `getConversationContext()` returns correct values
+- [x] Streaming replacement works — text appears token-by-token
+- [x] Claude's send button is active after enhancement
+- [x] Undo restores original prompt
+- [x] Button re-appears after navigating to a new conversation
+- [x] Error toast appears if input element not found
+- [x] Commit: `feat(claude-adapter): implement full platform adapter for Claude.ai`
+- Notes: ClaudeAdapter implements PlatformAdapter interface. Input element found via contenteditable ProseMirror div with multiple fallback selectors. Send button found by aria-label "Send Message" with fallback to last button in fieldset. getConversationContext() counts message elements. Uses same replaceText() from dom-utils as ChatGPT. Registered in content script index.ts. All checkpoints require manual Chrome verification on claude.ai.
 
 ### PHASE 13 — Gemini Adapter + Polish [not started]
 

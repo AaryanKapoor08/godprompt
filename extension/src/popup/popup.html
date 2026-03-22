@@ -7,7 +7,14 @@
   <link rel="stylesheet" href="./popup.css">
 </head>
 <body>
-  <h1>PromptPilot</h1>
+  <div class="header">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+      </svg>
+    </div>
+    <h1>PromptPilot</h1>
+  </div>
   <p class="subtitle">Make your AI prompts smarter with one click.</p>
 
   <!-- Mode Toggle -->
@@ -37,6 +44,10 @@
   </div>
 
   <div id="status" class="status"></div>
+
+  <div class="footer">
+    <span class="footer-link">v1.0.0</span>
+  </div>
 
   <script type="module" src="./popup.ts"></script>
 </body>

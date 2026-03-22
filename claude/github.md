@@ -76,7 +76,7 @@ Track of all commits pushed to GitHub, organized by phase.
 
 | Hash | Message | Branch |
 |------|---------|--------|
-| `pending` | `feat(service-worker): integrate Anthropic streaming API with minimal popup` | `feat/phase-5/llm-integration` |
+| `fa6f877` | `feat(service-worker): integrate Anthropic streaming API with minimal popup` | `feat/phase-5/llm-integration` |
 
 **What was done:**
 - Minimal popup with API key input (saves to `chrome.storage.local`)

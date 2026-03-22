@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: Complete ✓**
+**Current Phase: 14**
 
 ---
 
@@ -163,3 +163,16 @@ Update this file as you complete each phase.
 - [x] Meta-prompt is in sync between extension and server
 - [x] Commit: `feat(gemini): implement adapter and polish all platforms`
 - Notes: GeminiAdapter implements PlatformAdapter. Input via .ql-editor (Quill editor) with fallbacks. Send button via aria-label "Send message". Conversation context counts model-response/user-query elements. Button inserts before send button. Meta-prompt verified in sync. 60 tests passing (36 extension + 24 server). Production build clean. Remaining checkpoints need manual Chrome verification on gemini.google.com.
+
+### PHASE 14 — Perplexity Adapter [complete]
+
+- [x] Trigger button appears correctly on Perplexity
+- [ ] `getPromptText()` reads text accurately
+- [ ] `getConversationContext()` returns correct values
+- [ ] Streaming replacement works — text appears token-by-token
+- [ ] Send button active after enhancement
+- [ ] Undo restores original prompt
+- [ ] Button re-appears after navigating to a new search
+- [ ] Error toast appears if input element not found
+- [x] Commit: `feat(perplexity): implement platform adapter for Perplexity.ai`
+- Notes: PerplexityAdapter implements PlatformAdapter. Handles both textarea (native setter via Object.getOwnPropertyDescriptor) and contenteditable input. Send button via aria-label Submit/Send or type=submit. Platform type extended to include 'perplexity'. Manifest updated with perplexity.ai host permissions. Server validate.ts updated to accept 'perplexity'. Remaining checkpoints need manual Chrome verification on perplexity.ai.

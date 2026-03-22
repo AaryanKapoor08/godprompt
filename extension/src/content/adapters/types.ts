@@ -1,7 +1,7 @@
 // Platform adapter interface — each supported platform implements this
 // Using an interface so adapter classes can `implements PlatformAdapter`
 
-export type Platform = 'chatgpt' | 'claude' | 'gemini'
+export type Platform = 'chatgpt' | 'claude' | 'gemini' | 'perplexity'
 
 export interface ConversationContext {
   isNewConversation: boolean

@@ -126,6 +126,9 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       // Fallback: insert before send button
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
+  } else if (platform === 'perplexity') {
+    // Perplexity: insert before send button
+    sendButton.parentElement?.insertBefore(button, sendButton)
   } else {
     sendButton.parentElement?.insertBefore(button, sendButton)
   }

@@ -2,12 +2,12 @@
 
 import type { Context, Next } from 'hono'
 
-const VALID_PLATFORMS = ['chatgpt', 'claude', 'gemini'] as const
+const VALID_PLATFORMS = ['chatgpt', 'claude', 'gemini', 'perplexity'] as const
 const MAX_PROMPT_LENGTH = parseInt(process.env.MAX_PROMPT_LENGTH ?? '10000', 10)
 
 export interface EnhanceRequestBody {
   prompt: string
-  platform: 'chatgpt' | 'claude' | 'gemini'
+  platform: 'chatgpt' | 'claude' | 'gemini' | 'perplexity'
   context?: {
     isNewConversation: boolean
     conversationLength: number
@@ -40,11 +40,11 @@ export function validateEnhanceRequest(body: unknown): {
 
   // Validate platform
   if (!b.platform || typeof b.platform !== 'string') {
-    return { valid: false, error: 'Invalid platform. Must be chatgpt, claude, or gemini' }
+    return { valid: false, error: 'Invalid platform. Must be chatgpt, claude, gemini, or perplexity' }
   }
 
   if (!VALID_PLATFORMS.includes(b.platform as typeof VALID_PLATFORMS[number])) {
-    return { valid: false, error: 'Invalid platform. Must be chatgpt, claude, or gemini' }
+    return { valid: false, error: 'Invalid platform. Must be chatgpt, claude, gemini, or perplexity' }
   }
 
   // Context is optional — default if missing

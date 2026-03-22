@@ -405,6 +405,35 @@ A phase is done when the checkpoint passes, not when the code is written.
 
 ---
 
+## PHASE 14 — Perplexity Adapter
+
+**Goal:** Full enhancement flow works on Perplexity.ai.
+
+**Tasks:**
+- Add `'perplexity'` to the `Platform` type in `types.ts`
+- Implement `PerplexityAdapter` — all `PlatformAdapter` methods
+- Perplexity may use a `<textarea>` — handle both textarea (native setter) and contenteditable
+- `getSendButton()` — find submit button by aria-label or type
+- `getConversationContext()` — count answer/result blocks
+- Add `perplexity.ai` to manifest `host_permissions` and `content_scripts.matches`
+- Register `PerplexityAdapter` in `content/index.ts`
+- Add button placement in `trigger-button.ts` for perplexity platform
+- Update server `validate.ts` to accept `'perplexity'` as a valid platform
+- Test full flow: button appears, enhancement streams, undo works
+
+**Checkpoint:**
+- [ ] Trigger button appears correctly on Perplexity
+- [ ] `getPromptText()` reads text accurately
+- [ ] `getConversationContext()` returns correct values
+- [ ] Streaming replacement works — text appears token-by-token
+- [ ] Send button active after enhancement
+- [ ] Undo restores original prompt
+- [ ] Button re-appears after navigating to a new search
+- [ ] Error toast appears if input element not found
+- [ ] Commit: `feat(perplexity): implement platform adapter for Perplexity.ai`
+
+---
+
 ## Common Problems
 
 | Problem | Likely Cause | Fix |

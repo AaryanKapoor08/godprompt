@@ -4,12 +4,14 @@ import type { PlatformAdapter } from './adapters/types'
 import { ChatGPTAdapter } from './adapters/chatgpt'
 import { ClaudeAdapter } from './adapters/claude'
 import { GeminiAdapter } from './adapters/gemini'
+import { PerplexityAdapter } from './adapters/perplexity'
 import { injectTriggerButton, observeComposer, registerShortcut } from './ui/trigger-button'
 
 const adapters: PlatformAdapter[] = [
   new ChatGPTAdapter(),
   new ClaudeAdapter(),
   new GeminiAdapter(),
+  new PerplexityAdapter(),
 ]
 
 const adapter = adapters.find((a) => a.matches()) ?? null

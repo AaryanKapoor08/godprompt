@@ -200,6 +200,11 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 | Hash | Message | Branch |
 |------|---------|--------|
 | `2aee079` | `feat(claude-adapter): implement full platform adapter for Claude.ai` | `feat/phase-12/claude-adapter` |
+| `1aa1fef` | `fix(claude-adapter): correct button placement and reduce injection delay` | `feat/phase-12/claude-adapter` |
+| `05e135e` | `fix(claude-adapter): position trigger button in composer top-right` | `feat/phase-12/claude-adapter` |
+| `1da030c` | `fix(claude-adapter): place trigger button left of model selector` | `feat/phase-12/claude-adapter` |
+| `3f4de82` | `fix(claude-adapter): insert button inline in model selector row` | `feat/phase-12/claude-adapter` |
+| `f44e020` | `fix(claude-adapter): walk DOM tree to find correct flex row for button` | `feat/phase-12/claude-adapter` |
 
 **What was done:**
 - `ClaudeAdapter` implementing full `PlatformAdapter` interface
@@ -209,7 +214,9 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 - `getSendButton()` — `aria-label="Send Message"` with fallback to last button in fieldset
 - `getConversationContext()` — counts message elements in conversation container
 - Registered in content script `index.ts` alongside `ChatGPTAdapter`
-- MutationObserver re-injects button after Claude SPA navigation (shared from trigger-button.ts)
+- Injection delay reduced from 2s to 500ms with 10 retries at 500ms each
+- Button inserted inline left of model selector ("Sonnet 4.6") by walking DOM to correct flex row
+- Verified working in Chrome on claude.ai
 
 ---
 

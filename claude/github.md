@@ -116,7 +116,7 @@ Track of all commits pushed to GitHub, organized by phase.
 
 | Hash | Message | Branch |
 |------|---------|--------|
-| `pending` | `feat(undo): implement undo button with auto-dismiss and interrupt handling` | `feat/phase-6/streaming-dom-replacement` |
+| `4bf4be1` | `feat(undo): implement undo button with auto-dismiss and interrupt handling` | `feat/phase-6/streaming-dom-replacement` |
 
 **What was done:**
 - Created `undo-button.ts` — floating undo button with fade-in animation

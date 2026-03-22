@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 10**
+**Current Phase: 11**
 
 ---
 
@@ -121,8 +121,8 @@ Update this file as you complete each phase.
 - [x] Request validation unit test passes
 - [x] Integration test passes
 - [x] `.env` is in `.gitignore`, `.env.example` exists
-- [ ] CORS rejects requests from non-allowed origins (when not using `*`)
-- [ ] Commit: `feat(backend): implement Hono server with validation, rate limiting, and headers`
+- [x] CORS rejects requests from non-allowed origins (when not using `*`)
+- [x] Commit: `feat(backend): implement Hono server with validation, rate limiting, and headers`
 - Notes: Hono server with @hono/node-server. CORS via hono/cors with ALLOWED_ORIGINS env var. Validation middleware checks Content-Type, prompt (required, non-empty, max 10000 chars), platform (chatgpt/claude/gemini). Rate limiter: in-memory Map keyed by IP, 10/hour default, returns X-RateLimit-Remaining + X-RateLimit-Reset headers. Anthropic proxy streams SSE using streamSSE helper. 24 tests (6 rate-limit, 10 validation, 8 integration). CORS origin rejection needs manual verification with non-wildcard ALLOWED_ORIGINS.
 
 ### PHASE 11 — Free Tier Integration [not started]

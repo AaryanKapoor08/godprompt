@@ -151,12 +151,34 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 9 — OpenAI BYOK Support [deferred — post-launch]
+
+Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional; Anthropic + OpenRouter cover the core use case.
+
+---
+
+## Phase 10 — Backend Server
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `be12b6d` | `feat(backend): implement Hono server with validation, rate limiting, and headers` | `feat/phase-10/backend-server` |
+
+**What was done:**
+- Hono server with `@hono/node-server`, `pnpm dev` starts on port 3000
+- `GET /health` returns `{ status: 'ok' }`
+- `POST /api/enhance` proxies to Anthropic API, returns SSE stream (`{ type: "token", text }`)
+- Request validation middleware: Content-Type, prompt (required, non-empty, max 10000 chars), platform (chatgpt/claude/gemini)
+- IP-based in-memory rate limiter: 10/hour default, `X-RateLimit-Remaining` + `X-RateLimit-Reset` headers on all responses, `Retry-After` on 429
+- CORS middleware via `hono/cors` with `ALLOWED_ORIGINS` env var, exposes rate limit headers
+- `.env.example`, `Dockerfile`, `tsconfig.json`
+- 24 tests passing: 6 rate-limit, 10 validation, 8 integration (mocked Anthropic)
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 9 | `feat(llm-client): add OpenAI streaming support for BYOK mode` |
-| 10 | `feat(backend): implement Hono server with validation, rate limiting, and headers` |
 | 11 | `feat(extension): integrate free tier with synced rate limit tracking` |
 | 12 | `feat(claude-adapter): implement full platform adapter for Claude.ai` |
 | 13 | `feat(gemini): implement adapter and polish all platforms` |

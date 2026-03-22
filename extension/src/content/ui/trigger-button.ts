@@ -125,7 +125,7 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
       }
     } else if (msg.type === 'DONE') {
       console.info(
-        { enhancedLength: accumulatedText.length },
+        { enhancedLength: accumulatedText.length, rateLimitRemaining: msg.rateLimitRemaining },
         '[PromptPilot] Enhancement complete'
       )
       showUndoButton(adapter, originalPrompt)

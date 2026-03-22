@@ -125,17 +125,17 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(backend): implement Hono server with validation, rate limiting, and headers`
 - Notes: Hono server with @hono/node-server. CORS via hono/cors with ALLOWED_ORIGINS env var. Validation middleware checks Content-Type, prompt (required, non-empty, max 10000 chars), platform (chatgpt/claude/gemini). Rate limiter: in-memory Map keyed by IP, 10/hour default, returns X-RateLimit-Remaining + X-RateLimit-Reset headers. Anthropic proxy streams SSE using streamSSE helper. 24 tests (6 rate-limit, 10 validation, 8 integration). CORS origin rejection needs manual verification with non-wildcard ALLOWED_ORIGINS.
 
-### PHASE 11 — Free Tier Integration [not started]
+### PHASE 11 — Free Tier Integration [complete]
 
-- [ ] With no API key set, enhancement routes through backend and works end-to-end
-- [ ] After 10 enhancements, 11th shows rate limit toast with upgrade message
-- [ ] Usage counter in popup accurately reflects server-side remaining count
-- [ ] Usage counter resets when server's reset time passes
-- [ ] Switching to BYOK mode bypasses backend entirely
-- [ ] Offline state shows "No connection" toast without making a request
-- [ ] Error toast appears for API failures and auto-dismisses
-- [ ] Commit: `feat(extension): integrate free tier with synced rate limit tracking`
-- Notes:
+- [x] With no API key set, enhancement routes through backend and works end-to-end
+- [x] After 10 enhancements, 11th shows rate limit toast with upgrade message
+- [x] Usage counter in popup accurately reflects server-side remaining count
+- [x] Usage counter resets when server's reset time passes
+- [x] Switching to BYOK mode bypasses backend entirely
+- [x] Offline state shows "No connection" toast without making a request
+- [x] Error toast appears for API failures and auto-dismisses
+- [x] Commit: `feat(extension): integrate free tier with synced rate limit tracking`
+- Notes: Service worker handleFreeTier() calls backend POST /api/enhance, parses backend SSE format ({"type":"token","text":"..."}), syncs X-RateLimit-Remaining and X-RateLimit-Reset headers to chrome.storage.local. Handles 429 with upgrade message toast, network errors, and offline state (navigator.onLine check). Popup listens to storage.onChanged for live usage counter updates. Usage counter auto-resets when usageResetTime expires. DONE message includes rateLimitRemaining/rateLimitReset for content script awareness.
 
 ### PHASE 12 — Claude.ai Adapter [not started]
 

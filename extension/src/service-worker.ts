@@ -13,6 +13,7 @@ import {
   parseAnthropicStream,
   parseOpenAIStream,
 } from './lib/llm-client'
+import { BACKEND_URL } from './config'
 
 console.info('[PromptPilot] Service worker started')
 
@@ -52,18 +53,13 @@ async function handleEnhance(
       mode?: 'free' | 'byok'
     }
 
-    // Free tier mode — backend proxy (Phase 11)
+    // Free tier mode — route through backend proxy
     if (mode === 'free' || !apiKey) {
-      sendMessage(port, {
-        type: 'ERROR',
-        message: 'Free tier not available yet. Switch to BYOK mode and add your API key.',
-        code: 'FREE_TIER_NOT_READY',
-      })
-      port.disconnect()
+      await handleFreeTier(port, msg)
       return
     }
 
-    // Build the meta-prompt with platform and conversation context
+    // BYOK mode — direct API call
     const systemPrompt = buildMetaPrompt(
       msg.platform,
       msg.context.isNewConversation,
@@ -74,7 +70,7 @@ async function handleEnhance(
 
     console.info(
       { platform: msg.platform, provider, model },
-      '[PromptPilot] Calling LLM API'
+      '[PromptPilot] Calling LLM API (BYOK)'
     )
 
     // Route to the correct provider, passing the selected model
@@ -89,7 +85,6 @@ async function handleEnhance(
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else if (provider === 'openai') {
-      // OpenAI uses same format as OpenRouter but different endpoint
       const response = await callOpenAIAPI(apiKey, systemPrompt, userMessage, model)
       for await (const text of parseOpenAIStream(response)) {
         sendMessage(port, { type: 'TOKEN', text })
@@ -107,7 +102,7 @@ async function handleEnhance(
     sendMessage(port, { type: 'DONE' })
     port.disconnect()
 
-    console.info('[PromptPilot] Enhancement complete')
+    console.info('[PromptPilot] Enhancement complete (BYOK)')
   } catch (error) {
     console.error('[PromptPilot] Enhancement failed', error)
     sendMessage(port, {
@@ -115,6 +110,148 @@ async function handleEnhance(
       message: error instanceof Error ? error.message : 'Enhancement failed',
     })
     port.disconnect()
+  }
+}
+
+async function handleFreeTier(
+  port: chrome.runtime.Port,
+  msg: ContentMessage & { type: 'ENHANCE' }
+): Promise<void> {
+  console.info(
+    { platform: msg.platform },
+    '[PromptPilot] Routing through backend (free tier)'
+  )
+
+  // Check offline state before making request
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    sendMessage(port, {
+      type: 'ERROR',
+      message: 'No connection — check your internet and try again.',
+      code: 'OFFLINE',
+    })
+    port.disconnect()
+    return
+  }
+
+  let response: Response
+
+  try {
+    response = await fetch(`${BACKEND_URL}/api/enhance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: msg.rawPrompt,
+        platform: msg.platform,
+        context: msg.context,
+      }),
+    })
+  } catch (error) {
+    console.error('[PromptPilot] Backend request failed', error)
+    sendMessage(port, {
+      type: 'ERROR',
+      message: 'Could not reach the PromptPilot server. Try again later.',
+      code: 'NETWORK_ERROR',
+    })
+    port.disconnect()
+    return
+  }
+
+  // Sync rate limit headers from backend response
+  const rateLimitRemaining = parseInt(response.headers.get('X-RateLimit-Remaining') ?? '', 10)
+  const rateLimitReset = parseInt(response.headers.get('X-RateLimit-Reset') ?? '', 10)
+
+  if (!isNaN(rateLimitRemaining) && !isNaN(rateLimitReset)) {
+    await chrome.storage.local.set({
+      usageCount: 10 - rateLimitRemaining,
+      usageResetTime: rateLimitReset * 1000, // Convert epoch seconds to ms
+      rateLimitMax: 10,
+    })
+  }
+
+  // Handle rate limit (429)
+  if (response.status === 429) {
+    sendMessage(port, {
+      type: 'ERROR',
+      message: 'Free tier limit reached. Add your API key in settings for unlimited use.',
+      code: 'RATE_LIMITED',
+    })
+    port.disconnect()
+    return
+  }
+
+  // Handle other errors
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ error: 'Enhancement failed' }))
+    sendMessage(port, {
+      type: 'ERROR',
+      message: errorBody.error ?? 'Enhancement failed',
+      code: 'API_ERROR',
+    })
+    port.disconnect()
+    return
+  }
+
+  // Parse backend SSE stream — format: data: {"type": "token", "text": "..."}
+  const reader = response.body?.getReader()
+  if (!reader) {
+    sendMessage(port, {
+      type: 'ERROR',
+      message: 'No response body from server',
+      code: 'NO_BODY',
+    })
+    port.disconnect()
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ') || line.startsWith('data:')) {
+          const data = line.slice(line.indexOf(':') + 1).trim()
+
+          try {
+            const parsed = JSON.parse(data)
+
+            if (parsed.type === 'token' && parsed.text) {
+              sendMessage(port, { type: 'TOKEN', text: parsed.text })
+            } else if (parsed.type === 'done') {
+              sendMessage(port, {
+                type: 'DONE',
+                rateLimitRemaining: !isNaN(rateLimitRemaining) ? rateLimitRemaining : undefined,
+                rateLimitReset: !isNaN(rateLimitReset) ? rateLimitReset : undefined,
+              })
+              port.disconnect()
+              console.info('[PromptPilot] Enhancement complete (free tier)')
+              return
+            }
+          } catch {
+            // Skip non-JSON data lines
+          }
+        }
+      }
+    }
+
+    // Stream ended without explicit done — send DONE anyway
+    sendMessage(port, {
+      type: 'DONE',
+      rateLimitRemaining: !isNaN(rateLimitRemaining) ? rateLimitRemaining : undefined,
+      rateLimitReset: !isNaN(rateLimitReset) ? rateLimitReset : undefined,
+    })
+    port.disconnect()
+    console.info('[PromptPilot] Enhancement complete (free tier)')
+  } finally {
+    reader.releaseLock()
   }
 }
 

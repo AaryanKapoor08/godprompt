@@ -94,11 +94,28 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 6 — Streaming DOM Replacement
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `60fd8fa` | `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback` | `feat/phase-6/streaming-dom-replacement` |
+
+**What was done:**
+- Created `dom-utils.ts` — `clearContentEditable()`, `insertText()`, `replaceText()`
+- Primary strategy: `execCommand('insertText')` — deprecated but reliably triggers ProseMirror state updates
+- Fallback: `InputEvent` with `DataTransfer` for when execCommand is removed
+- Implemented `ChatGPTAdapter.setPromptText()` using `replaceText()`
+- Token accumulation in trigger-button.ts — calls `setPromptText(accumulatedText)` on each TOKEN
+- Error guard: if input element disappears mid-stream, shows toast instead of crashing
+- Guard for stale `chrome.runtime` after extension reload (shows "refresh page" warning)
+- Tested with short (1 sentence) and paragraph-length prompts on chatgpt.com
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 6 | `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback` |
 | 7 | `feat(undo): implement undo button with auto-dismiss and interrupt handling` |
 | 8 | `feat(popup): implement full settings page with provider detection` |
 | 9 | `feat(llm-client): add OpenAI streaming support for BYOK mode` |

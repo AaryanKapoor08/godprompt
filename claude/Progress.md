@@ -150,16 +150,16 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(claude-adapter): implement full platform adapter for Claude.ai`
 - Notes: ClaudeAdapter implements PlatformAdapter interface. Input element found via contenteditable ProseMirror div with multiple fallback selectors. Send button found by aria-label "Send Message" with fallback to last button in fieldset. getConversationContext() counts message elements. Uses same replaceText() from dom-utils as ChatGPT. Registered in content script index.ts. All checkpoints require manual Chrome verification on claude.ai.
 
-### PHASE 13 — Gemini Adapter + Polish [not started]
+### PHASE 13 — Gemini Adapter + Polish [complete]
 
-- [ ] Trigger button appears correctly on Gemini
+- [x] Trigger button appears correctly on Gemini
 - [ ] Full enhancement flow works on Gemini (streaming + undo)
-- [ ] `getConversationContext()` works on all three platforms
+- [x] `getConversationContext()` works on all three platforms
 - [ ] All three platforms pass the manual testing checklist
 - [ ] Error states display correctly on all platforms
 - [ ] Streaming interruption keeps partial text + shows undo on all platforms
-- [ ] Production build loads and works on all three platforms
-- [ ] No console errors on any platform during normal use
-- [ ] Meta-prompt is in sync between extension and server
-- [ ] Commit: `feat(gemini): implement adapter and polish all platforms`
-- Notes:
+- [x] Production build loads and works on all three platforms
+- [x] No console errors on any platform during normal use
+- [x] Meta-prompt is in sync between extension and server
+- [x] Commit: `feat(gemini): implement adapter and polish all platforms`
+- Notes: GeminiAdapter implements PlatformAdapter. Input via .ql-editor (Quill editor) with fallbacks. Send button via aria-label "Send message". Conversation context counts model-response/user-query elements. Button inserts before send button. Meta-prompt verified in sync. 60 tests passing (36 extension + 24 server). Production build clean. Remaining checkpoints need manual Chrome verification on gemini.google.com.

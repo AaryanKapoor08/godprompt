@@ -220,8 +220,26 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 
 ---
 
-## Upcoming
+## Phase 13 — Gemini Adapter + Polish
 
-| Phase | Planned commit message |
-|-------|----------------------|
-| 13 | `feat(gemini): implement adapter and polish all platforms` |
+| Hash | Message | Branch |
+|------|---------|--------|
+| `1fcd840` | `feat(gemini): implement adapter and polish all platforms` | `feat/phase-13/gemini-adapter` |
+| `7be569f` | `fix(gemini): broaden input and send button selectors for resilience` | `feat/phase-13/gemini-adapter` |
+| `618afea` | `fix(gemini): use absolute positioning to escape clipped send button container` | `feat/phase-13/gemini-adapter` |
+| `0b81050` | `fix(gemini): place trigger button inline left of Fast model selector` | `feat/phase-13/gemini-adapter` |
+
+**What was done:**
+- `GeminiAdapter` implementing full `PlatformAdapter` interface
+- `getInputElement()` — finds Quill editor (`div.ql-editor`) inside `rich-textarea` with fallbacks
+- `getSendButton()` — `aria-label="Send message"` with mat-icon and proximity fallbacks
+- `getConversationContext()` — counts `model-response` and `user-query` custom elements
+- Button inserted inline left of "Fast" model selector by walking DOM to correct flex row
+- Injection delay 500ms with 10 retries (shared with Claude fix)
+- Meta-prompt verified in sync between extension and server
+- 60 tests passing (36 extension + 24 server), production build clean
+- Verified working in Chrome on gemini.google.com
+
+---
+
+## All 13 phases complete 🎉

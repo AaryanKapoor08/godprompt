@@ -85,6 +85,9 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
     } else {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
+  } else if (platform === 'gemini') {
+    // Gemini: insert before send button, same as ChatGPT
+    sendButton.parentElement?.insertBefore(button, sendButton)
   } else {
     sendButton.parentElement?.insertBefore(button, sendButton)
   }

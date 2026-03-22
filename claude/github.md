@@ -55,12 +55,27 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 4 — Service Worker Messaging (Ports)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `pending` | `feat(service-worker): implement port-based message passing for streaming` | `feat/phase-4/service-worker-ports` |
+
+**What was done:**
+- Defined message types in `src/lib/types.ts`: `ENHANCE`, `TOKEN`, `DONE`, `ERROR`
+- Service worker listens via `chrome.runtime.onConnect` (top-level registration for wake-up)
+- Content script opens port on button click, sends `ENHANCE` message
+- Service worker sends 3 mock tokens at 200ms intervals, then `DONE`
+- Content script logs each token and handles `DONE`/`ERROR`/disconnect
+- Error path sends `ERROR` message + toast, then disconnects
+- `onDisconnect` handler catches unexpected disconnections
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 3 | `feat(content): inject trigger button with toast and smart skip` |
-| 4 | `feat(service-worker): implement port-based message passing for streaming` |
 | 5 | `feat(service-worker): integrate Anthropic streaming API with minimal popup` |
 | 6 | `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback` |
 | 7 | `feat(undo): implement undo button with auto-dismiss and interrupt handling` |

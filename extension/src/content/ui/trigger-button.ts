@@ -47,17 +47,19 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   const platform = adapter.getPlatform()
   if (platform === 'claude') {
     button.classList.add('promptpilot-trigger-btn--claude')
-    // Find the composer container and append the button with absolute positioning
+    // Insert left of the model selector ("Sonnet 4.6" button)
+    // The model selector is typically a button with the model name inside the bottom bar
     const input = adapter.getInputElement()
     const composer = input?.closest('fieldset') ?? input?.closest('form') ?? input?.parentElement?.parentElement?.parentElement
-    if (composer) {
-      // Ensure the composer is a positioning context
-      const computedStyle = window.getComputedStyle(composer)
-      if (computedStyle.position === 'static') {
-        (composer as HTMLElement).style.position = 'relative'
-      }
-      composer.appendChild(button)
+    const modelSelector = composer?.querySelector<HTMLElement>('button[data-testid="model-selector"]')
+      ?? composer?.querySelector<HTMLElement>('button[class*="model"]')
+      ?? Array.from(composer?.querySelectorAll('button') ?? []).find(
+        (btn) => btn.textContent?.includes('Sonnet') || btn.textContent?.includes('Haiku') || btn.textContent?.includes('Opus')
+      )
+    if (modelSelector) {
+      modelSelector.parentElement?.insertBefore(button, modelSelector)
     } else {
+      // Fallback: insert before send button
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else {

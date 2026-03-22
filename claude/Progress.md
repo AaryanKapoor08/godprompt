@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 9**
+**Current Phase: 10**
 
 ---
 
@@ -98,7 +98,7 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(popup): implement full settings page with provider detection`
 - Notes: Mode toggle (free/BYOK), provider auto-detection from key prefix, model dropdown with provider-specific options (Anthropic/OpenAI/OpenRouter), usage bar with color states, external popup.css. Service worker reads mode+model from storage, routes to correct provider. Added callOpenAIAPI() for direct OpenAI support. Fixed OpenRouter Haiku model ID.
 
-### PHASE 9 — OpenAI BYOK Support [complete]
+### PHASE 9 — OpenAI BYOK Support [deferred — post-launch]
 
 - [x] `parseOpenAIStream()` unit test passes (mock SSE data)
 - [ ] Entering an OpenAI key in popup + clicking enhance → tokens stream and replace input text
@@ -106,24 +106,24 @@ Update this file as you complete each phase.
 - [ ] Undo works after OpenAI enhancement
 - [ ] Switching between Anthropic and OpenAI keys works without restart
 - [ ] Commit: `feat(llm-client): add OpenAI streaming support for BYOK mode`
-- Notes: All OpenAI BYOK code was built during Phase 8. callOpenAIAPI() in llm-client.ts calls api.openai.com/v1/chat/completions with streaming. parseOpenAIStream() extracts choices[0].delta.content from SSE data lines. Service worker routes to OpenAI when provider === 'openai'. Popup auto-detects OpenAI keys (sk- prefix) and shows GPT-4o-mini/GPT-4o models. 5 unit tests for parseOpenAIStream. Remaining checkpoints require manual Chrome verification with a real OpenAI key.
+- Notes: Code exists but untested with a real OpenAI key. Deferred to post-launch — not blocking. OpenAI BYOK is optional; Anthropic + OpenRouter cover the core use case.
 
-### PHASE 10 — Backend Server [not started]
+### PHASE 10 — Backend Server [complete]
 
-- [ ] `pnpm dev` starts server on port 3000
-- [ ] `GET /health` returns `{ status: 'ok' }`
-- [ ] `POST /api/enhance` with valid prompt returns SSE stream of enhanced text
-- [ ] `POST /api/enhance` with invalid platform returns 400
-- [ ] `POST /api/enhance` with 15,000 char prompt returns 400
-- [ ] 11th request from same IP within an hour returns 429 with `X-RateLimit-Remaining: 0`
-- [ ] All successful responses include `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers
-- [ ] Rate limiter unit test passes
-- [ ] Request validation unit test passes
-- [ ] Integration test passes
-- [ ] `.env` is in `.gitignore`, `.env.example` exists
+- [x] `pnpm dev` starts server on port 3000
+- [x] `GET /health` returns `{ status: 'ok' }`
+- [x] `POST /api/enhance` with valid prompt returns SSE stream of enhanced text
+- [x] `POST /api/enhance` with invalid platform returns 400
+- [x] `POST /api/enhance` with 15,000 char prompt returns 400
+- [x] 11th request from same IP within an hour returns 429 with `X-RateLimit-Remaining: 0`
+- [x] All successful responses include `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers
+- [x] Rate limiter unit test passes
+- [x] Request validation unit test passes
+- [x] Integration test passes
+- [x] `.env` is in `.gitignore`, `.env.example` exists
 - [ ] CORS rejects requests from non-allowed origins (when not using `*`)
 - [ ] Commit: `feat(backend): implement Hono server with validation, rate limiting, and headers`
-- Notes:
+- Notes: Hono server with @hono/node-server. CORS via hono/cors with ALLOWED_ORIGINS env var. Validation middleware checks Content-Type, prompt (required, non-empty, max 10000 chars), platform (chatgpt/claude/gemini). Rate limiter: in-memory Map keyed by IP, 10/hour default, returns X-RateLimit-Remaining + X-RateLimit-Reset headers. Anthropic proxy streams SSE using streamSSE helper. 24 tests (6 rate-limit, 10 validation, 8 integration). CORS origin rejection needs manual verification with non-wildcard ALLOWED_ORIGINS.
 
 ### PHASE 11 — Free Tier Integration [not started]
 

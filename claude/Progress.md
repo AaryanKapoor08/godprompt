@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 6**
+**Current Phase: 7**
 
 ---
 
@@ -75,17 +75,17 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback`
 - Notes: Uses execCommand('insertText') as primary strategy with InputEvent+DataTransfer fallback. Token accumulation in trigger-button.ts calls setPromptText() on each TOKEN message. Added guard for stale chrome.runtime after extension reload.
 
-### PHASE 7 — Undo System [not started]
+### PHASE 7 — Undo System [complete]
 
-- [ ] After enhancement, undo button appears near the input field
-- [ ] Clicking undo restores the exact original prompt
-- [ ] ChatGPT send button remains active after undo
-- [ ] Undo button disappears after 10 seconds
-- [ ] Undo button disappears if user edits the text manually
-- [ ] Undo button disappears if user sends the message
-- [ ] If streaming is interrupted, partial text remains and undo button still appears
-- [ ] Commit: `feat(undo): implement undo button with auto-dismiss and interrupt handling`
-- Notes:
+- [x] After enhancement, undo button appears near the input field
+- [x] Clicking undo restores the exact original prompt
+- [x] ChatGPT send button remains active after undo
+- [x] Undo button disappears after 10 seconds
+- [x] Undo button disappears if user edits the text manually
+- [x] Undo button disappears if user sends the message
+- [x] If streaming is interrupted, partial text remains and undo button still appears
+- [x] Commit: `feat(undo): implement undo button with auto-dismiss and interrupt handling`
+- Notes: Undo button positioned below composer with fade-in animation. Dismisses on keydown (user edit), send button click, empty input detection (MutationObserver), or 10s timeout. Original prompt cached before first TOKEN.
 
 ### PHASE 8 — Full Popup Settings [not started]
 

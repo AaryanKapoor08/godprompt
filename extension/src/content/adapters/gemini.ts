@@ -11,12 +11,14 @@ export class GeminiAdapter implements PlatformAdapter {
   }
 
   getInputElement(): HTMLElement | null {
-    // Gemini uses a rich-input contenteditable div
+    // Gemini uses a rich-textarea custom element containing a contenteditable p or div
     return (
-      document.querySelector<HTMLElement>('rich-textarea .ql-editor') ??
+      document.querySelector<HTMLElement>('rich-textarea [contenteditable="true"]') ??
+      document.querySelector<HTMLElement>('rich-textarea p[contenteditable]') ??
       document.querySelector<HTMLElement>('.ql-editor[contenteditable="true"]') ??
-      document.querySelector<HTMLElement>('[contenteditable="true"][aria-label*="message"]') ??
-      document.querySelector<HTMLElement>('[contenteditable="true"][aria-label*="prompt"]') ??
+      document.querySelector<HTMLElement>('[contenteditable="true"][aria-label*="message" i]') ??
+      document.querySelector<HTMLElement>('[contenteditable="true"][aria-label*="prompt" i]') ??
+      document.querySelector<HTMLElement>('[contenteditable="true"][aria-multiline="true"]') ??
       document.querySelector<HTMLElement>('div[contenteditable="true"]')
     )
   }
@@ -42,17 +44,30 @@ export class GeminiAdapter implements PlatformAdapter {
   }
 
   getSendButton(): HTMLElement | null {
-    // Gemini's send button has aria-label "Send message"
+    // Gemini's send button — try many selectors for resilience
     return (
       document.querySelector<HTMLElement>('button[aria-label="Send message"]') ??
+      document.querySelector<HTMLElement>('button[aria-label="Send Message"]') ??
+      document.querySelector<HTMLElement>('button[aria-label*="send" i]') ??
       document.querySelector<HTMLElement>('button.send-button') ??
       document.querySelector<HTMLElement>('[data-mat-icon-name="send"]')?.closest('button') ??
-      document.querySelector<HTMLElement>('button[aria-label*="send" i]')
+      document.querySelector<HTMLElement>('mat-icon[data-mat-icon-name="send"]')?.closest('button') ??
+      // Last resort: find a button near the input element
+      this.getInputElement()?.closest('form, [role="form"], [class*="input"]')?.querySelector('button:last-of-type') ??
+      null
     )
   }
 
   getPlatform(): 'gemini' {
     return 'gemini'
+  }
+
+  // Debug helper — call from console: promptpilotAdapter.debugSelectors()
+  debugSelectors(): void {
+    console.info('[GeminiAdapter] input:', this.getInputElement())
+    console.info('[GeminiAdapter] sendButton:', this.getSendButton())
+    console.info('[GeminiAdapter] all contenteditable:', document.querySelectorAll('[contenteditable]'))
+    console.info('[GeminiAdapter] all buttons:', document.querySelectorAll('button'))
   }
 
   getConversationContext(): ConversationContext {

@@ -47,25 +47,38 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   const platform = adapter.getPlatform()
   if (platform === 'claude') {
     button.classList.add('promptpilot-trigger-btn--claude')
-    // Find the model selector text (Sonnet/Haiku/Opus) and insert inline to its left
+    // On Claude, the bottom bar has: [+ button] ... [model selector] [voice] [send]
+    // We want to insert just left of the model selector text.
+    // Strategy: find the model selector button, then walk up until we find the
+    // container that also holds the voice/send buttons (the flex row), and insert there.
     const input = adapter.getInputElement()
     const composer = input?.closest('fieldset') ?? input?.closest('form') ?? input?.parentElement?.parentElement?.parentElement
-    // Find the element containing the model name text
-    const allElements = composer?.querySelectorAll('*') ?? []
-    let modelEl: HTMLElement | null = null
-    for (const el of allElements) {
-      const text = (el as HTMLElement).textContent?.trim() ?? ''
-      if ((text.includes('Sonnet') || text.includes('Haiku') || text.includes('Opus')) && el.children.length === 0) {
-        // Walk up to the clickable button/container
-        modelEl = (el as HTMLElement).closest('button') ?? (el as HTMLElement).parentElement
-        break
+
+    // Find the button whose direct text content includes a model name
+    const buttons = Array.from(composer?.querySelectorAll('button') ?? [])
+    const modelButton = buttons.find((btn) => {
+      const text = btn.textContent?.trim() ?? ''
+      return text.includes('Sonnet') || text.includes('Haiku') || text.includes('Opus')
+    }) as HTMLElement | undefined
+
+    if (modelButton) {
+      // Walk up from modelButton to find a container that also contains the send button
+      // This ensures we're at the right flex row level
+      let container = modelButton.parentElement
+      while (container && container !== composer && !container.contains(sendButton)) {
+        container = container.parentElement
       }
-    }
-    if (modelEl) {
-      // Insert into the same flex row, right before the model selector's container
-      const row = modelEl.parentElement
-      if (row) {
-        row.insertBefore(button, modelEl)
+      // Now find the direct child of this container that contains the model button
+      if (container) {
+        let directChild: HTMLElement | null = modelButton
+        while (directChild && directChild.parentElement !== container) {
+          directChild = directChild.parentElement
+        }
+        if (directChild) {
+          container.insertBefore(button, directChild)
+        } else {
+          sendButton.parentElement?.insertBefore(button, sendButton)
+        }
       } else {
         sendButton.parentElement?.insertBefore(button, sendButton)
       }

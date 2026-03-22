@@ -21,6 +21,7 @@
 /* Claude.ai: inline next to model selector */
 .promptpilot-trigger-btn--claude {
   margin: 0 4px 0 0;
+  align-self: center;
 }
 
 .promptpilot-trigger-btn:hover {

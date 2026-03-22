@@ -195,9 +195,26 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 
 ---
 
+## Phase 12 — Claude.ai Adapter
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `2aee079` | `feat(claude-adapter): implement full platform adapter for Claude.ai` | `feat/phase-12/claude-adapter` |
+
+**What was done:**
+- `ClaudeAdapter` implementing full `PlatformAdapter` interface
+- `getInputElement()` — finds contenteditable ProseMirror div with 4 fallback selectors
+- `getPromptText()` — reads via `textContent.trim()`
+- `setPromptText()` — uses shared `replaceText()` (execCommand + InputEvent fallback)
+- `getSendButton()` — `aria-label="Send Message"` with fallback to last button in fieldset
+- `getConversationContext()` — counts message elements in conversation container
+- Registered in content script `index.ts` alongside `ChatGPTAdapter`
+- MutationObserver re-injects button after Claude SPA navigation (shared from trigger-button.ts)
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 12 | `feat(claude-adapter): implement full platform adapter for Claude.ai` |
 | 13 | `feat(gemini): implement adapter and polish all platforms` |

@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 5**
+**Current Phase: 6**
 
 ---
 
@@ -65,15 +65,15 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(service-worker): integrate Anthropic streaming API with minimal popup`
 - Notes: Added OpenRouter support (sk-or- keys) alongside Anthropic and OpenAI. Tested with OpenRouter free model (nvidia/nemotron). 36 unit tests passing. Meta-prompt distilled from PromptPilot_Techniques_to_Codebase_Guide.md with domain-specific gap checklists, anti-pattern rules, and technique priority order. OpenAI SSE parser also added (used by OpenRouter).
 
-### PHASE 6 — Streaming DOM Replacement [not started]
+### PHASE 6 — Streaming DOM Replacement [complete]
 
-- [ ] Clicking trigger button → input field text is replaced with enhanced prompt token-by-token
-- [ ] ChatGPT's send button is active/enabled after enhancement completes
-- [ ] Streaming looks smooth — no flicker, no duplicate text
-- [ ] Works with short prompts (1 sentence) and longer prompts (paragraph)
-- [ ] If input element disappears mid-stream, error toast appears (not a crash)
-- [ ] Commit: `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback`
-- Notes:
+- [x] Clicking trigger button → input field text is replaced with enhanced prompt token-by-token
+- [x] ChatGPT's send button is active/enabled after enhancement completes
+- [x] Streaming looks smooth — no flicker, no duplicate text
+- [x] Works with short prompts (1 sentence) and longer prompts (paragraph)
+- [x] If input element disappears mid-stream, error toast appears (not a crash)
+- [x] Commit: `feat(chatgpt): implement streaming DOM text replacement with execCommand fallback`
+- Notes: Uses execCommand('insertText') as primary strategy with InputEvent+DataTransfer fallback. Token accumulation in trigger-button.ts calls setPromptText() on each TOKEN message. Added guard for stale chrome.runtime after extension reload.
 
 ### PHASE 7 — Undo System [not started]
 

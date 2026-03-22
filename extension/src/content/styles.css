@@ -24,6 +24,15 @@
   align-self: center;
 }
 
+/* Gemini: absolute positioned in bottom-right of input area */
+.promptpilot-trigger-btn--gemini {
+  position: absolute;
+  bottom: 8px;
+  right: 48px;
+  margin: 0;
+  z-index: 10;
+}
+
 .promptpilot-trigger-btn:hover {
   opacity: 0.85;
   transform: scale(1.05);

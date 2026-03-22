@@ -86,8 +86,23 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'gemini') {
-    // Gemini: insert before send button, same as ChatGPT
-    sendButton.parentElement?.insertBefore(button, sendButton)
+    // Gemini: the send button container clips overflow — use absolute positioning
+    // instead. Attach to the input element's nearest scrollable ancestor.
+    button.classList.add('promptpilot-trigger-btn--gemini')
+    const input = adapter.getInputElement()
+    // Walk up to find a container with known size (usually 3-4 levels up from ql-editor)
+    const anchor = input?.closest('.input-area-container, [class*="input-area"], form, [class*="composer"]')
+      ?? input?.parentElement?.parentElement?.parentElement
+      ?? input?.parentElement
+    if (anchor) {
+      const anchorEl = anchor as HTMLElement
+      if (window.getComputedStyle(anchorEl).position === 'static') {
+        anchorEl.style.position = 'relative'
+      }
+      anchorEl.appendChild(button)
+    } else {
+      sendButton.parentElement?.insertBefore(button, sendButton)
+    }
   } else {
     sendButton.parentElement?.insertBefore(button, sendButton)
   }

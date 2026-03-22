@@ -98,3 +98,40 @@
   color: #fde68a;
   box-shadow: 0 4px 12px rgba(146, 64, 14, 0.4);
 }
+
+/* === Undo Button === */
+.promptpilot-undo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  bottom: -36px;
+  right: 8px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #4f46e5;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  z-index: 99998;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+
+.promptpilot-undo-btn--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.promptpilot-undo-btn:hover {
+  background: #4338ca;
+}
+
+.promptpilot-undo-btn:active {
+  transform: scale(0.95);
+}

@@ -112,11 +112,28 @@ Track of all commits pushed to GitHub, organized by phase.
 
 ---
 
+## Phase 7 — Undo System
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `pending` | `feat(undo): implement undo button with auto-dismiss and interrupt handling` | `feat/phase-6/streaming-dom-replacement` |
+
+**What was done:**
+- Created `undo-button.ts` — floating undo button with fade-in animation
+- Click restores original prompt via `adapter.setPromptText()`
+- Auto-dismiss after 10 seconds via `setTimeout`
+- Dismiss on user keydown in input (manual editing)
+- Dismiss on send button click or empty input detected (MutationObserver)
+- `trigger-button.ts` caches `originalPrompt` before DOM modification
+- Undo shown on DONE, on ERROR with partial text, and on unexpected disconnect
+- `removeUndoButton()` cleans up all timers, listeners, and observers
+
+---
+
 ## Upcoming
 
 | Phase | Planned commit message |
 |-------|----------------------|
-| 7 | `feat(undo): implement undo button with auto-dismiss and interrupt handling` |
 | 8 | `feat(popup): implement full settings page with provider detection` |
 | 9 | `feat(llm-client): add OpenAI streaming support for BYOK mode` |
 | 10 | `feat(backend): implement Hono server with validation, rate limiting, and headers` |

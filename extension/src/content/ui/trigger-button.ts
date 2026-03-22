@@ -4,6 +4,7 @@ import type { PlatformAdapter } from '../adapters/types'
 import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
 import { showToast } from './toast'
+import { showUndoButton, removeUndoButton } from './undo-button'
 
 let isEnhancing = false
 let activePort: chrome.runtime.Port | null = null
@@ -68,6 +69,12 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
     '[PromptPilot] Enhance triggered'
   )
 
+  // Cache original prompt for undo — must happen before any DOM modification
+  const originalPrompt = promptText
+
+  // Remove any existing undo button from a previous enhancement
+  removeUndoButton()
+
   // Set loading state
   setLoading(true)
 
@@ -106,6 +113,8 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
         console.error({ cause: error }, '[PromptPilot] Failed to update input field')
         showToast({ message: 'Input field disappeared during enhancement', variant: 'error' })
         port.disconnect()
+        // Show undo with whatever text was accumulated so far
+        showUndoButton(adapter, originalPrompt)
         cleanupPort()
         return
       }
@@ -119,10 +128,15 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
         { enhancedLength: accumulatedText.length },
         '[PromptPilot] Enhancement complete'
       )
+      showUndoButton(adapter, originalPrompt)
       cleanupPort()
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptPilot] Enhancement error')
       showToast({ message: msg.message, variant: 'error' })
+      // If we already streamed partial text, show undo so user can restore
+      if (accumulatedText.length > 0) {
+        showUndoButton(adapter, originalPrompt)
+      }
       cleanupPort()
     }
   })
@@ -133,6 +147,10 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
     if (error) {
       console.error({ cause: error }, '[PromptPilot] Port disconnected with error')
       showToast({ message: 'Connection to service worker lost', variant: 'error' })
+    }
+    // If streaming was interrupted, show undo so user can restore original
+    if (accumulatedText.length > 0) {
+      showUndoButton(adapter, originalPrompt)
     }
     cleanupPort()
   })

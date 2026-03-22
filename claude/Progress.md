@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 2**
+**Current Phase: 3**
 
 ---
 
@@ -28,19 +28,19 @@ Update this file as you complete each phase.
 - [x] Commit: `feat(chatgpt): implement read-only platform adapter with conversation context`
 - Notes: All 4 adapter methods verified manually in Chrome DevTools on chatgpt.com. Text lives in `<p>` inside `div#prompt-textarea` — `textContent.trim()` works. Send button is last `<button>` in the composer form. Conversation length uses `[data-testid^="conversation-turn-"]`.
 
-### PHASE 3 — Trigger Button + Error Toast [not started]
+### PHASE 3 — Trigger Button + Error Toast [complete]
 
-- [ ] Button appears adjacent to ChatGPT send button
-- [ ] Button re-appears after navigating to a new chat
-- [ ] Clicking the button logs the current prompt text
-- [ ] Ctrl+Shift+E triggers the same handler
-- [ ] Button shows loading spinner when clicked
-- [ ] Double-clicking does not fire the handler twice
-- [ ] Typing "hi" and clicking enhance shows "Prompt too short to enhance" toast
-- [ ] `shouldSkipEnhancement()` unit test passes
-- [ ] Toast component renders and auto-dismisses
+- [x] Button appears adjacent to ChatGPT send button
+- [x] Button re-appears after navigating to a new chat
+- [x] Clicking the button logs the current prompt text
+- [x] Ctrl+Shift+E triggers the same handler
+- [x] Button shows loading spinner when clicked
+- [x] Double-clicking does not fire the handler twice
+- [x] Typing "hi" and clicking enhance shows "Prompt too short to enhance" toast
+- [x] `shouldSkipEnhancement()` unit test passes
+- [x] Toast component renders and auto-dismisses
 - [ ] Commit: `feat(content): inject trigger button with toast and smart skip`
-- Notes:
+- Notes: All 9 unit tests pass. All checkpoints verified manually in Chrome on chatgpt.com. MutationObserver handles SPA re-renders.
 
 ### PHASE 4 — Service Worker Messaging (Ports) [not started]
 
@@ -63,7 +63,7 @@ Update this file as you complete each phase.
 - [ ] Meta-prompt template interpolates platform and context correctly
 - [ ] No API key is committed to git
 - [ ] Commit: `feat(service-worker): integrate Anthropic streaming API with minimal popup`
-- Notes:
+- Notes: USE `PromptPilot_Techniques_to_Codebase_Guide.md` (project root) when building the meta-prompt. It maps prompting techniques to code: domain-specific gap checklists, anti-pattern rules, technique priority order. The doc is the knowledge base — distill it into ~500-800 token system prompt in `src/lib/meta-prompt.ts`.
 
 ### PHASE 6 — Streaming DOM Replacement [not started]
 

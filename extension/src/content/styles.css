@@ -1,2 +1,100 @@
 /* PromptPilot — content script styles */
-/* Trigger button, undo button, and toast styles will go here */
+
+/* === Trigger Button === */
+.promptpilot-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 4px;
+  transition: opacity 0.15s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.promptpilot-trigger-btn:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+
+.promptpilot-trigger-btn:active {
+  transform: scale(0.95);
+}
+
+.promptpilot-trigger-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.promptpilot-trigger-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.promptpilot-trigger-spinner {
+  display: none;
+  width: 18px;
+  height: 18px;
+  animation: promptpilot-spin 0.8s linear infinite;
+}
+
+.promptpilot-trigger-btn--loading .promptpilot-trigger-icon {
+  display: none;
+}
+
+.promptpilot-trigger-btn--loading .promptpilot-trigger-spinner {
+  display: block;
+}
+
+@keyframes promptpilot-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* === Toast === */
+.promptpilot-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  z-index: 99999;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  max-width: 400px;
+  text-align: center;
+}
+
+.promptpilot-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.promptpilot-toast--info {
+  background: #1e293b;
+  color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.promptpilot-toast--error {
+  background: #991b1b;
+  color: #fecaca;
+  box-shadow: 0 4px 12px rgba(153, 27, 27, 0.4);
+}
+
+.promptpilot-toast--warning {
+  background: #92400e;
+  color: #fde68a;
+  box-shadow: 0 4px 12px rgba(146, 64, 14, 0.4);
+}

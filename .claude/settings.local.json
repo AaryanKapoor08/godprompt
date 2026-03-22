@@ -4,7 +4,15 @@
       "Bash(node -e \":*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm build:*)",
-      "Bash(node -e \"const m = require\\(''@crxjs/vite-plugin''\\); console.log\\(Object.keys\\(m\\)\\)\")"
+      "Bash(node -e \"const m = require\\(''@crxjs/vite-plugin''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm test:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(git checkout:*)",
+      "Skill(update-config)",
+      "Bash(npx vitest:*)",
+      "Bash(pnpm init:*)"
     ]
   }
 }

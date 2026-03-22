@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 3**
+**Current Phase: 4**
 
 ---
 
@@ -42,16 +42,16 @@ Update this file as you complete each phase.
 - [ ] Commit: `feat(content): inject trigger button with toast and smart skip`
 - Notes: All 9 unit tests pass. All checkpoints verified manually in Chrome on chatgpt.com. MutationObserver handles SPA re-renders.
 
-### PHASE 4 — Service Worker Messaging (Ports) [not started]
+### PHASE 4 — Service Worker Messaging (Ports) [complete]
 
-- [ ] Click trigger button → service worker logs the received prompt
-- [ ] Service worker sends 3 mock tokens at intervals → content script logs each one
-- [ ] Service worker sends DONE → content script logs completion, port disconnects
-- [ ] Error path works: service worker sends ERROR → content script logs error, port disconnects
-- [ ] Works after navigating to a new chat (service worker wakes up on connect)
-- [ ] Multiple rapid clicks don't open multiple ports
-- [ ] Commit: `feat(service-worker): implement port-based message passing for streaming`
-- Notes:
+- [x] Click trigger button → service worker logs the received prompt
+- [x] Service worker sends 3 mock tokens at intervals → content script logs each one
+- [x] Service worker sends DONE → content script logs completion, port disconnects
+- [x] Error path works: service worker sends ERROR → content script logs error, port disconnects
+- [x] Works after navigating to a new chat (service worker wakes up on connect)
+- [x] Multiple rapid clicks don't open multiple ports
+- [x] Commit: `feat(service-worker): implement port-based message passing for streaming`
+- Notes: Port-based streaming verified in Chrome. Service worker sends 3 mock tokens at 200ms intervals. Content script logs each token and completion. Error path sends ERROR message and disconnects port. onDisconnect handler catches unexpected disconnections.
 
 ### PHASE 5 — LLM Integration (BYOK) + Minimal Popup [not started]
 

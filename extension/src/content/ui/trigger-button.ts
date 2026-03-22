@@ -1,10 +1,12 @@
 // Trigger button — injected next to the send button on ChatGPT
 
 import type { PlatformAdapter } from '../adapters/types'
+import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
 import { showToast } from './toast'
 
 let isEnhancing = false
+let activePort: chrome.runtime.Port | null = null
 let injectedButton: HTMLElement | null = null
 
 export function injectTriggerButton(adapter: PlatformAdapter): void {
@@ -59,19 +61,57 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
     return
   }
 
+  const platform = adapter.getPlatform()
   const context = adapter.getConversationContext()
   console.info(
-    { platform: adapter.getPlatform(), promptText, promptLength: promptText.length, context },
+    { platform, promptText, promptLength: promptText.length, context },
     '[PromptPilot] Enhance triggered'
   )
 
   // Set loading state
   setLoading(true)
 
-  // Temporary: reset after 2 seconds (replaced by real streaming in Phase 4)
-  setTimeout(() => {
-    setLoading(false)
-  }, 2000)
+  // Open port to service worker for streaming
+  const port = chrome.runtime.connect({ name: 'enhance' })
+  activePort = port
+
+  // Send ENHANCE message
+  const message: EnhanceMessage = {
+    type: 'ENHANCE',
+    rawPrompt: promptText,
+    platform,
+    context,
+  }
+  port.postMessage(message)
+
+  // Listen for TOKEN, DONE, ERROR from service worker
+  port.onMessage.addListener((msg: ServiceWorkerMessage) => {
+    if (msg.type === 'TOKEN') {
+      console.info({ text: msg.text }, '[PromptPilot] Received token')
+    } else if (msg.type === 'DONE') {
+      console.info('[PromptPilot] Enhancement complete')
+      cleanupPort()
+    } else if (msg.type === 'ERROR') {
+      console.error({ message: msg.message, code: msg.code }, '[PromptPilot] Enhancement error')
+      showToast({ message: msg.message, variant: 'error' })
+      cleanupPort()
+    }
+  })
+
+  // Handle unexpected disconnection
+  port.onDisconnect.addListener(() => {
+    const error = chrome.runtime.lastError
+    if (error) {
+      console.error({ cause: error }, '[PromptPilot] Port disconnected with error')
+      showToast({ message: 'Connection to service worker lost', variant: 'error' })
+    }
+    cleanupPort()
+  })
+}
+
+function cleanupPort(): void {
+  activePort = null
+  setLoading(false)
 }
 
 function setLoading(loading: boolean): void {

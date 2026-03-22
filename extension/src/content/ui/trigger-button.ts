@@ -42,11 +42,24 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   button.addEventListener('click', () => handleEnhanceClick(adapter))
 
   // Platform-specific insertion:
-  // ChatGPT: insert before send button (left of it)
-  // Claude: insert after send button (right of it) to avoid overlapping model selector
+  // ChatGPT: insert before send button (left of it in the button row)
+  // Claude: position absolutely in the composer, above the send button area
   const platform = adapter.getPlatform()
   if (platform === 'claude') {
-    sendButton.parentElement?.insertBefore(button, sendButton.nextSibling)
+    button.classList.add('promptpilot-trigger-btn--claude')
+    // Find the composer container and append the button with absolute positioning
+    const input = adapter.getInputElement()
+    const composer = input?.closest('fieldset') ?? input?.closest('form') ?? input?.parentElement?.parentElement?.parentElement
+    if (composer) {
+      // Ensure the composer is a positioning context
+      const computedStyle = window.getComputedStyle(composer)
+      if (computedStyle.position === 'static') {
+        (composer as HTMLElement).style.position = 'relative'
+      }
+      composer.appendChild(button)
+    } else {
+      sendButton.parentElement?.insertBefore(button, sendButton)
+    }
   } else {
     sendButton.parentElement?.insertBefore(button, sendButton)
   }

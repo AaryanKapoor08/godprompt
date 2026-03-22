@@ -18,15 +18,15 @@ Update this file as you complete each phase.
 - [x] Commit: `chore(extension): scaffold project with Vite and Manifest V3`
 - Notes: Verified working on ChatGPT and Claude. CRXJS needed named import `{ crx }` not default import.
 
-### PHASE 2 — ChatGPT Adapter (Read Only) [in progress]
+### PHASE 2 — ChatGPT Adapter (Read Only) [complete]
 
 - [x] `adapter.matches()` returns true on `chatgpt.com`
-- [ ] `adapter.getPromptText()` returns the exact text typed in the input field
-- [ ] `adapter.getSendButton()` finds the send button element
-- [ ] `adapter.getConversationContext()` returns correct `isNewConversation` and `conversationLength`
+- [x] `adapter.getPromptText()` returns the exact text typed in the input field
+- [x] `adapter.getSendButton()` finds the send button element
+- [x] `adapter.getConversationContext()` returns correct `isNewConversation` and `conversationLength`
 - [x] Structured log appears in console with platform, prompt length, and context
-- [ ] Commit: `feat(chatgpt): implement read-only platform adapter with conversation context`
-- Notes: Code implemented, build passes. matches() and structured log verified in Chrome. Remaining items need manual console verification.
+- [x] Commit: `feat(chatgpt): implement read-only platform adapter with conversation context`
+- Notes: All 4 adapter methods verified manually in Chrome DevTools on chatgpt.com. Text lives in `<p>` inside `div#prompt-textarea` — `textContent.trim()` works. Send button is last `<button>` in the composer form. Conversation length uses `[data-testid^="conversation-turn-"]`.
 
 ### PHASE 3 — Trigger Button + Error Toast [not started]
 

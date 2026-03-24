@@ -440,114 +440,236 @@ A phase is done when the checkpoint passes, not when the code is written.
 
 ---
 
-### Step 1 — Verify Perplexity adapter in Chrome
+### Checklist
 
-Code is written. Load the built extension (`dist/`) and test manually on perplexity.ai:
+**Manual verification (Chrome)**
+- [ ] Test Perplexity adapter end-to-end (button appears, streaming works, undo works)
 
-- [ ] Reload extension in `chrome://extensions` after `pnpm build`
-- [ ] Go to `perplexity.ai` — trigger button appears near the submit button
-- [ ] If button doesn't appear, open DevTools console and check for `[PromptPilot]` logs
-- [ ] If selectors are wrong, inspect the DOM and update `extension/src/content/adapters/perplexity.ts`
-- [ ] Adjust button placement in `trigger-button.ts` if positioning is off (see how Claude/Gemini were fixed)
-- [ ] Type a prompt → click enhance → streaming text replaces input → undo works
-
----
-
-### Step 2 — Deploy backend to Railway (recommended)
-
-The free tier won't work until the backend is running. Steps:
-
-1. **Create account** at railway.app
-2. **Create new project** → Deploy from GitHub repo
-3. **Set root directory** to `server/`
-4. **Set environment variables** in Railway dashboard:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-   RATE_LIMIT_PER_HOUR=10
-   MAX_PROMPT_LENGTH=10000
-   ALLOWED_ORIGINS=*
-   NODE_ENV=production
-   PORT=3000
-   ```
-5. **Deploy** — Railway auto-detects Node.js, runs `pnpm dev`
-6. **Note the public URL** Railway gives you (e.g. `https://promptpilot-server.up.railway.app`)
-7. **Update `extension/src/config.ts`:**
-   ```typescript
-   export const BACKEND_URL = 'https://your-railway-url.up.railway.app'
-   ```
-8. `pnpm build` the extension again with the new URL
-9. Test free tier: set mode to "Free tier" in popup, enhance a prompt — should work
-
-**Checkpoint:**
-- [ ] `GET https://your-url/health` returns `{ status: 'ok' }` in browser
-- [ ] Free tier enhancement works end-to-end without an API key
-- [ ] 11th enhancement shows rate limit toast
+**Backend deployment (Railway)**
+- [ ] Create Railway account, deploy `server/` from GitHub
+- [ ] Set env vars (`ANTHROPIC_API_KEY`, `RATE_LIMIT_PER_HOUR=10`, `MAX_PROMPT_LENGTH=10000`, `ALLOWED_ORIGINS=*`, `NODE_ENV=production`, `PORT=3000`)
+- [ ] Update `extension/src/config.ts` with production Railway URL
+- [ ] Rebuild extension (`pnpm build`), test free tier through deployed backend
 - [ ] Commit: `feat(config): point backend URL to production server`
 
+**Extension prep**
+- [ ] Replace placeholder icons (`assets/icon-16.png`, `icon-48.png`, `icon-128.png`) with real branded icons
+- [ ] Prepare at least one 1280×800 screenshot of the button in action
+
+**Privacy policy**
+- [ ] Draft policy text (covers: API keys stored locally only, prompts sent to Anthropic/OpenAI or proxy, no accounts, no tracking)
+- [ ] Host it at a public URL (GitHub Pages, GitHub gist, or Google Sites)
+
+**Chrome Web Store**
+- [ ] Pay one-time $5 developer registration fee at chrome.google.com/webstore/devconsole
+- [ ] Run `pnpm build` — confirm clean output
+- [ ] Zip the `dist/` folder: `cd dist && zip -r ../promptpilot.zip .`
+- [ ] Upload zip, fill store listing (name, description, category, screenshots, privacy policy URL)
+- [ ] Submit for review (usually 1-3 business days)
+
+**After approval**
+- [ ] Note permanent extension ID from Web Store dashboard
+- [ ] Update `ALLOWED_ORIGINS` in Railway to `chrome-extension://<your-extension-id>`
+- [ ] Test published extension end-to-end
+
 ---
 
-### Step 3 — Lock CORS to extension ID (production hardening)
+## PHASE 16 — Context Menu: Foundation + Injection [optional]
 
-Once you have the extension ID from the Web Store:
+**Goal:** Right-click on selected text on any webpage shows "Enhance with PromptGod" and injects a handler script that captures the selection and opens a communication port.
 
-1. Note your extension's published ID from the Chrome Web Store dashboard
-2. Update Railway env var:
-   ```
-   ALLOWED_ORIGINS=chrome-extension://YOUR_EXTENSION_ID_HERE
-   ```
-3. Redeploy backend (Railway auto-deploys on env var change)
+**Tasks:**
+- Add `contextMenus` and `scripting` permissions to `manifest.json`
+- Add `'generic'` to the `Platform` type union in `src/content/adapters/types.ts`
+- Update `buildMetaPrompt()` in `src/lib/meta-prompt.ts` to handle `'generic'` platform — use neutral context ("User is on a webpage", no platform-specific DOM or send-button guidance)
+- Register context menu item in service worker inside `chrome.runtime.onInstalled` listener:
+  - `chrome.contextMenus.create({ id: 'enhance-selection', title: 'Enhance with PromptGod', contexts: ['selection'] })`
+- Add `chrome.contextMenus.onClicked` listener in service worker
+- Create `src/content/context-menu-handler.ts` as a self-contained script — this is a separate Vite entry point, NOT part of the main content script bundle:
+  - Immediately captures `window.getSelection().getRangeAt(0)` and clones it (range becomes invalid if selection moves)
+  - Captures `document.activeElement`, and if it's a textarea/input, saves `selectionStart` and `selectionEnd`
+  - Injects its own toast styles inline (creates a `<style>` element) — cannot rely on `styles.css` being loaded on arbitrary pages
+  - Shows loading toast: "Enhancing your prompt..."
+  - Opens port to service worker: `chrome.runtime.connect({ name: 'context-enhance' })`
+  - Sends the selected text as an ENHANCE message through the port
+- Service worker adds a second `onConnect` branch for `port.name === 'context-enhance'` alongside existing `'enhance'` handler
+- On click with no API key → service worker sends ERROR through port → handler shows "Set your API key in PromptGod settings" toast
+- On click with selection under 3 words → handler runs `shouldSkipEnhancement()` logic locally before opening port → shows "Prompt too short to enhance" toast, no LLM call
+- Ensure context menu + handler work on pages where the main content script is NOT loaded (any arbitrary URL)
+- Ensure context menu works on pages where the main content script IS loaded (the 4 supported platforms) without conflict — both trigger button and context menu coexist
 
 **Checkpoint:**
-- [ ] Backend rejects requests from non-extension origins
-- [ ] Extension still works normally
+- [ ] `contextMenus` and `scripting` permissions added to `manifest.json`
+- [ ] `'generic'` added to `Platform` type in `adapters/types.ts`
+- [ ] `buildMetaPrompt()` handles `'generic'` platform without errors
+- [ ] Right-click on selected text shows "Enhance with PromptGod" on any webpage
+- [ ] Right-click with no text selected does NOT show the menu item
+- [ ] Clicking menu item injects handler script and shows "Enhancing your prompt..." toast
+- [ ] Handler captures selection range and active element before user moves cursor
+- [ ] Handler opens `context-enhance` port to service worker
+- [ ] Selection under 3 words shows "Prompt too short to enhance" toast — no LLM call
+- [ ] No API key shows "Set your API key in PromptGod settings" toast
+- [ ] Works on a page that is NOT one of the 4 supported platforms (e.g., Wikipedia)
+- [ ] Works on ChatGPT alongside the existing trigger button without conflicts
+- [ ] Commit: `feat(context-menu): register menu item and inject handler on any page`
 
 ---
 
-### Step 4 — Chrome Web Store submission
+## PHASE 17 — Context Menu: Enhancement + Text Replacement [optional]
 
-**Prerequisites before submitting:**
-- [ ] Replace placeholder icons (`assets/icon-16.png`, `icon-48.png`, `icon-128.png`) with real branded icons
-- [ ] Update `manifest.json` version to `"1.0.0"` (already set)
-- [ ] Run `pnpm build` — confirm clean output
-- [ ] Zip the `dist/` folder: `Compress-Archive dist/* promptpilot.zip` (Windows) or `cd dist && zip -r ../promptpilot.zip .` (Mac/Linux)
+**Goal:** Full enhancement pipeline works via context menu — selected text gets replaced in editable fields or copied to clipboard on any webpage.
 
-**Submission steps:**
-1. Go to [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole)
-2. Pay one-time $5 developer registration fee
-3. Click **New Item** → upload `promptpilot.zip`
-4. Fill in:
-   - **Name:** PromptPilot
-   - **Short description:** Make your AI prompts smarter with one click
-   - **Detailed description:** Explain what it does, mention ChatGPT / Claude / Gemini / Perplexity support, BYOK and free tier
-   - **Category:** Productivity
-   - **Screenshots:** At least 1280×800 screenshot of the button in action on ChatGPT
-5. **Privacy policy:** Required. Host a simple page at any URL explaining:
-   - API keys stored locally only (`chrome.storage.local`), never sent to our servers
-   - Prompts sent to Anthropic/OpenAI (BYOK) or our proxy (free tier) for enhancement
-   - No user accounts, no tracking
-6. Submit for review — usually 1-3 business days
+**Tasks:**
+- Service worker handles `context-enhance` port messages:
+  - Reads API key, provider, model from `chrome.storage.local` (same as existing handler)
+  - Detects platform from tab URL: if hostname matches a known platform, use that; otherwise use `'generic'`
+  - Makes LLM call using existing `callAnthropicAPI`/`callOpenRouterAPI`/`callOpenAIAPI`
+  - Collects the full response by concatenating all tokens (do NOT stream token-by-token into DOM — arbitrary pages have unpredictable editors, wait for complete text)
+  - Sends `{ type: 'RESULT', text: enhancedText }` through port on completion
+  - Sends `{ type: 'ERROR', message }` through port on failure
+  - Disconnects port after sending
+- Add `ContextMenuResult` and `ContextMenuError` to message types in `src/lib/types.ts`
+- Handler receives RESULT message and determines replacement strategy based on saved active element:
+  - **Textarea or input:** Use `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set` (or `HTMLInputElement.prototype`) to set value via the native setter — this bypasses React/framework controlled component guards. Replace only the selected portion using saved `selectionStart`/`selectionEnd`: `value = before + enhancedText + after`. Dispatch `new Event('input', { bubbles: true })` to notify frameworks.
+  - **Contenteditable:** Restore the saved range via `window.getSelection().removeAllRanges()` then `addRange(savedRange)`. Delete range contents via `savedRange.deleteContents()`. Insert enhanced text via `document.execCommand('insertText', false, enhancedText)`. If execCommand returns false, fall back to creating a text node and inserting it at the range position, then dispatch InputEvent.
+  - **Non-editable or replacement fails:** Call `navigator.clipboard.writeText(enhancedText)`. Show toast: "Enhanced prompt copied to clipboard".
+- Success toast: "Prompt enhanced" for inline replacement, "Enhanced prompt copied to clipboard" for clipboard path
+- Error toast: "Enhancement failed — try again" for LLM errors
+- Offline check: handler checks `navigator.onLine` before sending ENHANCE message — if offline, show "No connection" toast immediately
+- Handler cleans up: removes toast after duration, disconnects port if still open
 
-**After approval:**
-- [ ] Note the permanent extension ID from the Web Store
-- [ ] Update `ALLOWED_ORIGINS` in Railway with the real ID
-- [ ] Test the published version end-to-end
+**Checkpoint:**
+- [ ] Service worker handles `context-enhance` port and makes LLM call
+- [ ] Service worker sends complete enhanced text (not streaming) through port
+- [ ] Handler replaces selected text in a `<textarea>` on a random website
+- [ ] Handler replaces selected text in a `contenteditable` div on a random website
+- [ ] Handler copies enhanced text to clipboard when selecting non-editable text (e.g., a paragraph on Wikipedia)
+- [ ] Toast shows "Prompt enhanced" after inline replacement
+- [ ] Toast shows "Enhanced prompt copied to clipboard" after clipboard path
+- [ ] Toast shows "Enhancement failed — try again" on LLM error
+- [ ] Toast shows "No connection" when offline
+- [ ] Platform auto-detection: context menu on chatgpt.com passes `'chatgpt'` to meta-prompt, context menu on github.com passes `'generic'`
+- [ ] Tested on OpenAI Playground — textarea replacement works
+- [ ] Tested on Google AI Studio — replacement or clipboard works
+- [ ] Commit: `feat(context-menu): implement enhancement pipeline with text replacement and clipboard fallback`
 
 ---
 
-### Step 5 — Version updates (how to ship changes after launch)
+## PHASE 18 — Context Menu: Undo + Edge Cases + Cross-site QA [optional]
 
-When you make code changes:
+**Goal:** Undo works for context menu enhancements, edge cases are handled gracefully, and the feature is verified across a wide range of sites.
 
-1. Bump version in `manifest.json`: `"1.0.0"` → `"1.0.1"` (patch) or `"1.1.0"` (minor feature)
-2. `pnpm build` → zip `dist/`
-3. Upload new zip in the Chrome Web Store Developer Console → **Submit for review**
-4. Google reviews updates faster (often same day)
-5. Chrome auto-updates the extension for all users silently — they don't need to reinstall
+**Tasks:**
+- **Undo system:**
+  - Handler stores original selected text (from initial selection capture) before any replacement
+  - After successful replacement: show toast "Prompt enhanced — Undo" with a clickable undo action (a styled `<span>` or `<button>` inside the toast element, cursor: pointer, underlined)
+  - After clipboard copy: show toast "Enhanced prompt copied — Undo" with clickable undo that copies original text back to clipboard
+  - Clicking undo in editable field: restores original text using the same replacement strategy (textarea native setter or contenteditable execCommand)
+  - Clicking undo in clipboard path: `navigator.clipboard.writeText(originalText)`, show "Original prompt restored to clipboard"
+  - Undo auto-dismisses after 10 seconds (same as existing undo button behavior)
+  - After undo is clicked or dismissed, clean up all references
+- **Double-trigger prevention:**
+  - Handler sets a global flag when enhancement is in progress
+  - Service worker tracks active context-menu enhancements per tab — if a tab already has one in progress, inject a script that shows "Already enhancing..." toast instead of starting a new pipeline
+- **iframe handling:**
+  - Service worker passes `frameId` from `info.frameId` to `chrome.scripting.executeScript({ target: { tabId, frameId } })` so the handler is injected into the correct frame
+  - If `frameId` is 0 (main frame), inject normally
+  - If `frameId` is non-zero (iframe), inject into that specific frame
+- **Long text guard:**
+  - Handler checks selection length before sending ENHANCE — if over 10,000 characters, show "Selection too long (max 10,000 characters)" toast and abort
+- **Shadow DOM fallback:**
+  - If `window.getSelection().getRangeAt(0)` throws or returns null (selection inside shadow DOM), handler falls back to reading selection text from the ENHANCE message payload (originally from `info.selectionText`) + clipboard path
+- **Canvas editor fallback (Google Docs, Figma, etc.):**
+  - If selection range is null or empty but `info.selectionText` was non-empty, handler uses clipboard path with the text from the service worker
+  - Toast: "Enhanced prompt copied to clipboard" (user can paste manually)
+- **Page navigation during enhancement:**
+  - Handler registers `port.onDisconnect` — if port disconnects unexpectedly (navigation, tab close), clean up toast and timers silently, no error shown
+- **Privacy policy update:**
+  - Add disclosure for `contextMenus` and `scripting` permissions: "When you right-click and choose 'Enhance with PromptGod', the extension reads the text you selected on that page. This requires temporary access to the active tab. Selected text is sent to your configured LLM provider for enhancement. No text is stored or collected."
+- **Cross-site testing matrix:**
+  - OpenAI Playground (textarea replacement)
+  - Google AI Studio (textarea/contenteditable replacement)
+  - Anthropic Console Workbench (contenteditable replacement)
+  - Notion page (contenteditable replacement)
+  - Poe.com chat input (textarea/contenteditable)
+  - HuggingChat input (textarea)
+  - Standard HTML `<textarea>` on any form
+  - Static text on Wikipedia (clipboard path)
+  - Text inside an iframe (iframe handling)
+  - ChatGPT (coexistence with trigger button)
+  - Claude.ai (coexistence with trigger button)
 
-**Versioning convention:**
-- `1.0.x` — bug fixes and selector updates (platform DOM changed)
-- `1.x.0` — new features (new platform, new model support)
-- `x.0.0` — major redesign
+**Checkpoint:**
+- [ ] After inline replacement: toast shows "Prompt enhanced — Undo" with clickable undo action
+- [ ] After clipboard copy: toast shows "Enhanced prompt copied — Undo" with clickable undo action
+- [ ] Clicking undo in editable field restores original selected text
+- [ ] Clicking undo in clipboard path copies original text to clipboard
+- [ ] Undo toast auto-dismisses after 10 seconds
+- [ ] Rapidly clicking context menu twice does NOT trigger two enhancements — shows "Already enhancing..." on second click
+- [ ] Context menu works when selection is inside an iframe
+- [ ] Selection over 10,000 characters shows "Selection too long" toast and aborts
+- [ ] Selection inside shadow DOM falls back to clipboard path gracefully
+- [ ] Google Docs or canvas-based editor falls back to clipboard path gracefully
+- [ ] Page navigation during enhancement does not cause errors or orphaned UI
+- [ ] Privacy policy updated with context menu permission disclosure
+- [ ] OpenAI Playground — textarea replacement works
+- [ ] Google AI Studio — replacement or clipboard works
+- [ ] Anthropic Console — replacement or clipboard works
+- [ ] Notion — contenteditable replacement works
+- [ ] Poe.com — replacement works
+- [ ] Standard HTML textarea — replacement works
+- [ ] Wikipedia static text — clipboard path works
+- [ ] iframe content — replacement or clipboard works
+- [ ] ChatGPT — trigger button and context menu coexist without conflict
+- [ ] Claude.ai — trigger button and context menu coexist without conflict
+- [ ] Commit: `feat(context-menu): add undo, edge case handling, and cross-site verification`
+
+---
+
+## PHASE 19 — Future Expansion [optional — pick any]
+
+These are independent expansion paths. Pick one or both. Order doesn't matter.
+
+### Option A — System-wide Clipboard Enhancer
+
+**Goal:** Desktop app that enhances any copied text via a global hotkey, working across all applications.
+
+**Tasks:**
+- Tauri app (Rust + webview, ~5MB) or Electron app sitting in system tray
+- Global hotkey (e.g. Ctrl+Shift+E) works even when app isn't focused
+- On trigger: read clipboard → LLM call with meta-prompt → write enhanced text back to clipboard
+- Small notification: "Prompt enhanced. Paste it."
+- Settings window: API key, model selection (same BYOK setup)
+- Build for Windows + Mac + Linux
+
+**Checkpoint:**
+- [ ] App installs and runs in system tray
+- [ ] Global hotkey triggers clipboard enhancement from any application
+- [ ] Enhanced text written back to clipboard
+- [ ] Notification shown on completion
+- [ ] Settings persist across restarts
+- [ ] Builds for Windows + Mac + Linux
+- [ ] Commit: `feat(desktop): system-wide clipboard prompt enhancer`
+
+### Option B — Public API + npm SDK
+
+**Goal:** Expose prompt enhancement as a service for other developers to integrate.
+
+**Tasks:**
+- REST API: `POST /enhance` accepts prompt + context, returns enhanced prompt (streaming)
+- npm package: `@promptgod/sdk` — `enhance({ prompt, apiKey, stream })` function
+- Auth: API keys for developers, rate limiting per key
+- Docs: API reference, quickstart guide, example integrations
+- Hosted on Fly.io / Railway with usage dashboard
+
+**Checkpoint:**
+- [ ] API deployed and reachable
+- [ ] `POST /enhance` returns enhanced prompt with valid auth
+- [ ] Rate limiting works (free tier: 100/day, paid: unlimited)
+- [ ] npm package published and installable
+- [ ] SDK `enhance()` function works in Node.js and browser
+- [ ] API docs hosted publicly
+- [ ] Commit: `feat(api): public prompt enhancement API and SDK`
 
 ---
 
@@ -574,3 +696,11 @@ When you make code changes:
 | Backend accepts garbage platform value | No platform validation | Validate `platform` against `['chatgpt', 'claude', 'gemini']`, return 400 otherwise |
 | Meta-prompt differs between extension and server | Edited one file but not the other | Run `scripts/sync-meta-prompt.ts` at build time, or add it as a pre-build step in server's `package.json` |
 | OpenAI key entered but Anthropic models shown | Provider not auto-detected from key format | Auto-detect provider from key prefix: `sk-ant-` → Anthropic, `sk-` without `ant` → OpenAI. Update model dropdown accordingly. |
+| Context menu doesn't appear | `contextMenus` permission missing or `onInstalled` listener not firing | Add permission to manifest, verify `chrome.contextMenus.create()` is inside `chrome.runtime.onInstalled.addListener()` |
+| `chrome.scripting.executeScript()` fails on a page | Missing `scripting` permission, or page is a `chrome://` or `chrome-extension://` URL | Add `scripting` permission. Chrome internal pages cannot be scripted — show toast via fallback. |
+| Handler script can't find selection range | Selection cleared between right-click and script injection, or selection is in shadow DOM / canvas editor | Capture range immediately on injection. Fall back to `info.selectionText` from service worker + clipboard path. |
+| Textarea replacement doesn't trigger React state update | Set `value` directly instead of using native setter from prototype | Use `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, newValue)` then dispatch `new Event('input', { bubbles: true })` |
+| Context menu conflicts with trigger button on supported platforms | Both fire on the same text | They use independent code paths — trigger button uses `enhance` port, context menu uses `context-enhance` port. No conflict by design. |
+| Enhanced text appears but undo doesn't work | Original text not saved before replacement, or saved reference lost | Save original text immediately after selection capture, before any DOM mutation. Store in handler's closure, not on a DOM element. |
+| Context menu fires twice rapidly | No double-trigger guard | Track `isEnhancing` per tab in service worker. If already active, inject a "Already enhancing..." toast instead of a new handler. |
+| Handler CSS clashes with page styles | Injected toast styles override page styles or vice versa | Use highly specific class names (`promptgod-ctx-toast`) and `!important` on critical properties. Scope all styles under a unique prefix. |

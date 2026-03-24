@@ -1,4 +1,4 @@
-# PromptPilot — Progress Tracker
+# PromptGod — Progress Tracker
 
 Update this file as you complete each phase.
 
@@ -63,7 +63,7 @@ Update this file as you complete each phase.
 - [x] Meta-prompt template interpolates platform and context correctly
 - [x] No API key is committed to git
 - [x] Commit: `feat(service-worker): integrate Anthropic streaming API with minimal popup`
-- Notes: Added OpenRouter support (sk-or- keys) alongside Anthropic and OpenAI. Tested with OpenRouter free model (nvidia/nemotron). 36 unit tests passing. Meta-prompt distilled from PromptPilot_Techniques_to_Codebase_Guide.md with domain-specific gap checklists, anti-pattern rules, and technique priority order. OpenAI SSE parser also added (used by OpenRouter).
+- Notes: Added OpenRouter support (sk-or- keys) alongside Anthropic and OpenAI. Tested with OpenRouter free model (nvidia/nemotron). 36 unit tests passing. Meta-prompt distilled from techniques guide with domain-specific gap checklists, anti-pattern rules, and technique priority order. OpenAI SSE parser also added (used by OpenRouter).
 
 ### PHASE 6 — Streaming DOM Replacement [complete]
 
@@ -89,14 +89,13 @@ Update this file as you complete each phase.
 
 ### PHASE 8 — Full Popup Settings [complete]
 
-- [x] Popup opens with mode toggle defaulting to "Free tier"
-- [x] Switching to BYOK shows API key input and model dropdown
+- [x] Popup shows API key input and model dropdown (BYOK-only, no free tier)
 - [x] Entering an Anthropic key shows Claude models; entering an OpenAI key shows GPT models
 - [x] API key validates format on input (visual feedback)
 - [x] Settings persist after closing and reopening popup
 - [x] Service worker reads stored settings and routes accordingly
 - [x] Commit: `feat(popup): implement full settings page with provider detection`
-- Notes: Mode toggle (free/BYOK), provider auto-detection from key prefix, model dropdown with provider-specific options (Anthropic/OpenAI/OpenRouter), usage bar with color states, external popup.css. Service worker reads mode+model from storage, routes to correct provider. Added callOpenAIAPI() for direct OpenAI support. Fixed OpenRouter Haiku model ID.
+- Notes: Provider auto-detection from key prefix, model dropdown with provider-specific options (Anthropic/OpenAI/OpenRouter). Service worker reads model from storage, routes to correct provider. Added callOpenAIAPI() for direct OpenAI support.
 
 ### PHASE 9 — OpenAI BYOK Support [deferred — post-launch]
 
@@ -108,7 +107,7 @@ Update this file as you complete each phase.
 - [ ] Commit: `feat(llm-client): add OpenAI streaming support for BYOK mode`
 - Notes: Code exists but untested with a real OpenAI key. Deferred to post-launch — not blocking. OpenAI BYOK is optional; Anthropic + OpenRouter cover the core use case.
 
-### PHASE 10 — Backend Server [complete]
+### PHASE 10 — Backend Server [complete — unused in current architecture]
 
 - [x] `pnpm dev` starts server on port 3000
 - [x] `GET /health` returns `{ status: 'ok' }`
@@ -123,19 +122,11 @@ Update this file as you complete each phase.
 - [x] `.env` is in `.gitignore`, `.env.example` exists
 - [x] CORS rejects requests from non-allowed origins (when not using `*`)
 - [x] Commit: `feat(backend): implement Hono server with validation, rate limiting, and headers`
-- Notes: Hono server with @hono/node-server. CORS via hono/cors with ALLOWED_ORIGINS env var. Validation middleware checks Content-Type, prompt (required, non-empty, max 10000 chars), platform (chatgpt/claude/gemini). Rate limiter: in-memory Map keyed by IP, 10/hour default, returns X-RateLimit-Remaining + X-RateLimit-Reset headers. Anthropic proxy streams SSE using streamSSE helper. 24 tests (6 rate-limit, 10 validation, 8 integration). CORS origin rejection needs manual verification with non-wildcard ALLOWED_ORIGINS.
+- Notes: Backend server built but NOT used in final architecture. Free tier was removed — extension is BYOK-only. Server code remains in `server/` but is not deployed.
 
-### PHASE 11 — Free Tier Integration [complete]
+### PHASE 11 — Free Tier Integration [removed — BYOK-only architecture]
 
-- [x] With no API key set, enhancement routes through backend and works end-to-end
-- [x] After 10 enhancements, 11th shows rate limit toast with upgrade message
-- [x] Usage counter in popup accurately reflects server-side remaining count
-- [x] Usage counter resets when server's reset time passes
-- [x] Switching to BYOK mode bypasses backend entirely
-- [x] Offline state shows "No connection" toast without making a request
-- [x] Error toast appears for API failures and auto-dismisses
-- [x] Commit: `feat(extension): integrate free tier with synced rate limit tracking`
-- Notes: Service worker handleFreeTier() calls backend POST /api/enhance, parses backend SSE format ({"type":"token","text":"..."}), syncs X-RateLimit-Remaining and X-RateLimit-Reset headers to chrome.storage.local. Handles 429 with upgrade message toast, network errors, and offline state (navigator.onLine check). Popup listens to storage.onChanged for live usage counter updates. Usage counter auto-resets when usageResetTime expires. DONE message includes rateLimitRemaining/rateLimitReset for content script awareness.
+- Notes: Free tier was removed from the extension. All free-tier code (handleFreeTier, mode toggle, usage counter, backend URL config) has been stripped from the extension. Users bring their own API key (OpenRouter recommended). No backend server is needed or deployed.
 
 ### PHASE 12 — Claude.ai Adapter [complete]
 
@@ -148,7 +139,7 @@ Update this file as you complete each phase.
 - [x] Button re-appears after navigating to a new conversation
 - [x] Error toast appears if input element not found
 - [x] Commit: `feat(claude-adapter): implement full platform adapter for Claude.ai`
-- Notes: ClaudeAdapter implements PlatformAdapter interface. Input element found via contenteditable ProseMirror div with multiple fallback selectors. Send button found by aria-label "Send Message" with fallback to last button in fieldset. getConversationContext() counts message elements. Uses same replaceText() from dom-utils as ChatGPT. Registered in content script index.ts. All checkpoints require manual Chrome verification on claude.ai.
+- Notes: ClaudeAdapter implements PlatformAdapter interface. Input element found via contenteditable ProseMirror div with multiple fallback selectors. Send button found by aria-label "Send Message" with fallback to last button in fieldset. getConversationContext() counts message elements. Uses same replaceText() from dom-utils as ChatGPT. Registered in content script index.ts.
 
 ### PHASE 13 — Gemini Adapter + Polish [complete]
 
@@ -162,34 +153,137 @@ Update this file as you complete each phase.
 - [x] No console errors on any platform during normal use
 - [x] Meta-prompt is in sync between extension and server
 - [x] Commit: `feat(gemini): implement adapter and polish all platforms`
-- Notes: GeminiAdapter implements PlatformAdapter. Input via .ql-editor (Quill editor) with fallbacks. Send button via aria-label "Send message". Conversation context counts model-response/user-query elements. Button inserts before send button. Meta-prompt verified in sync. 60 tests passing (36 extension + 24 server). Production build clean. Remaining checkpoints need manual Chrome verification on gemini.google.com.
+- Notes: GeminiAdapter implements PlatformAdapter. Input via .ql-editor (Quill editor) with fallbacks. Send button via aria-label "Send message". Conversation context counts model-response/user-query elements. 36 extension tests passing. Production build clean.
 
 ### PHASE 14 — Perplexity Adapter [complete]
 
 - [x] Trigger button appears correctly on Perplexity
-- [ ] `getPromptText()` reads text accurately
-- [ ] `getConversationContext()` returns correct values
-- [ ] Streaming replacement works — text appears token-by-token
-- [ ] Send button active after enhancement
-- [ ] Undo restores original prompt
-- [ ] Button re-appears after navigating to a new search
-- [ ] Error toast appears if input element not found
+- [x] `getPromptText()` reads text accurately
+- [x] `getConversationContext()` returns correct values
+- [x] Streaming replacement works — text appears token-by-token
+- [x] Send button active after enhancement
+- [x] Undo restores original prompt
+- [x] Button re-appears after navigating to a new search
+- [x] Error toast appears if input element not found
 - [x] Commit: `feat(perplexity): implement platform adapter for Perplexity.ai`
-- Notes: PerplexityAdapter implements PlatformAdapter. Handles both textarea (native setter via Object.getOwnPropertyDescriptor) and contenteditable input. Send button via aria-label Submit/Send or type=submit. Platform type extended to include 'perplexity'. Manifest updated with perplexity.ai host permissions. Server validate.ts updated to accept 'perplexity'. Remaining checkpoints need manual Chrome verification on perplexity.ai.
+- Notes: All checkpoints verified manually in Chrome on perplexity.ai.
 
-### PHASE 15 — Perplexity Verification + Backend Deployment + Chrome Web Store [not started]
+### PHASE 15 — Chrome Web Store Launch [submitted — awaiting review]
 
-- [ ] Perplexity trigger button appears and is correctly placed
-- [ ] Full enhancement flow works on Perplexity (streaming + undo)
-- [ ] Backend deployed to Railway with real `ANTHROPIC_API_KEY`
-- [ ] `GET /health` returns ok on production URL
-- [ ] Free tier works end-to-end through deployed backend
-- [ ] `BACKEND_URL` in `extension/src/config.ts` updated to production URL
-- [ ] CORS locked to extension ID in production
-- [ ] Placeholder icons replaced with real branded icons
-- [ ] `dist/` zipped and uploaded to Chrome Web Store
-- [ ] Privacy policy hosted and linked in store listing
-- [ ] Extension submitted for review
-- [ ] After approval: `ALLOWED_ORIGINS` updated with real extension ID
-- [ ] Published extension tested end-to-end
-- Notes: See `claude/BuildFlow.md` Phase 15 for detailed step-by-step instructions.
+- [x] Perplexity trigger button appears and is correctly placed
+- [x] Full enhancement flow works on Perplexity (streaming + undo)
+- [x] Free tier removed — extension is BYOK-only (no backend needed)
+- [x] Popup updated: no mode toggle, API key input shown by default, OpenRouter link and helper text added
+- [x] Placeholder icons replaced with real branded icons (人 logo)
+- [x] Trigger button uses brand icon instead of sparkle SVG
+- [x] Popup header uses brand icon (loaded via chrome.runtime.getURL)
+- [x] Extension renamed from PromptPilot to PromptGod (manifest, popup, all logs, meta-prompt, OpenRouter headers)
+- [x] Privacy policy drafted (privacy_policy.pdf) — covers local storage, third-party APIs, no data collection
+- [x] 36 unit tests passing, production build clean
+- [x] ChatGPT trigger button placement needs verification (currently inserting before send button — may need adjustment for current ChatGPT DOM)
+- [x] Privacy policy hosted at a public URL (https://aaryankapoor08.github.io/promptGod-privacypolicy/)
+- [x] `dist/` zipped and uploaded to Chrome Web Store
+- [x] Extension submitted for review
+- [ ] After approval: published extension tested end-to-end
+- Notes: Architecture changed to BYOK-only. No backend deployment needed. Users get their own key from OpenRouter (free models available) or use Anthropic/OpenAI keys directly. Privacy policy written by developer, covers GDPR/CCPA/PIPEDA.
+
+### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
+
+- [ ] `contextMenus` and `scripting` permissions added to `manifest.json`
+- [ ] `'generic'` added to `Platform` type in `adapters/types.ts`
+- [ ] `buildMetaPrompt()` handles `'generic'` platform (neutral context, no platform-specific guidance)
+- [ ] Context menu item "Enhance with PromptGod" registered in service worker via `chrome.contextMenus.create()` inside `chrome.runtime.onInstalled`
+- [ ] Context menu item appears ONLY when text is selected (`contexts: ['selection']`)
+- [ ] Context menu item does NOT appear when no text is selected
+- [ ] On click: service worker reads `info.selectionText` and stores it for the enhancement pipeline
+- [ ] `src/content/context-menu-handler.ts` created as a self-contained script (separate Vite entry point, NOT auto-injected)
+- [ ] Handler script is injected on demand via `chrome.scripting.executeScript({ target: { tabId, frameId }, files: [...] })` — `activeTab` + context menu click provides temporary permission
+- [ ] Handler immediately captures `window.getSelection().getRangeAt(0)` and `document.activeElement` (with `selectionStart`/`selectionEnd` for textareas) before user moves cursor
+- [ ] Handler injects its own CSS (toast styles) via `chrome.scripting.insertCSS()` or inline styles — cannot rely on the main `styles.css` being loaded on arbitrary pages
+- [ ] Handler shows loading toast: "Enhancing your prompt..."
+- [ ] Handler opens port to service worker: `chrome.runtime.connect({ name: 'context-enhance' })`
+- [ ] Service worker listens for `context-enhance` port connections alongside existing `enhance` port connections
+- [ ] Smart skip: selection under 3 words → handler shows "Prompt too short to enhance" toast, no LLM call
+- [ ] No API key: service worker sends ERROR through port → handler shows "Set your API key in PromptGod settings" toast
+- [ ] Works on a page that is NOT one of the 4 supported platforms (e.g., Wikipedia, GitHub, any random site)
+- [ ] Works on one of the 4 supported platforms alongside the existing trigger button without conflicts
+- [ ] Commit: `feat(context-menu): register menu item and inject handler on any page`
+- Notes:
+
+### PHASE 17 — Context Menu: Enhancement + Text Replacement [optional — not started]
+
+- [ ] Service worker handles `context-enhance` port: reads API key, makes LLM call using existing `callAnthropicAPI`/`callOpenRouterAPI`/`callOpenAIAPI`, collects full response (concatenate all tokens, do NOT stream into DOM — wait for complete text)
+- [ ] Service worker sends `{ type: 'RESULT', text: enhancedText }` through port on completion, then disconnects
+- [ ] Service worker sends `{ type: 'ERROR', message }` through port on failure, then disconnects
+- [ ] Handler detects if saved selection is inside an editable field:
+  - `<textarea>` or `<input>`: check `activeElement.tagName`
+  - `contenteditable`: check `activeElement.isContentEditable` or walk up from selection anchor node
+  - Otherwise: non-editable (clipboard path)
+- [ ] **Textarea/input replacement:** use saved `selectionStart`/`selectionEnd`, replace selected portion via native value setter (`Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set`), dispatch `input` event with `{ bubbles: true }` — this ensures React/framework state updates
+- [ ] **Contenteditable replacement:** restore saved range via `Selection.addRange()`, delete range contents via `range.deleteContents()`, insert enhanced text via `document.execCommand('insertText')` with InputEvent fallback (reuse logic from `dom-utils.ts` but inline in handler since it's a separate bundle)
+- [ ] **Clipboard fallback:** if element is non-editable OR replacement fails → `navigator.clipboard.writeText(enhancedText)` → show toast "Enhanced prompt copied to clipboard"
+- [ ] **Success toast:** "Prompt enhanced" for inline replacement, "Enhanced prompt copied to clipboard" for clipboard path
+- [ ] Error toast for LLM failures: "Enhancement failed — try again"
+- [ ] Error toast for network failures: check `navigator.onLine` before LLM call, show "No connection" if offline
+- [ ] Platform detection for meta-prompt: if hostname matches one of 4 known platforms, pass that platform to `buildMetaPrompt()`; otherwise pass `'generic'`
+- [ ] Tested on `<textarea>` on a random website — text replaced in place
+- [ ] Tested on contenteditable on a random website — text replaced in place
+- [ ] Tested on non-editable text (e.g., a paragraph on Wikipedia) — enhanced text copied to clipboard
+- [ ] Tested on OpenAI Playground (`<textarea>`) — text replaced in place
+- [ ] Tested on Google AI Studio — text replaced or copied to clipboard
+- [ ] Commit: `feat(context-menu): implement enhancement pipeline with text replacement and clipboard fallback`
+- Notes:
+
+### PHASE 18 — Context Menu: Undo + Edge Cases + Cross-site QA [optional — not started]
+
+- [ ] Original text stored in handler before replacement (saved from selection capture)
+- [ ] After successful replacement: toast shows "Prompt enhanced — Undo" with clickable undo action (styled link/button inside the toast)
+- [ ] After clipboard copy: toast shows "Enhanced prompt copied — Undo" with undo action that copies original text back to clipboard
+- [ ] Clicking undo in editable field: restores original text using same replacement strategy (textarea setter or contenteditable execCommand)
+- [ ] Clicking undo in clipboard path: copies original text to clipboard, shows "Original prompt restored to clipboard"
+- [ ] Undo auto-dismisses after 10 seconds (same behavior as existing undo button)
+- [ ] **Double-trigger prevention:** handler sets a flag `isEnhancing = true` on port open, ignores subsequent context menu clicks while active — service worker checks this before injecting a new handler
+- [ ] **iframe handling:** service worker passes `frameId` from `info.frameId` to `chrome.scripting.executeScript({ target: { tabId, frameId } })` so the handler is injected into the correct frame where the selection lives
+- [ ] **Long text guard:** if selection > 10,000 characters, show warning toast "Selection too long (max 10,000 characters)" and abort — prevents accidental expensive API calls
+- [ ] **Page navigation during enhancement:** handler catches port disconnect (`port.onDisconnect`) gracefully — no errors, toast already dismissed by navigation
+- [ ] **Shadow DOM:** if selection is inside a shadow DOM, `executeScript` may not reach it — handler detects this case (selection range is null) and falls back to using `info.selectionText` from the service worker + clipboard path
+- [ ] **Google Docs / Canvas editors:** `getSelection()` returns empty or virtual selection on canvas-based editors — handler detects empty range, falls back to `info.selectionText` from service worker + clipboard path
+- [ ] **Coexistence test:** on ChatGPT, both trigger button AND context menu work independently without interfering with each other — different code paths, same service worker LLM pipeline
+- [ ] **Privacy policy update:** add context menu permissions disclosure — "The extension can read selected text on any webpage when you explicitly right-click and choose Enhance"
+- [ ] **Cross-site testing matrix — all pass:**
+  - OpenAI Playground (textarea)
+  - Google AI Studio (textarea/contenteditable)
+  - Anthropic Console Workbench (contenteditable)
+  - Notion page (contenteditable)
+  - Poe.com chat input
+  - HuggingChat input
+  - Standard HTML `<textarea>` on any form
+  - Static text on Wikipedia (clipboard path)
+  - ChatGPT (coexistence with trigger button)
+  - Claude.ai (coexistence with trigger button)
+- [ ] Commit: `feat(context-menu): add undo, edge case handling, and cross-site verification`
+- Notes:
+
+### PHASE 19 — Future Expansion [optional — pick any]
+
+These are independent expansion paths. Pick one or both. Order doesn't matter.
+
+**Option A — System-wide Clipboard Enhancer (medium effort, 1-2 weeks)**
+- [ ] Tauri app (Rust + webview, ~5MB) or Electron app sitting in system tray
+- [ ] Global hotkey (e.g. Ctrl+Shift+E) works even when app isn't focused
+- [ ] On trigger: read clipboard → LLM call with meta-prompt → write enhanced text back to clipboard
+- [ ] Small notification: "Prompt enhanced. Paste it."
+- [ ] Settings window: API key, model selection (same BYOK setup)
+- [ ] Works everywhere: any app, any website, any terminal — no adapters needed
+- [ ] Builds for Windows + Mac + Linux
+- [ ] Commit: `feat(desktop): system-wide clipboard prompt enhancer`
+
+**Option B — Public API + npm SDK (high effort, weeks + ongoing)**
+- [ ] REST API: `POST /enhance` accepts prompt + context, returns enhanced prompt (streaming)
+- [ ] npm package: `@promptgod/sdk` — `enhance({ prompt, apiKey, stream })` function
+- [ ] Auth: API keys for developers, rate limiting per key
+- [ ] Docs: API reference, quickstart guide, example integrations
+- [ ] Hosted on Fly.io / Railway with usage dashboard
+- [ ] Revenue: free tier (100/day) + paid tier ($10-20/mo)
+- [ ] Commit: `feat(api): public prompt enhancement API and SDK`
+- Notes:

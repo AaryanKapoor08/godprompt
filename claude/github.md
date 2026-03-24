@@ -242,4 +242,12 @@ Code exists from Phase 5/8 but deferred to post-launch. OpenAI BYOK is optional;
 
 ---
 
-## All 13 phases complete 🎉
+## Phases 14-15
+
+Perplexity adapter and Chrome Web Store launch — see `claude/Progress.md` for details.
+
+---
+
+## Phases 16-18 — Context Menu (optional, not started)
+
+Right-click "Enhance with PromptGod" on any webpage — see `claude/BuildFlow.md` for full plan.

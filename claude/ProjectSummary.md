@@ -73,8 +73,9 @@ Most people write vague, underspecified prompts and get mediocre AI responses. T
 - Free tier: 10 enhancements/hour via backend proxy (no API key needed)
 - BYOK mode: user provides their own API key for unlimited use (Anthropic or OpenAI)
 - Popup settings: mode toggle, API key input, model selection, synced usage counter
-- Platform adapters for ChatGPT, Claude.ai, and Gemini with MutationObserver resilience
+- Platform adapters for ChatGPT, Claude.ai, Gemini, and Perplexity with MutationObserver resilience
 - Keyboard shortcut: Ctrl+Shift+E
+- Right-click context menu: "Enhance with PromptGod" on selected text on any webpage — replaces text in editable fields or copies enhanced text to clipboard
 
 ---
 
@@ -351,6 +352,14 @@ data: {"type": "done", "text": ""}
 | `DONE` | Service Worker → Content | `{ rateLimitRemaining?, rateLimitReset? }` | Stream complete, port disconnects |
 | `ERROR` | Service Worker → Content | `{ message, code? }` | Error occurred, port disconnects |
 
+### Context Menu Messages (chrome.runtime.connect port, name: 'context-enhance')
+
+| Type | Direction | Payload | Notes |
+|---|---|---|---|
+| `ENHANCE` | Handler → Service Worker | `{ rawPrompt, platform, context }` | `platform` is auto-detected or `'generic'` |
+| `RESULT` | Service Worker → Handler | `{ text }` | Complete enhanced text (not streamed) |
+| `ERROR` | Service Worker → Handler | `{ message, code? }` | Error occurred, port disconnects |
+
 ---
 
 ## File Structure
@@ -372,12 +381,14 @@ promptpilot/
 │   │   │   │   ├── types.ts             # PlatformAdapter interface (includes getConversationContext)
 │   │   │   │   ├── chatgpt.ts           # ChatGPT DOM adapter
 │   │   │   │   ├── claude.ts            # Claude.ai DOM adapter
-│   │   │   │   └── gemini.ts            # Gemini DOM adapter
+│   │   │   │   ├── gemini.ts            # Gemini DOM adapter
+│   │   │   │   └── perplexity.ts        # Perplexity DOM adapter
 │   │   │   ├── ui/
 │   │   │   │   ├── trigger-button.ts    # Enhance button injection + click handler
 │   │   │   │   ├── undo-button.ts       # Undo floating button
 │   │   │   │   └── toast.ts             # Error/info toast component
-│   │   │   └── dom-utils.ts             # Shared: synthetic events, element finders, execCommand fallback
+│   │   │   ├── dom-utils.ts             # Shared: synthetic events, element finders, execCommand fallback
+│   │   │   └── context-menu-handler.ts  # Self-contained script injected on demand for right-click enhance on any page
 │   │   ├── popup/
 │   │   │   ├── popup.html               # Settings popup markup
 │   │   │   ├── popup.ts                 # Settings logic: save/load chrome.storage

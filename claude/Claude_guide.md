@@ -33,7 +33,7 @@ One complete feature through every layer before the next. Don't build all three 
 
 **Types:** feat, fix, chore, test, refactor, docs, ci, perf
 
-**Scopes:** extension, content, chatgpt, claude-adapter, gemini, service-worker, popup, backend, rate-limit, meta-prompt, streaming, undo, build, ci, llm-client, toast
+**Scopes:** extension, content, chatgpt, claude-adapter, gemini, perplexity, service-worker, popup, backend, rate-limit, meta-prompt, streaming, undo, build, ci, llm-client, toast, context-menu
 
 Never commit directly to main for features.
 
@@ -164,6 +164,10 @@ The extension has no routes — it communicates via `chrome.runtime.connect` (po
 - Never accept a prompt longer than 10,000 characters on the backend — guard against API cost abuse
 - Never trust the client-side usage counter as authoritative — the server's rate limit is the real gate
 - Never skip platform field validation on the backend — reject anything not in `['chatgpt', 'claude', 'gemini']`
+- Never auto-inject the context menu handler on all pages — only inject on demand via `chrome.scripting.executeScript()` after the user explicitly clicks the context menu item
+- Never stream tokens into arbitrary page editors via context menu — collect the full response first, then replace once (unpredictable editors break with repeated DOM mutations)
+- Never set textarea `.value` directly for context menu replacement — always use the native setter from `HTMLTextAreaElement.prototype` to bypass React/framework controlled component guards
+- Never assume `window.getSelection()` works on every page — canvas editors (Google Docs, Figma) and shadow DOM may return null or empty ranges; always fall back to `info.selectionText` + clipboard path
 
 ---
 
@@ -184,3 +188,9 @@ The extension has no routes — it communicates via `chrome.runtime.connect` (po
 | 11 — Free tier integration | Extension routes through backend, usage counter syncs from server headers, error toasts for all states | Other platforms |
 | 12 — Claude.ai adapter | Second platform adapter working end-to-end with all features | Gemini adapter |
 | 13 — Gemini adapter + polish | Third platform adapter, error handling hardened, production build clean | CI/CD, Chrome Web Store |
+| 14 — Perplexity adapter | Fourth platform adapter working end-to-end with all features | Chrome Web Store |
+| 15 — Chrome Web Store launch | Icons, privacy policy, store listing, submission | Context menu, desktop app, API |
+| 16 — Context menu: foundation | Permissions, menu registration, handler injection, selection capture, port setup | Text replacement, undo, cross-site QA |
+| 17 — Context menu: enhancement | LLM pipeline via port, textarea/contenteditable/clipboard replacement strategies | Undo, edge cases, cross-site testing matrix |
+| 18 — Context menu: undo + QA | Undo in toast, double-trigger guard, iframe/shadow DOM/canvas fallbacks, cross-site testing | Desktop app, public API |
+| 19 — Future expansion | System-wide clipboard app OR public API + npm SDK | N/A — optional paths |

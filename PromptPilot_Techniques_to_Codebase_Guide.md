@@ -1,5 +1,4 @@
-# How the Prompting Techniques Document Maps to the Codebase
-
+# How the Prompting Techniques Document Maps to the Codebase v2
 ## The short answer
 
 The prompting techniques document is NOT loaded at runtime. It is a developer reference that gets distilled into three things that ARE in the codebase:

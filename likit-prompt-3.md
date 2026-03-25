@@ -1,4 +1,4 @@
-# Likit Workflow — Prompt 3 of 3: Slash Commands + Finalize
+# Likit Workflow — Prompt 3 of 3: Slash Commands + Finalize v2
 
 > **This is prompt 3 of 3.** It generates all slash commands and finalizes the setup.
 > Prompts 1 and 2 have already been run — all `claude/` files and `CLAUDE.md` exist.

@@ -1,4 +1,4 @@
-# Likit Workflow — Prompt 2 of 3: Architecture + Build Plan
+# Likit Workflow — Prompt 2 of 3: Architecture + Build Plan v2
 
 > **This is prompt 2 of 3.** It generates `ProjectSummary.md`, `BuildFlow.md`, `Progress.md`, and `github.md`.
 > Prompt 1 has already been run — `CLAUDE.md` and `claude/Claude_guide.md` exist.

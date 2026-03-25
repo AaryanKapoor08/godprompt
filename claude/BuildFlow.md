@@ -474,6 +474,48 @@ A phase is done when the checkpoint passes, not when the code is written.
 
 ---
 
+## PHASE 15.5 — SOURCE CODE SYNC FROM ZIP [DO THIS BEFORE PHASE 16]
+
+> **REMINDER:** Before starting Phase 16, the TypeScript source must be synced with the latest working build that was submitted to the Chrome Web Store. The zip (`promptgod.zip` at repo root) is the only copy of the latest working state. The GitHub repo is behind.
+
+**Run this prompt with Opus before doing anything else:**
+
+---
+
+Context:
+I'm working on a Chrome extension called PromptGod (repo at `C:\Users\Jaska\OneDrive\Documents\godprompt`). The project has a TypeScript source in `extension/src/` and a built output in `extension/dist/`.
+
+What happened:
+- The latest working code was submitted to the Chrome Web Store as `promptgod.zip` (located at the repo root)
+- Someone used Codex to work on phases 16-18, which broke things
+- We reverted by pulling from GitHub, but the GitHub repo was behind — it doesn't have the latest fixes
+- The zip is the only copy of the latest working built output
+- The zip contains the compiled `dist/` files (JS, CSS, HTML) — NOT the TypeScript source
+
+What's confirmed in the zip (vs current source):
+1. Trigger button uses brand icon (`chrome.runtime.getURL("assets/icon-48.png")`) instead of sparkle SVG
+2. Free tier is fully removed (`freeTier`, `handleFree` — zero mentions)
+3. Various other fixes (ChatGPT button placement, popup styling, etc.)
+
+The goal:
+1. Read the compiled JS from `extension/dist/assets/` (zip contents already copied there) to understand what changed vs the TypeScript source in `extension/src/`
+2. Update the TypeScript source files in `extension/src/` to match — without touching the zip file
+3. Run `pnpm build` and verify the extension works
+4. Commit the changes to GitHub in at least 10 separate logical commits (one per file or feature area) — not one big dump
+
+Rules:
+- Do NOT modify or extract over `promptgod.zip` — it is read-only reference
+- Commits must follow `type(scope): description` format
+- Each commit should be a coherent, standalone change
+
+Start by reading the compiled JS files from `extension/dist/assets/` and diffing them against the current TypeScript source to identify all the changes needed.
+
+---
+
+**This phase is complete when:** all TypeScript source matches the zip build, `pnpm build` succeeds, extension loads in Chrome, and all changes are committed to GitHub in 10+ commits.
+
+---
+
 ## PHASE 16 — Context Menu: Foundation + Injection [optional]
 
 **Goal:** Right-click on selected text on any webpage shows "Enhance with PromptGod" and injects a handler script that captures the selection and opens a communication port.

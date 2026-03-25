@@ -1,4 +1,4 @@
-# Likit Workflow — Prompt 1 of 3: Discovery + Foundation
+# Likit Workflow — Prompt 1 of 3: Discovery + Foundation v2
 
 > **This is prompt 1 of 3.** It gathers project info and generates `CLAUDE.md` + `claude/Claude_guide.md`.
 > After this completes, the user will paste Prompt 2.

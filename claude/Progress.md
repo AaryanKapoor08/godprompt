@@ -297,6 +297,28 @@ Update this file as you complete each phase.
 - [x] Commit: pending
 - Notes: Streaming injection now begins as soon as provider tokens arrive, instead of waiting for a full non-stream fallback response. The service worker now surfaces stream timeout/no-token conditions as errors rather than degrading to delayed one-shot injection.
 
+### PHASE 15.13 — Streaming + Rewrite Behavior Hardening [in progress]
+
+- [x] Created and pushed working branch: `feat/phase-15-13-separate-commits` (no main-branch changes)
+- [x] Progressive injection queue added in `extension/src/content/ui/trigger-button.ts` to avoid burst-only updates
+- [x] Final DOM sync on `DONE` added to reduce transient spacing glitches before completion
+- [x] OpenRouter stream-only path retained in `extension/src/service-worker.ts` (no non-stream composer fallback)
+- [x] OpenAI-compatible SSE parser hardened in `extension/src/lib/llm-client.ts`
+- [x] Undo callback path retained in `extension/src/content/ui/undo-button.ts`
+- [x] Meta-prompt strengthened for critical-missing-context business/app prompts in `extension/src/lib/meta-prompt.ts`
+- [x] Meta-prompt now explicitly forbids assistant-style direct question responses as final rewrite output
+- [x] Unit tests updated for parser and meta-prompt behavior:
+  - `extension/test/unit/parse-openai-stream.test.ts`
+  - `extension/test/unit/meta-prompt.test.ts`
+- [x] Validation: `pnpm test` (49/49 passing), `pnpm build` passing
+- [ ] Manual verification pending (resume here):
+  - Confirm live typing looks progressively rendered on ChatGPT (not one-shot burst)
+  - Confirm no merged-word artifacts in final injected text (e.g., `AWSand`, `structuredlearning`)
+  - Confirm "help me with my app" rewrite stays instruction-style (ask-AI-to-ask questions), not assistant-style direct reply
+  - Re-test with a non-rate-limited model/key (OpenRouter 429 blocked repeat checks during this session)
+- [ ] Commit: pending
+- Notes: This phase is intentionally scoped to injection/render and rewrite-rule behavior only. Phase 15.6-15.10 reliability/quality foundations remain in place; remaining risk is manual UX verification under real provider output variance.
+
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 
 - [ ] `contextMenus` and `scripting` permissions added to `manifest.json`

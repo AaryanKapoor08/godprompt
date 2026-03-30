@@ -849,7 +849,7 @@ Run each prompt 3 times on your active provider/model configuration.
 
 Test prompts:
 1. `"I need a business strategy"`
-2. `"help me with my app"`
+2. `" help me with my app"`
 3. `"Compare AWS and Google Cloud for a mid-sized tech company. Focus on pricing, compute services, managed database options, Kubernetes support, and global infrastructure. Present findings in a side-by-side comparison table highlighting pros and cons for each platform's key services. Include a brief summary of which platform might be better for different use cases."`
 4. `"Write a launch email for a fintech feature to existing users. Keep it under 180 words and include a CTA."`
 

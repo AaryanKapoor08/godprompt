@@ -11,6 +11,10 @@ export interface EnhanceMessage {
 }
 
 // Service worker → Content script
+export interface StartMessage {
+  type: 'START'
+}
+
 export interface TokenMessage {
   type: 'TOKEN'
   text: string
@@ -29,7 +33,7 @@ export interface ErrorMessage {
 }
 
 // Union of all messages the service worker can send back
-export type ServiceWorkerMessage = TokenMessage | DoneMessage | ErrorMessage
+export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage
 
 // Union of all messages the content script can send
 export type ContentMessage = EnhanceMessage

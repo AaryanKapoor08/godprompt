@@ -133,6 +133,26 @@ label {
   margin-top: 14px;
 }
 
+.model-label-row {
+  margin-top: 14px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-label-row .label--model {
+  margin: 0;
+}
+
+.model-hint {
+  font-size: 11px;
+  color: var(--pp-fg-subtle);
+  white-space: nowrap;
+  line-height: 1;
+}
+
 input[type="password"],
 .model-select {
   width: 100%;

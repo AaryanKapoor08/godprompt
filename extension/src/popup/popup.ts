@@ -7,6 +7,7 @@ const headerLogo = document.getElementById('header-logo') as HTMLImageElement
 const apiKeyInput = document.getElementById('api-key') as HTMLInputElement
 const keyStatus = document.getElementById('key-status') as HTMLDivElement
 const modelSelect = document.getElementById('model-select') as HTMLSelectElement
+const modelHint = document.getElementById('model-hint') as HTMLSpanElement
 
 // Set header logo from extension assets
 headerLogo.src = chrome.runtime.getURL('assets/icon-48.png')
@@ -90,6 +91,8 @@ function updateKeyValidationUI(key: string): void {
 
 // --- Model Dropdown ---
 function updateModelDropdown(provider: Provider | null, selectedModel?: string): void {
+  updateModelHint(provider)
+
   if (!provider || !MODELS[provider]) {
     clearModelDropdown()
     return
@@ -116,6 +119,10 @@ function updateModelDropdown(provider: Provider | null, selectedModel?: string):
 
 function clearModelDropdown(): void {
   modelSelect.innerHTML = '<option value="">Enter an API key first</option>'
+}
+
+function updateModelHint(provider: Provider | null): void {
+  modelHint.textContent = provider === 'openrouter' ? 'Haiku recommended' : ''
 }
 
 modelSelect.addEventListener('change', () => {

@@ -5,6 +5,41 @@
 import type { ConversationContext } from '../content/adapters/types'
 
 export type Provider = 'anthropic' | 'openai' | 'openrouter'
+const REWRITE_TEMPERATURE = 0.4
+const REQUEST_TIMEOUT_MS = {
+  anthropic: 60000,
+  openai: 60000,
+  openrouter: 25000,
+} as const
+
+interface OpenRouterNonStreamResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>
+    }
+  }>
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`[LLMClient] Request timed out after ${timeoutMs}ms`, {
+        cause: error,
+      })
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 export function validateApiKey(key: string): { valid: boolean; provider: Provider | null } {
   const trimmed = key.trim()
@@ -102,6 +137,17 @@ export async function* parseOpenAIStream(
 
   const decoder = new TextDecoder()
   let buffer = ''
+  let eventDataLines: string[] = []
+
+  function flushEventData(): string | null {
+    if (eventDataLines.length === 0) {
+      return null
+    }
+
+    const data = eventDataLines.join('\n').trim()
+    eventDataLines = []
+    return data.length > 0 ? data : null
+  }
 
   try {
     while (true) {
@@ -114,8 +160,13 @@ export async function* parseOpenAIStream(
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim()
+        const normalizedLine = line.endsWith('\r') ? line.slice(0, -1) : line
+
+        if (normalizedLine === '') {
+          const data = flushEventData()
+          if (!data) {
+            continue
+          }
 
           if (data === '[DONE]') {
             return
@@ -124,14 +175,52 @@ export async function* parseOpenAIStream(
           try {
             const parsed = JSON.parse(data)
 
+            if (parsed?.error?.message) {
+              throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
+            }
+
             // OpenAI SSE format: choices[0].delta.content
             const content = parsed.choices?.[0]?.delta?.content
             if (content) {
               yield content
             }
-          } catch {
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith('[LLMClient] OpenAI-compatible stream error:')) {
+              throw error
+            }
+
             // Skip non-JSON data lines
           }
+
+          continue
+        }
+
+        if (normalizedLine.startsWith('data:')) {
+          const dataPart = normalizedLine.slice(5).trimStart()
+          eventDataLines.push(dataPart)
+        }
+      }
+    }
+
+    const trailingData = flushEventData()
+    if (trailingData === '[DONE]') {
+      return
+    }
+
+    if (trailingData) {
+      try {
+        const parsed = JSON.parse(trailingData)
+        if (parsed?.error?.message) {
+          throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
+        }
+
+        const content = parsed.choices?.[0]?.delta?.content
+        if (content) {
+          yield content
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('[LLMClient] OpenAI-compatible stream error:')) {
+          throw error
         }
       }
     }
@@ -147,7 +236,7 @@ export async function callAnthropicAPI(
   userMessage: string,
   model: string = 'claude-haiku-4-5-20251001'
 ): Promise<Response> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -159,13 +248,14 @@ export async function callAnthropicAPI(
     body: JSON.stringify({
       model,
       max_tokens: 2048,
+      temperature: REWRITE_TEMPERATURE,
       stream: true,
       system: systemPrompt,
       messages: [
         { role: 'user', content: userMessage },
       ],
     }),
-  })
+  }, REQUEST_TIMEOUT_MS.anthropic)
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'Unknown error')
@@ -184,7 +274,7 @@ export async function callOpenAIAPI(
   userMessage: string,
   model: string = 'gpt-4o-mini'
 ): Promise<Response> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -192,13 +282,14 @@ export async function callOpenAIAPI(
     },
     body: JSON.stringify({
       model,
+      temperature: REWRITE_TEMPERATURE,
       stream: true,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
     }),
-  })
+  }, REQUEST_TIMEOUT_MS.openai)
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'Unknown error')
@@ -217,7 +308,7 @@ export async function callOpenRouterAPI(
   userMessage: string,
   model: string = 'nvidia/nemotron-3-nano-30b-a3b:free'
 ): Promise<Response> {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -227,13 +318,14 @@ export async function callOpenRouterAPI(
     },
     body: JSON.stringify({
       model,
+      temperature: REWRITE_TEMPERATURE,
       stream: true,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
     }),
-  })
+  }, REQUEST_TIMEOUT_MS.openrouter)
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'Unknown error')
@@ -243,4 +335,62 @@ export async function callOpenRouterAPI(
   }
 
   return response
+}
+
+// Make a non-streaming request to OpenRouter as a reliability fallback
+export async function callOpenRouterAPIOnce(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string = 'nvidia/nemotron-3-nano-30b-a3b:free'
+): Promise<string> {
+  const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://promptgod.dev',
+      'X-Title': 'PromptGod',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: REWRITE_TEMPERATURE,
+      stream: false,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  }, REQUEST_TIMEOUT_MS.openrouter)
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    throw new Error(`[LLMClient] OpenRouter API (non-stream) returned ${response.status}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+
+  const parsed = await response.json() as OpenRouterNonStreamResponse
+  const content = parsed.choices?.[0]?.message?.content
+
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+    if (trimmed.length > 0) {
+      return trimmed
+    }
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .filter((item) => item?.type === 'text' && typeof item.text === 'string')
+      .map((item) => item.text?.trim() ?? '')
+      .filter((item) => item.length > 0)
+      .join('\n')
+
+    if (text.length > 0) {
+      return text
+    }
+  }
+
+  throw new Error('[LLMClient] OpenRouter non-stream response did not contain text output')
 }

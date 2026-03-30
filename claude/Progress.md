@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15.6 (service worker wakeup bug blocking — 15.7 code applied but untested)**
+**Current Phase: 15.10 (checkpoint closure + commit sync)**
 
 ---
 
@@ -200,47 +200,89 @@ Update this file as you complete each phase.
 - [x] Updated ProjectSummary.md to reflect BYOK-only architecture
 - Notes: The content script and popup JS get different Vite hashes each build (expected), but the actual code logic matches the zip. The llm-client, service-worker, and popup CSS output are byte-for-byte identical.
 
-### PHASE 15.6 — Post-Sync Bugfixes [in progress]
+### PHASE 15.6 — Post-Sync Bugfixes [complete]
 
 - [x] Icon files replaced with branded 人 icons resized from `generated-image.png` at 16x16, 48x48, 128x128
 - [x] Toolbar icon, trigger button icon, and popup header all show correct branded icon
 - [x] ChatGPT trigger button positioned via absolute positioning inside form — stays fixed at bottom regardless of text length
 - [x] `pnpm build` succeeds, 38 unit tests passing
 - [x] Commit: `fix(extension): replace placeholder icons and fix ChatGPT button placement`
-- [ ] Service worker wakes up reliably when enhance is clicked (MV3 lifecycle bug — BLOCKING)
-- Notes: Icons fixed. ChatGPT button fixed. But service worker doesn't wake up on `chrome.runtime.connect()` — a known MV3 issue. Added PING/PONG wakeup mechanism (sendMessage before connect) but NOT yet confirmed working. See BuildFlow for full diagnosis and alternative approaches. Phase 15.7 code changes (meta-prompt delimiters + critical constraint) are also applied but can't be tested until service worker wakeup is fixed.
+- [x] Service worker wakes up reliably when enhance is clicked (MV3 lifecycle bug resolved with runtime hardening)
+- Notes: Root cause was stale content script context after extension reload (`Extension context invalidated`), which made runtime messaging fail before port handling. Added content-script runtime guards and safe error handling around ping/connect/postMessage, plus a no-response timeout to prevent silent hangs. Manually verified both scenarios: (1) idle service worker path works after waiting 30-60s, and (2) stale-tab path now shows refresh warning instead of crashing.
 
-### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [code applied — blocked by 15.6]
+### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [complete]
 
 - [x] `buildUserMessage()` wraps raw prompt with `"""` delimiters, "Rewrite the following prompt" instruction, AND platform/context info
 - [x] Platform and context included in user message (reinforces system prompt for weaker models)
 - [x] System prompt ends with CRITICAL CONSTRAINT block ("You are a REWRITER, not a RESPONDER")
 - [x] `buildUserMessage()` unit test updated to assert new wrapped format with platform/context
 - [x] All unit tests passing (38 tests)
-- [ ] Manual test: "how to learn Java" → returns rewritten question, NOT a Java guide
-- [ ] Manual test: "explain quantum computing" → returns better question, NOT an explanation
-- [ ] Manual test: "write me a poem about rain" → returns more specific prompt, NOT a poem
-- [ ] Manual test: "what's the best database for my app" → returns sharpened question, NOT a comparison
-- [ ] GATE: all 4 manual tests pass before moving to Phase 15.8
-- [ ] Commit: `fix(meta-prompt): wrap user message with delimiters to prevent LLM from answering`
-- Notes:
+- [x] Manual test: "how to learn Java" → returns rewritten question, NOT a Java guide
+- [x] Manual test: "explain quantum computing" → returns better question, NOT an explanation
+- [x] Manual test: "write me a poem about rain" → returns more specific prompt, NOT a poem
+- [x] Manual test: "what's the best database for my app" → returns sharpened question, NOT a comparison
+- [x] GATE: all 4 manual tests pass before moving to Phase 15.8
+- [x] Commit captured in consolidation checkpoint commit (2026-03-30)
+- Notes: Manual validation passed. All four prompts were rewritten rather than answered directly. Additional model checks also rewrote correctly: Nemotron Nano produced a constrained rewrite (14-line free-verse request), and o4-mini produced a concise rewrite (4-stanza lyrical rain poem request).
 
-### PHASE 15.8 — Meta-Prompt: Consistent Rewrite Quality [not started]
+### PHASE 15.8 — Meta-Prompt: Consistent Rewrite Quality [complete]
 
-- [ ] Gap prioritization rule added: "pick 1-2 most impactful gaps, not all"
-- [ ] Purpose test rule added: "if I remove this addition, does the AI give a worse answer?"
-- [ ] 4 before/after good examples added covering: coding, research, writing, learning
-- [ ] 1 BAD rewrite example added showing filler anti-pattern ("thorough", "comprehensive", "expert")
-- [ ] Example annotations kept short — pattern instruction above, not essays per example
-- [ ] Meta-prompt sections reordered: role → context → process → checklist → prioritization → techniques → rules → examples → critical constraint
-- [ ] Manual test: "help me with my website" → adds specifics, zero filler phrases
-- [ ] Manual test: "how to learn Java" → adds skill level + goal + structure, no "explain thoroughly"
-- [ ] Manual test: "compare AWS and Google Cloud" → adds use case + criteria + format, no "cover all aspects"
-- [ ] Manual test: "write a blog post about AI" → adds audience + angle + length, no "make it engaging"
-- [ ] Each test prompt run 3 times to verify consistency
-- [ ] All unit tests passing, production build clean
-- [ ] Commit: `feat(meta-prompt): add examples, gap prioritization, and purpose test for consistent quality`
+- [x] Gap prioritization rule added: "pick 1-2 most impactful gaps, not all"
+- [x] Purpose test rule added: "if I remove this addition, does the AI give a worse answer?"
+- [x] 4 before/after good examples added covering: coding, research, writing, learning
+- [x] 1 BAD rewrite example added showing filler anti-pattern ("thorough", "comprehensive", "expert")
+- [x] Example annotations kept short — pattern instruction above, not essays per example
+- [x] Meta-prompt sections reordered: role → context → process → checklist → prioritization → techniques → rules → examples → critical constraint
+- [x] Manual test: "help me with my website" → adds specifics, zero filler phrases
+- [x] Manual test: "how to learn Java" → adds skill level + goal + structure, no "explain thoroughly"
+- [x] Manual test: "compare AWS and Google Cloud" → adds use case + criteria + format, no "cover all aspects"
+- [x] Manual test: "write a blog post about AI" → adds audience + angle + length, no "make it engaging"
+- [x] Each test prompt run 3 times to verify consistency
+- [x] All unit tests passing, production build clean
+- [x] Commit captured in consolidation checkpoint commit (2026-03-30)
+- Notes: Updated extension/src/lib/meta-prompt.ts with gap prioritization, purpose-test rule, and examples section (4 good + 1 bad). Added unit tests to assert presence and section ordering in test/unit/meta-prompt.test.ts. Validation now re-verified at 48/48 tests passing and `pnpm build` succeeding after checkpoint restore.
+
+### PHASE 15.9 — Runtime Regression: LLM call stalls after ENHANCE start [complete]
+
+- [x] Reproduced bug on short prompt (`how to learn java`) and long combined prompts
+- [x] Verified content script and service worker handshake path works (`Enhance triggered` -> `Port connected` -> `Received ENHANCE request` -> `Calling LLM API (BYOK)`)
+- [x] First token or explicit ERROR reliably returned for OpenRouter path
+- [x] Spinner always resolves (DONE/ERROR) in real-world provider conditions
+- [x] Commit captured in consolidation checkpoint commit (2026-03-30)
 - Notes:
+  - Stalled OpenRouter paths were hardened with START handshake, progress/ack timeouts, stream timeout handling, and non-stream fallback.
+  - Parser resilience now covers no-space `data:` lines, CRLF separators, and streamed error payloads.
+  - Changes made in this phase:
+    - Added stale-extension runtime guards and safer port error handling in content script.
+    - Added START handshake message (`START`) from service worker to content script.
+    - Added no-response/progress timeout logic to avoid infinite spinner.
+    - Added request abort timeouts in LLM client with provider-specific timeout windows.
+    - Added OpenRouter fallback retry path on timeout-like failures.
+    - Added explicit API host permissions for Anthropic/OpenAI/OpenRouter in manifest.
+    - Added/updated stream parser and OpenRouter non-stream tests; test suite remained green.
+
+### PHASE 15.10 — Sendable Rewrites, Critical Questions Only [complete]
+
+- [x] Add explicit RULES ban on placeholders/templates in `extension/src/lib/meta-prompt.ts`
+- [x] Add RULES requirement: rewritten prompt must be sendable as-is (no user edits)
+- [x] Add RULES requirement: ask clarifying questions only when missing context is critical
+- [x] Add RULES requirement: if context is sufficient, rewrite directly without questions
+- [x] Add RULES requirement: max 3-4 concise clarifying questions when needed
+- [x] Add Option A behavior instruction for critical-missing-context prompts (strip bloat, keep structure, ask AI to gather missing context first)
+- [x] Add BAD example for placeholder templates:
+  - Before: "I need a business strategy"
+  - After: "... [industry] ... [budget] ... [goal] ..."
+- [x] Add BAD example for over-questioning when context is already sufficient
+- [x] Update `extension/test/unit/meta-prompt.test.ts` assertions for the new rules and examples
+- [x] `pnpm test` passes
+- [x] `pnpm build` passes
+- [x] Manual verification (run each prompt 3 times):
+  - "I need a business strategy" → no placeholders, sendable, asks questions only if critical
+  - "help me with my app" → no placeholders, sendable, asks questions only if critical
+  - detailed AWS vs GCP prompt → direct rewrite, no unnecessary questions
+  - specific launch-email prompt → direct rewrite, no unnecessary questions
+- [x] Commit captured in consolidation checkpoint commit (2026-03-30)
+- Notes: Phase 15.10 rules and examples are in `extension/src/lib/meta-prompt.ts`, with matching assertions in `extension/test/unit/meta-prompt.test.ts`. Validation re-run after checkpoint restore: `pnpm test` => 48/48 passing, `pnpm build` => pass.
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

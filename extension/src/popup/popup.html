@@ -21,7 +21,10 @@
     <input type="password" id="api-key" placeholder="sk-or-... / sk-ant-... / sk-..." autocomplete="off" spellcheck="false">
     <div id="key-status" class="status"></div>
 
-    <label for="model-select" class="label--model">Model</label>
+    <div class="model-label-row">
+      <label for="model-select" class="label--model">Model</label>
+      <span id="model-hint" class="model-hint"></span>
+    </div>
     <select id="model-select" class="model-select">
       <option value="">Enter an API key first</option>
     </select>

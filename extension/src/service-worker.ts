@@ -9,9 +9,14 @@ import {
   callAnthropicAPI,
   callOpenAIAPI,
   callOpenRouterAPI,
+  callOpenRouterAPIOnce,
   parseAnthropicStream,
   parseOpenAIStream,
 } from './lib/llm-client'
+
+const STREAM_STALL_TIMEOUT_MS = 60000
+const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 15000
+const OPENROUTER_FALLBACK_MODEL = 'nvidia/nemotron-3-nano-30b-a3b:free'
 
 console.info('[PromptGod] Service worker started')
 
@@ -51,6 +56,8 @@ async function handleEnhance(
   )
 
   try {
+    sendMessage(port, { type: 'START' })
+
     // Read settings from storage on each request — never cache
     const { apiKey, provider, model } = await chrome.storage.local.get(
       ['apiKey', 'provider', 'model']
@@ -86,18 +93,39 @@ async function handleEnhance(
 
     // Route to the correct provider, passing the selected model
     if (provider === 'openrouter') {
-      const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
-      for await (const text of parseOpenAIStream(response)) {
-        sendMessage(port, { type: 'TOKEN', text })
+      const requestedModel = model ?? OPENROUTER_FALLBACK_MODEL
+
+      try {
+        await streamOpenRouter(port, apiKey, systemPrompt, userMessage, requestedModel)
+      } catch (error) {
+        const isFallbackCandidate =
+          requestedModel !== OPENROUTER_FALLBACK_MODEL && shouldRetryOpenRouterWithFallback(error)
+
+        if (!isFallbackCandidate) {
+          throw error
+        }
+
+        console.info(
+          { requestedModel, fallbackModel: OPENROUTER_FALLBACK_MODEL },
+          '[PromptGod] Retrying OpenRouter request with fallback model'
+        )
+
+        await streamOpenRouter(
+          port,
+          apiKey,
+          systemPrompt,
+          userMessage,
+          OPENROUTER_FALLBACK_MODEL
+        )
       }
     } else if (provider === 'anthropic') {
       const response = await callAnthropicAPI(apiKey, systemPrompt, userMessage, model)
-      for await (const text of parseAnthropicStream(response)) {
+      for await (const text of withStallTimeout(parseAnthropicStream(response), STREAM_STALL_TIMEOUT_MS)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else if (provider === 'openai') {
       const response = await callOpenAIAPI(apiKey, systemPrompt, userMessage, model)
-      for await (const text of parseOpenAIStream(response)) {
+      for await (const text of withStallTimeout(parseOpenAIStream(response), STREAM_STALL_TIMEOUT_MS)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else {
@@ -130,4 +158,131 @@ function sendMessage(port: chrome.runtime.Port, msg: ServiceWorkerMessage): void
   } catch (error) {
     console.info({ cause: error }, '[PromptGod] Could not send message — port disconnected')
   }
+}
+
+async function streamOpenRouter(
+  port: chrome.runtime.Port,
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string
+): Promise<void> {
+  try {
+    const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
+
+    const stream = parseOpenAIStream(response)
+    const first = await nextWithTimeout(stream, OPENROUTER_FIRST_TOKEN_TIMEOUT_MS)
+
+    if (first.done) {
+      console.info(
+        { model },
+        '[PromptGod] OpenRouter stream produced no tokens, falling back to non-stream response'
+      )
+      await fallbackOpenRouterAsChunks(port, apiKey, systemPrompt, userMessage, model)
+      return
+    }
+
+    sendMessage(port, { type: 'TOKEN', text: first.value })
+
+    while (true) {
+      const next = await nextWithTimeout(stream, STREAM_STALL_TIMEOUT_MS)
+      if (next.done) {
+        break
+      }
+      sendMessage(port, { type: 'TOKEN', text: next.value })
+    }
+  } catch (error) {
+    if (!isTimeoutLike(error)) {
+      throw error
+    }
+
+    console.info(
+      { model },
+      '[PromptGod] OpenRouter stream stalled, falling back to non-stream response'
+    )
+
+    await fallbackOpenRouterAsChunks(port, apiKey, systemPrompt, userMessage, model)
+  }
+}
+
+async function fallbackOpenRouterAsChunks(
+  port: chrome.runtime.Port,
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string
+): Promise<void> {
+  const enhancedText = await callOpenRouterAPIOnce(apiKey, systemPrompt, userMessage, model)
+  const chunks = chunkForStreaming(enhancedText)
+
+  for (const chunk of chunks) {
+    sendMessage(port, { type: 'TOKEN', text: chunk })
+    await sleep(12)
+  }
+}
+
+function chunkForStreaming(text: string): string[] {
+  const chunks = text.match(/\S+\s*/g)
+  if (!chunks || chunks.length === 0) {
+    return [text]
+  }
+  return chunks
+}
+
+function isTimeoutLike(error: unknown): boolean {
+  return error instanceof Error
+    && (/timed out/i.test(error.message) || /stalled/i.test(error.message))
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function shouldRetryOpenRouterWithFallback(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  // Invalid key/auth errors won't be fixed by changing model.
+  if (/401|unauthorized|invalid api key|authentication/i.test(error.message)) {
+    return false
+  }
+
+  return true
+}
+
+async function* withStallTimeout<T>(
+  source: AsyncGenerator<T>,
+  timeoutMs: number
+): AsyncGenerator<T, void, unknown> {
+  while (true) {
+    const result = await nextWithTimeout(source, timeoutMs)
+    if (result.done) {
+      return
+    }
+    yield result.value
+  }
+}
+
+async function nextWithTimeout<T>(
+  source: AsyncGenerator<T>,
+  timeoutMs: number
+): Promise<IteratorResult<T, void>> {
+  return await new Promise<IteratorResult<T, void>>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`[ServiceWorker] Stream stalled for ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    source.next()
+      .then((result) => {
+        clearTimeout(timeout)
+        resolve(result)
+      })
+      .catch((error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+  })
 }

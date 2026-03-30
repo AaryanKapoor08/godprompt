@@ -251,3 +251,34 @@ Perplexity adapter and Chrome Web Store launch — see `claude/Progress.md` for 
 ## Phases 16-18 — Context Menu (optional, not started)
 
 Right-click "Enhance with PromptGod" on any webpage — see `claude/BuildFlow.md` for full plan.
+
+---
+
+## Consolidation Snapshot (2026-03-30)
+
+This checkpoint bundles runtime reliability hardening (Phase 15.9 scope) and sendable-rewrite guardrails (Phase 15.10 scope).
+
+**Primary code updates:**
+- Streaming reliability hardening in `extension/src/content/ui/trigger-button.ts` and `extension/src/service-worker.ts` (START handshake, timeout safeguards, safer runtime handling).
+- Parser/reliability updates in `extension/src/lib/llm-client.ts` (OpenAI-compatible SSE robustness + OpenRouter non-stream fallback path).
+- Message contract update in `extension/src/lib/types.ts` (`START` message support).
+- Prompt policy updates in `extension/src/lib/meta-prompt.ts` (no placeholders, sendable-as-is, critical-only clarifying questions).
+- Popup UX tune in `extension/src/popup/popup.html`, `extension/src/popup/popup.ts`, and `extension/src/popup/popup.css` (model hint row).
+
+**Test updates:**
+- `extension/test/unit/meta-prompt.test.ts`
+- `extension/test/unit/parse-openai-stream.test.ts`
+- `extension/test/unit/openrouter-nonstream.test.ts` (new)
+
+**Docs updated in this checkpoint:**
+- `claude/BuildFlow.md`
+- `claude/Progress.md`
+- `claude/github.md`
+
+**Verification (re-run after checkpoint restore):**
+- `pnpm test` in `extension/` → 7 files, 48 tests passed
+- `pnpm build` in `extension/` → success (known Vite emit warning for icon overwrite)
+
+**Local-only files intentionally excluded from commit scope:**
+- `.claude/settings.local.json`
+- `.vscode/settings.json`

@@ -545,39 +545,17 @@ Icons replaced by resizing `extension/assets/generated-image.png` (the source ic
 ### Bug 2 status: FIXED
 ChatGPT trigger button now uses absolute positioning (`position: absolute; bottom: 8px; right: 76px`) inside the form instead of DOM walking. This keeps it anchored at the bottom regardless of text growth. CSS is in `.promptpilot-trigger-btn--chatgpt` in `styles.css`.
 
-### Bug 3: Service worker not waking up on port connect (BLOCKING — NOT YET FIXED)
+### Bug 3 status: FIXED
 
-**Problem:** After Phase 15.7 changes were applied, the extension stopped working. The content script loads, button injects, enhance triggers — but nothing happens. No tokens stream, no error toast appears.
+The silent "click enhance and nothing happens" path is resolved.
 
-**Root cause:** Chrome MV3 service worker lifecycle issue. The service worker goes idle after ~30 seconds and gets terminated. When the content script calls `chrome.runtime.connect({ name: 'enhance' })`, Chrome is supposed to wake the service worker and deliver the `onConnect` event, but it **doesn't reliably do this**. The connection silently fails — no error, no disconnect event.
+What was hardened:
+- PING/PONG wakeup remains in place before opening the streaming port.
+- Content script now guards stale runtime contexts (`Extension context invalidated`) and shows a refresh warning instead of silently failing.
+- Service worker sends a `START` acknowledgement so the UI can detect no-response states.
+- Content script enforces acknowledgement/progress timeouts so spinner states always resolve.
 
-**Evidence:**
-- With service worker DevTools open (which keeps the worker alive), everything works perfectly: Port connected → ENHANCE received → LLM API called → tokens stream back
-- Without DevTools open, service worker shows only "Service worker started" (from initial load), never "Port connected" — the `onConnect` event never fires
-- Content script shows "Enhance triggered" then nothing — no error, no toast, no tokens
-- This is a known MV3 issue: `onConnect` is less reliable than `onMessage` for waking service workers
-
-**Attempted fix (partially applied, NOT confirmed working):**
-Added a PING/PONG mechanism — content script sends `chrome.runtime.sendMessage({ type: 'PING' })` before opening the port, which reliably wakes the service worker. Service worker has matching `onMessage` listener that responds with `{ type: 'PONG' }`.
-
-Changes made:
-- `extension/src/content/ui/trigger-button.ts` — `handleEnhanceClick()` is now `async`, sends PING before `chrome.runtime.connect()`
-- `extension/src/service-worker.ts` — added `chrome.runtime.onMessage.addListener` for PING at top level
-
-**If PING/PONG doesn't fix it, try these alternatives:**
-1. **Replace ports with sendMessage entirely:** Instead of `chrome.runtime.connect()` for streaming, use `chrome.runtime.sendMessage()` for the ENHANCE request, collect the full LLM response in the service worker, then send the complete text back. Downside: no token-by-token streaming, user sees nothing until the full response arrives.
-2. **Use chrome.alarms keepalive:** Register a recurring alarm every 25 seconds to keep the service worker alive. Downside: slightly wasteful, but reliable.
-3. **Hybrid approach:** Use `sendMessage` for the initial request + first response, then open a port for streaming. The `sendMessage` wakes the worker, and by the time the port opens, the worker is guaranteed alive.
-
-**To test the current PING/PONG fix:**
-1. Reload extension in `chrome://extensions`
-2. Close the service worker DevTools (to test without keepalive)
-3. Refresh ChatGPT or Claude page
-4. Wait 30+ seconds (let service worker go idle)
-5. Click enhance
-6. Check: does it work? If not, open service worker DevTools and check logs
-
-**Commit when fixed:** `fix(service-worker): add PING wakeup before port connect for MV3 lifecycle`
+Follow-up reliability work was expanded and tracked as Phase 15.9 below.
 
 ---
 
@@ -753,6 +731,145 @@ Test each of these prompts manually and evaluate rewrite quality:
 ---
 
 **This phase is complete when:** rewrites are consistently purposeful across all 4 test domains, with no filler phrases and no over-specification. Unit tests passing, production build clean.
+
+---
+
+## PHASE 15.9 — STREAMING RELIABILITY: NO SILENT STALLS [DO THIS BEFORE PHASE 15.10]
+
+**Goal:** Every enhancement request must end in streamed output (`TOKEN` + `DONE`) or an explicit `ERROR` within bounded time.
+
+### Part 1 — Request Visibility + Timeouts
+
+**Files to modify:**
+- `extension/src/service-worker.ts`
+- `extension/src/content/ui/trigger-button.ts`
+
+**Tasks:**
+- Add a `START` handshake message from service worker to content script immediately after ENHANCE receipt.
+- Add acknowledgement timeout in content script (if no `START`/`TOKEN`/`ERROR`, fail visibly).
+- Add progress timeout in content script to prevent infinite loading when provider stalls.
+
+### Part 2 — Stream Parser Hardening
+
+**Files to modify:**
+- `extension/src/lib/llm-client.ts`
+- `extension/test/unit/parse-openai-stream.test.ts`
+
+**Tasks:**
+- Parse OpenAI-compatible SSE lines with and without a space after `data:`.
+- Handle CRLF-delimited SSE chunks safely.
+- Surface streamed error payloads as explicit thrown errors.
+
+### Part 3 — OpenRouter Reliability Fallback
+
+**Files to modify:**
+- `extension/src/lib/llm-client.ts`
+- `extension/src/service-worker.ts`
+- `extension/test/unit/openrouter-nonstream.test.ts`
+
+**Tasks:**
+- Add bounded request timeouts and first-token timeout handling for OpenRouter.
+- If stream path stalls, fall back to non-stream completion and emit chunked tokens to preserve typing UX.
+- Add fallback-model retry for recoverable OpenRouter model-path failures.
+
+### Part 4 — Verification
+
+**Checkpoint:**
+- [ ] No silent spinner hangs in idle-worker and warm-worker scenarios
+- [ ] OpenRouter path returns either streamed text or explicit ERROR
+- [ ] `parse-openai-stream.test.ts` covers no-space `data:`, CRLF, and streamed error payloads
+- [ ] `openrouter-nonstream.test.ts` covers non-stream success and failure extraction
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Commit: `fix(streaming): resolve stalled OpenRouter enhancement flow`
+
+---
+
+## PHASE 15.10 — SENDABLE REWRITES, CRITICAL QUESTIONS ONLY [DO THIS BEFORE PHASE 16]
+
+**Goal:** Rewrites are always immediately sendable, never include placeholders, and ask clarifying questions only when missing context is truly critical.
+
+### Part 1 — Rule Contract (No Placeholders)
+
+**Files to modify:**
+- `extension/src/lib/meta-prompt.ts` — `META_PROMPT_TEMPLATE`
+
+**Tasks:**
+- In the RULES section, add a hard ban on placeholders and variable slots.
+- The rule must explicitly ban bracketed variables and template-style fields (for example: `[industry]`, `[budget]`, `[goal]`, `{x}`, `<x>`).
+- State that rewritten prompts must be sendable as-is, with no user edits required.
+
+### Part 2 — Critical-Only Clarifying Questions
+
+**Files to modify:**
+- `extension/src/lib/meta-prompt.ts` — `META_PROMPT_TEMPLATE`
+
+**Tasks:**
+- Add a rule: clarifying questions are allowed only when missing context is critical.
+- Add a rule: if context is sufficient, do NOT ask questions — produce a direct rewrite.
+- Add a rule: when clarifying questions are needed, ask only 3-4 concise questions.
+- Add a rule: in critical-missing-context cases, use Option A behavior:
+  - strip bloat,
+  - keep useful structure,
+  - ask the AI to gather missing context before proceeding.
+
+### Part 3 — Examples (Positive + Negative)
+
+**Files to modify:**
+- `extension/src/lib/meta-prompt.ts` — EXAMPLES section
+
+**Tasks:**
+- Keep existing quality examples, but ensure they do not force placeholders.
+- Add this explicit bad example:
+
+```
+BAD rewrite — do NOT do this:
+Before: "I need a business strategy"
+After:  "Create a strategy for my [industry] business with a [budget] budget targeting [primary goal] under [constraints]."
+(This is a template, not a prompt. The user cannot send this. NEVER use placeholders — rewrite so it sends as-is.)
+```
+
+- Add one more bad pattern:
+  - asking clarifying questions even when the user already provided sufficient context.
+
+### Part 4 — Unit Test Updates
+
+**Files to modify:**
+- `extension/test/unit/meta-prompt.test.ts`
+
+**Tasks:**
+- Add assertions that the no-placeholder rule exists.
+- Add assertions that the critical-only clarifying-question rule exists.
+- Add assertions that the new bad placeholder example exists.
+- Keep section-order assertions passing (role → context → process → checklist → prioritization → techniques → rules → examples → critical constraint).
+
+### Part 5 — Manual Verification Matrix (No Gaps)
+
+Run each prompt 3 times on your active provider/model configuration.
+
+Test prompts:
+1. `"I need a business strategy"`
+2. `"help me with my app"`
+3. `"Compare AWS and Google Cloud for a mid-sized tech company. Focus on pricing, compute services, managed database options, Kubernetes support, and global infrastructure. Present findings in a side-by-side comparison table highlighting pros and cons for each platform's key services. Include a brief summary of which platform might be better for different use cases."`
+4. `"Write a launch email for a fintech feature to existing users. Keep it under 180 words and include a CTA."`
+
+Expected behavior:
+- Zero placeholders in all rewrites.
+- Prompts are sendable immediately without edits.
+- Prompts 1-2 may ask 3-4 clarifying questions only if needed.
+- Prompts 3-4 should rewrite directly with no unnecessary questions.
+
+### Checkpoint
+
+- [ ] Meta-prompt contains explicit no-placeholder rule and sendable-as-is requirement
+- [ ] Meta-prompt contains critical-only clarifying-question rule
+- [ ] New BAD example for placeholder templates added
+- [ ] No over-questioning rule added (avoid questions when context is sufficient)
+- [ ] `meta-prompt.test.ts` updated and passing
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Manual matrix passes (4 prompts × 3 runs each)
+- [ ] Commit: `fix(meta-prompt): enforce sendable rewrites with critical-only questions`
 
 ---
 

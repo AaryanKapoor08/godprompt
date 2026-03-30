@@ -91,6 +91,61 @@ describe('parseOpenAIStream', () => {
     expect(tokens).toEqual(['Only this'])
   })
 
+  it('parses data lines without a space after colon', async () => {
+    const sse = [
+      'data:{"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}',
+      '',
+      'data:{"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}',
+      '',
+      'data:[DONE]',
+      '',
+    ].join('\n')
+
+    const response = createMockSSEResponse(sse)
+    const tokens: string[] = []
+
+    for await (const text of parseOpenAIStream(response)) {
+      tokens.push(text)
+    }
+
+    expect(tokens).toEqual(['Hello', ' world'])
+  })
+
+  it('handles CRLF line endings', async () => {
+    const sse = [
+      'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"CR"},"finish_reason":null}]}',
+      '',
+      'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"LF"},"finish_reason":null}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\r\n')
+
+    const response = createMockSSEResponse(sse)
+    const tokens: string[] = []
+
+    for await (const text of parseOpenAIStream(response)) {
+      tokens.push(text)
+    }
+
+    expect(tokens).toEqual(['CR', 'LF'])
+  })
+
+  it('throws on streamed error payload', async () => {
+    const sse = [
+      'data: {"error":{"message":"upstream overloaded"}}',
+      '',
+    ].join('\n')
+
+    const response = createMockSSEResponse(sse)
+
+    await expect(async () => {
+      for await (const text of parseOpenAIStream(response)) {
+        void text
+      }
+    }).rejects.toThrow('[LLMClient] OpenAI-compatible stream error: upstream overloaded')
+  })
+
   it('throws when response body is null', async () => {
     const response = new Response(null)
 

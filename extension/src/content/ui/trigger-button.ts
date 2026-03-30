@@ -9,6 +9,18 @@ import { showUndoButton, removeUndoButton } from './undo-button'
 let isEnhancing = false
 let injectedButton: HTMLButtonElement | null = null
 
+function isExtensionContextInvalidated(error: unknown): boolean {
+  return error instanceof Error && /extension context invalidated/i.test(error.message)
+}
+
+function hasRuntimeContext(): boolean {
+  try {
+    return Boolean(chrome?.runtime?.id && chrome?.runtime?.connect)
+  } catch {
+    return false
+  }
+}
+
 export function injectTriggerButton(adapter: PlatformAdapter): void {
   // Don't double-inject
   if (injectedButton && document.body.contains(injectedButton)) {
@@ -209,7 +221,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   setLoading(true)
 
   // Guard against stale content script after extension reload
-  if (!chrome?.runtime?.connect) {
+  if (!hasRuntimeContext()) {
     showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
     setLoading(false)
     return
@@ -219,13 +231,31 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   // Chrome MV3 service workers go idle and onConnect alone doesn't reliably wake them.
   try {
     await chrome.runtime.sendMessage({ type: 'PING' })
-  } catch {
+  } catch (error) {
+    if (isExtensionContextInvalidated(error) || !hasRuntimeContext()) {
+      showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+      setLoading(false)
+      return
+    }
+
     // Service worker might not have a sendMessage listener yet — that's fine,
     // the ping itself wakes it up. Ignore errors.
   }
 
   // Open port to service worker for streaming
-  const port = chrome.runtime.connect({ name: 'enhance' })
+  let port: chrome.runtime.Port
+  try {
+    port = chrome.runtime.connect({ name: 'enhance' })
+  } catch (error) {
+    if (isExtensionContextInvalidated(error) || !hasRuntimeContext()) {
+      showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+    } else {
+      console.error({ cause: error }, '[PromptGod] Failed to open port to service worker')
+      showToast({ message: 'Could not reach extension service worker', variant: 'error' })
+    }
+    setLoading(false)
+    return
+  }
 
   // Send ENHANCE message
   const message: EnhanceMessage = {
@@ -234,15 +264,107 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     platform,
     context,
   }
-  port.postMessage(message)
+  try {
+    port.postMessage(message)
+  } catch (error) {
+    if (isExtensionContextInvalidated(error) || !hasRuntimeContext()) {
+      showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+    } else {
+      console.error({ cause: error }, '[PromptGod] Failed to send ENHANCE message')
+      showToast({ message: 'Failed to start enhancement', variant: 'error' })
+    }
+    try {
+      port.disconnect()
+    } catch {
+      // no-op
+    }
+    setLoading(false)
+    return
+  }
 
   // Accumulate streamed tokens for DOM replacement
   let accumulatedText = ''
   let firstToken = true
+  let settled = false
+  let acknowledged = false
+
+  const ackTimeout = window.setTimeout(() => {
+    if (settled) {
+      return
+    }
+
+    showToast({
+      message: 'Service worker did not respond. Refresh the page and try again.',
+      variant: 'error',
+    })
+    try {
+      port.disconnect()
+    } catch {
+      // no-op
+    }
+  }, 10000)
+
+  let progressTimeout: number | null = window.setTimeout(() => {
+    if (settled) {
+      return
+    }
+
+    showToast({
+      message: 'Enhancement timed out. Try again with a shorter prompt.',
+      variant: 'error',
+    })
+    try {
+      port.disconnect()
+    } catch {
+      // no-op
+    }
+  }, 45000)
+
+  function resetProgressTimeout(): void {
+    if (progressTimeout !== null) {
+      window.clearTimeout(progressTimeout)
+    }
+    progressTimeout = window.setTimeout(() => {
+      if (settled) {
+        return
+      }
+
+      showToast({
+        message: 'Enhancement timed out. Try again with a shorter prompt.',
+        variant: 'error',
+      })
+      try {
+        port.disconnect()
+      } catch {
+        // no-op
+      }
+    }, 45000)
+  }
+
+  function settle(): void {
+    if (settled) {
+      return
+    }
+    settled = true
+    window.clearTimeout(ackTimeout)
+    if (progressTimeout !== null) {
+      window.clearTimeout(progressTimeout)
+      progressTimeout = null
+    }
+    cleanupPort()
+  }
 
   // Listen for TOKEN, DONE, ERROR from service worker
   port.onMessage.addListener((msg: ServiceWorkerMessage) => {
-    if (msg.type === 'TOKEN') {
+    if (!acknowledged) {
+      acknowledged = true
+      window.clearTimeout(ackTimeout)
+    }
+    resetProgressTimeout()
+
+    if (msg.type === 'START') {
+      console.info('[PromptGod] Service worker acknowledged request')
+    } else if (msg.type === 'TOKEN') {
       accumulatedText += msg.text
 
       try {
@@ -266,28 +388,37 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         '[PromptGod] Enhancement complete'
       )
       showUndoButton(adapter, originalPrompt)
-      cleanupPort()
+      settle()
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptGod] Enhancement error')
       showToast({ message: msg.message, variant: 'error' })
       if (accumulatedText.length > 0) {
         showUndoButton(adapter, originalPrompt)
       }
-      cleanupPort()
+      settle()
     }
   })
 
   // Handle unexpected disconnection
   port.onDisconnect.addListener(() => {
+    if (settled) {
+      return
+    }
+
     const error = chrome.runtime.lastError
     if (error) {
-      console.error({ cause: error }, '[PromptGod] Port disconnected with error')
-      showToast({ message: 'Connection to service worker lost', variant: 'error' })
+      const invalidated = /extension context invalidated/i.test(error.message)
+      if (invalidated || !hasRuntimeContext()) {
+        showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+      } else {
+        console.error({ cause: error }, '[PromptGod] Port disconnected with error')
+        showToast({ message: 'Connection to service worker lost', variant: 'error' })
+      }
     }
     if (accumulatedText.length > 0) {
       showUndoButton(adapter, originalPrompt)
     }
-    cleanupPort()
+    settle()
   })
 }
 

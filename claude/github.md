@@ -1,4 +1,4 @@
-# PromptPilot — Commit History
+# PromptGod — Commit History
 
 Track of all commits pushed to GitHub, organized by phase.
 
@@ -258,6 +258,9 @@ Right-click "Enhance with PromptGod" on any webpage — see `claude/BuildFlow.md
 
 This checkpoint bundles runtime reliability hardening (Phase 15.9 scope) and sendable-rewrite guardrails (Phase 15.10 scope).
 
+Primary consolidation commit:
+- `0ec008c` — `fix(extension): harden streaming reliability and prompt rewriting`
+
 **Primary code updates:**
 - Streaming reliability hardening in `extension/src/content/ui/trigger-button.ts` and `extension/src/service-worker.ts` (START handshake, timeout safeguards, safer runtime handling).
 - Parser/reliability updates in `extension/src/lib/llm-client.ts` (OpenAI-compatible SSE robustness + OpenRouter non-stream fallback path).
@@ -282,3 +285,10 @@ This checkpoint bundles runtime reliability hardening (Phase 15.9 scope) and sen
 **Local-only files intentionally excluded from commit scope:**
 - `.claude/settings.local.json`
 - `.vscode/settings.json`
+
+---
+
+## Follow-up Split Doc Commits (2026-03-30)
+
+- `c562650` — `docs(buildflow): mark phases 15.9 and 15.10 checkpoints complete`
+- `5cc717b` — `docs(progress): set current phase to 16 and sync 15.10 notes`

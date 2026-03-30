@@ -3,38 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PromptPilot</title>
+  <title>PromptGod</title>
   <link rel="stylesheet" href="./popup.css">
 </head>
 <body>
   <div class="header">
-    <div class="header-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
-      </svg>
-    </div>
-    <h1>PromptPilot</h1>
+    <img class="header-icon" id="header-logo" alt="" />
+    <h1>PromptGod</h1>
   </div>
   <p class="subtitle">Make your AI prompts smarter with one click.</p>
 
-  <!-- Mode Toggle -->
-  <div class="mode-toggle">
-    <button id="mode-free" class="mode-btn mode-btn--active" type="button">Free tier</button>
-    <button id="mode-byok" class="mode-btn" type="button">Use my API key</button>
-  </div>
+  <p class="byok-hint">Bring your own API key to get started. Get one from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or use any other key you have (Anthropic, OpenAI, etc.).</p>
 
-  <!-- Usage Counter (free tier) -->
-  <div id="usage-section" class="section">
-    <div class="usage-bar">
-      <div id="usage-fill" class="usage-bar__fill"></div>
-    </div>
-    <p id="usage-text" class="usage-text">0 of 10 enhancements used this hour</p>
-  </div>
-
-  <!-- BYOK Settings -->
-  <div id="byok-section" class="section" style="display: none;">
+  <!-- API Key Settings -->
+  <div id="byok-section" class="section">
     <label for="api-key">API Key</label>
-    <input type="password" id="api-key" placeholder="sk-ant-... or sk-..." autocomplete="off" spellcheck="false">
+    <input type="password" id="api-key" placeholder="sk-or-... / sk-ant-... / sk-..." autocomplete="off" spellcheck="false">
     <div id="key-status" class="status"></div>
 
     <label for="model-select" class="label--model">Model</label>

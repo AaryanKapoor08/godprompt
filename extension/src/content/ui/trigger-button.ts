@@ -284,9 +284,13 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   // Accumulate streamed tokens for DOM replacement
   let accumulatedText = ''
+  let pendingText = ''
+  let renderFrameId: number | null = null
   let firstToken = true
   let settled = false
   let acknowledged = false
+  let doneReceived = false
+  let undoShown = false
 
   const ackTimeout = window.setTimeout(() => {
     if (settled) {
@@ -346,12 +350,137 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       return
     }
     settled = true
+    if (renderFrameId !== null) {
+      window.cancelAnimationFrame(renderFrameId)
+      renderFrameId = null
+    }
+    pendingText = ''
     window.clearTimeout(ackTimeout)
     if (progressTimeout !== null) {
       window.clearTimeout(progressTimeout)
       progressTimeout = null
     }
     cleanupPort()
+  }
+
+  function ensureUndoButton(): void {
+    if (undoShown) {
+      return
+    }
+
+    showUndoButton(adapter, originalPrompt, () => {
+      settle()
+      try {
+        port.disconnect()
+      } catch {
+        // no-op
+      }
+    })
+    undoShown = true
+  }
+
+  function applyAccumulatedText(): boolean {
+    try {
+      adapter.setPromptText(accumulatedText)
+    } catch (error) {
+      console.error({ cause: error }, '[PromptGod] Failed to update input field')
+      showToast({ message: 'Input field disappeared during enhancement', variant: 'error' })
+      try {
+        port.disconnect()
+      } catch {
+        // no-op
+      }
+      ensureUndoButton()
+      settle()
+      return false
+    }
+
+    ensureUndoButton()
+    if (firstToken) {
+      console.info('[PromptGod] Streaming started — first token received')
+      firstToken = false
+    }
+
+    return true
+  }
+
+  function flushPendingText(): boolean {
+    if (pendingText.length === 0) {
+      return true
+    }
+
+    accumulatedText += pendingText
+    pendingText = ''
+    return applyAccumulatedText()
+  }
+
+  function syncFinalText(): boolean {
+    try {
+      adapter.setPromptText(accumulatedText)
+      return true
+    } catch (error) {
+      console.error({ cause: error }, '[PromptGod] Failed final text sync')
+      showToast({ message: 'Input field disappeared during enhancement', variant: 'error' })
+      try {
+        port.disconnect()
+      } catch {
+        // no-op
+      }
+      ensureUndoButton()
+      settle()
+      return false
+    }
+  }
+
+  function maybeFinishAfterDone(rateLimitRemaining?: number): void {
+    if (!doneReceived || pendingText.length > 0 || renderFrameId !== null) {
+      return
+    }
+
+    const synced = syncFinalText()
+    if (!synced) {
+      return
+    }
+
+    console.info(
+      { enhancedLength: accumulatedText.length, rateLimitRemaining },
+      '[PromptGod] Enhancement complete'
+    )
+    ensureUndoButton()
+    settle()
+  }
+
+  function scheduleProgressiveRender(): void {
+    if (settled || renderFrameId !== null) {
+      return
+    }
+
+    renderFrameId = window.requestAnimationFrame(() => {
+      renderFrameId = null
+
+      if (settled) {
+        return
+      }
+
+      const CHARS_PER_FRAME = 14
+      const nextSlice = pendingText.slice(0, CHARS_PER_FRAME)
+      pendingText = pendingText.slice(CHARS_PER_FRAME)
+
+      if (nextSlice.length > 0) {
+        accumulatedText += nextSlice
+        const applied = applyAccumulatedText()
+        if (!applied) {
+          return
+        }
+      }
+
+      if (pendingText.length > 0) {
+        scheduleProgressiveRender()
+        return
+      }
+
+      maybeFinishAfterDone()
+    })
   }
 
   // Listen for TOKEN, DONE, ERROR from service worker
@@ -365,35 +494,24 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     if (msg.type === 'START') {
       console.info('[PromptGod] Service worker acknowledged request')
     } else if (msg.type === 'TOKEN') {
-      accumulatedText += msg.text
-
-      try {
-        adapter.setPromptText(accumulatedText)
-      } catch (error) {
-        console.error({ cause: error }, '[PromptGod] Failed to update input field')
-        showToast({ message: 'Input field disappeared during enhancement', variant: 'error' })
-        port.disconnect()
-        showUndoButton(adapter, originalPrompt)
-        cleanupPort()
-        return
-      }
-
-      if (firstToken) {
-        console.info('[PromptGod] Streaming started — first token received')
-        firstToken = false
-      }
+      pendingText += msg.text
+      scheduleProgressiveRender()
     } else if (msg.type === 'DONE') {
-      console.info(
-        { enhancedLength: accumulatedText.length, rateLimitRemaining: msg.rateLimitRemaining },
-        '[PromptGod] Enhancement complete'
-      )
-      showUndoButton(adapter, originalPrompt)
-      settle()
+      doneReceived = true
+      if (progressTimeout !== null) {
+        window.clearTimeout(progressTimeout)
+        progressTimeout = null
+      }
+      maybeFinishAfterDone(msg.rateLimitRemaining)
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptGod] Enhancement error')
       showToast({ message: msg.message, variant: 'error' })
+      const flushed = flushPendingText()
+      if (!flushed) {
+        return
+      }
       if (accumulatedText.length > 0) {
-        showUndoButton(adapter, originalPrompt)
+        ensureUndoButton()
       }
       settle()
     }
@@ -407,7 +525,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
     const error = chrome.runtime.lastError
     if (error) {
-      const invalidated = /extension context invalidated/i.test(error.message)
+      const errorMessage = error.message ?? ''
+      const invalidated = /extension context invalidated/i.test(errorMessage)
       if (invalidated || !hasRuntimeContext()) {
         showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
       } else {
@@ -415,8 +534,12 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         showToast({ message: 'Connection to service worker lost', variant: 'error' })
       }
     }
+    const flushed = flushPendingText()
+    if (!flushed) {
+      return
+    }
     if (accumulatedText.length > 0) {
-      showUndoButton(adapter, originalPrompt)
+      ensureUndoButton()
     }
     settle()
   })

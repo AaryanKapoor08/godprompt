@@ -775,13 +775,13 @@ Test each of these prompts manually and evaluate rewrite quality:
 ### Part 4 — Verification
 
 **Checkpoint:**
-- [ ] No silent spinner hangs in idle-worker and warm-worker scenarios
-- [ ] OpenRouter path returns either streamed text or explicit ERROR
-- [ ] `parse-openai-stream.test.ts` covers no-space `data:`, CRLF, and streamed error payloads
-- [ ] `openrouter-nonstream.test.ts` covers non-stream success and failure extraction
-- [ ] `pnpm test` passes
-- [ ] `pnpm build` passes
-- [ ] Commit: `fix(streaming): resolve stalled OpenRouter enhancement flow`
+- [x] No silent spinner hangs in idle-worker and warm-worker scenarios
+- [x] OpenRouter path returns either streamed text or explicit ERROR
+- [x] `parse-openai-stream.test.ts` covers no-space `data:`, CRLF, and streamed error payloads
+- [x] `openrouter-nonstream.test.ts` covers non-stream success and failure extraction
+- [x] `pnpm test` passes
+- [x] `pnpm build` passes
+- [x] Commit: `fix(streaming): resolve stalled OpenRouter enhancement flow`
 
 ---
 
@@ -861,15 +861,15 @@ Expected behavior:
 
 ### Checkpoint
 
-- [ ] Meta-prompt contains explicit no-placeholder rule and sendable-as-is requirement
-- [ ] Meta-prompt contains critical-only clarifying-question rule
-- [ ] New BAD example for placeholder templates added
-- [ ] No over-questioning rule added (avoid questions when context is sufficient)
-- [ ] `meta-prompt.test.ts` updated and passing
-- [ ] `pnpm test` passes
-- [ ] `pnpm build` passes
-- [ ] Manual matrix passes (4 prompts × 3 runs each)
-- [ ] Commit: `fix(meta-prompt): enforce sendable rewrites with critical-only questions`
+- [x] Meta-prompt contains explicit no-placeholder rule and sendable-as-is requirement
+- [x] Meta-prompt contains critical-only clarifying-question rule
+- [x] New BAD example for placeholder templates added
+- [x] No over-questioning rule added (avoid questions when context is sufficient)
+- [x] `meta-prompt.test.ts` updated and passing
+- [x] `pnpm test` passes
+- [x] `pnpm build` passes
+- [x] Manual matrix passes (4 prompts × 3 runs each)
+- [x] Commit: `fix(meta-prompt): enforce sendable rewrites with critical-only questions`
 
 ---
 

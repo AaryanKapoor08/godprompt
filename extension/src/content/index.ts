@@ -1,4 +1,4 @@
-// PromptPilot content script — injected into ChatGPT, Claude, and Gemini
+// PromptGod content script — injected into ChatGPT, Claude, Gemini, and Perplexity
 
 import type { PlatformAdapter } from './adapters/types'
 import { ChatGPTAdapter } from './adapters/chatgpt'
@@ -18,7 +18,7 @@ const adapter = adapters.find((a) => a.matches()) ?? null
 
 if (adapter) {
   const platform = adapter.getPlatform()
-  console.info({ platform }, '[PromptPilot] Content script loaded')
+  console.info({ platform }, '[PromptGod] Content script loaded')
 
   // Wait for platform's hydration before injecting UI
   function waitForInputAndInject(attempt: number): void {
@@ -27,14 +27,14 @@ if (adapter) {
     if (!inputElement && attempt < 10) {
       console.info(
         { attempt, platform },
-        '[PromptPilot] Input not ready, retrying...'
+        '[PromptGod] Input not ready, retrying...'
       )
       setTimeout(() => waitForInputAndInject(attempt + 1), 500)
       return
     }
 
     if (!inputElement) {
-      console.info({ platform }, '[PromptPilot] Input element not found after retries')
+      console.info({ platform }, '[PromptGod] Input element not found after retries')
       return
     }
 
@@ -45,5 +45,5 @@ if (adapter) {
 
   setTimeout(() => waitForInputAndInject(1), 500)
 } else {
-  console.info('[PromptPilot] Content script loaded on unrecognized platform')
+  console.info('[PromptGod] Content script loaded on unrecognized platform')
 }

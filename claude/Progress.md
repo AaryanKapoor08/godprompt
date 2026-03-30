@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15.10 (checkpoint closure + commit sync)**
+**Current Phase: 16 (optional context-menu scope, not started)**
 
 ---
 
@@ -282,7 +282,7 @@ Update this file as you complete each phase.
   - detailed AWS vs GCP prompt → direct rewrite, no unnecessary questions
   - specific launch-email prompt → direct rewrite, no unnecessary questions
 - [x] Commit captured in consolidation checkpoint commit (2026-03-30)
-- Notes: Phase 15.10 rules and examples are in `extension/src/lib/meta-prompt.ts`, with matching assertions in `extension/test/unit/meta-prompt.test.ts`. Validation re-run after checkpoint restore: `pnpm test` => 48/48 passing, `pnpm build` => pass.
+- Notes: Phase 15.10 rules and examples are in `extension/src/lib/meta-prompt.ts`, with matching assertions in `extension/test/unit/meta-prompt.test.ts`. Validation re-run after checkpoint restore: `pnpm test` => 48/48 passing, `pnpm build` => pass. BuildFlow checkpoint boxes were synced in commit `c562650`.
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

@@ -284,6 +284,19 @@ Update this file as you complete each phase.
 - [x] Commit captured in consolidation checkpoint commit (2026-03-30)
 - Notes: Phase 15.10 rules and examples are in `extension/src/lib/meta-prompt.ts`, with matching assertions in `extension/test/unit/meta-prompt.test.ts`. Validation re-run after checkpoint restore: `pnpm test` => 48/48 passing, `pnpm build` => pass. BuildFlow checkpoint boxes were synced in commit `c562650`.
 
+### PHASE 15.12 — Restore Streaming Injection [complete]
+
+- [x] Identified regression source: OpenRouter non-stream fallback path in `service-worker.ts` could delay visible text until full response
+- [x] Restored stream-first behavior: removed non-stream injection fallback from active enhancement path
+- [x] Hardened OpenAI-compatible SSE parsing for line-delimited providers that omit blank separators
+- [x] Restored undo responsiveness during active stream: undo now appears on first token and can stop streaming immediately
+- [x] Undo still works after completion/interruption and restores the original prompt instantly
+- [x] Added parser regression coverage for line-delimited `data:` frames without blank separators
+- [x] `pnpm test` passes (49/49)
+- [x] `pnpm build` passes
+- [x] Commit: pending
+- Notes: Streaming injection now begins as soon as provider tokens arrive, instead of waiting for a full non-stream fallback response. The service worker now surfaces stream timeout/no-token conditions as errors rather than degrading to delayed one-shot injection.
+
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 
 - [ ] `contextMenus` and `scripting` permissions added to `manifest.json`

@@ -211,14 +211,16 @@ Update this file as you complete each phase.
 
 ### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [not started]
 
-- [ ] `buildUserMessage()` wraps raw prompt with `"""` delimiters and "Rewrite the following prompt" instruction
+- [ ] `buildUserMessage()` wraps raw prompt with `"""` delimiters, "Rewrite the following prompt" instruction, AND platform/context info
+- [ ] Platform and context included in user message (reinforces system prompt for weaker models)
 - [ ] System prompt ends with CRITICAL CONSTRAINT block ("You are a REWRITER, not a RESPONDER")
-- [ ] `buildUserMessage()` unit test updated to assert new wrapped format
+- [ ] `buildUserMessage()` unit test updated to assert new wrapped format with platform/context
 - [ ] All unit tests passing
 - [ ] Manual test: "how to learn Java" → returns rewritten question, NOT a Java guide
 - [ ] Manual test: "explain quantum computing" → returns better question, NOT an explanation
 - [ ] Manual test: "write me a poem about rain" → returns more specific prompt, NOT a poem
 - [ ] Manual test: "what's the best database for my app" → returns sharpened question, NOT a comparison
+- [ ] GATE: all 4 manual tests pass before moving to Phase 15.8
 - [ ] Commit: `fix(meta-prompt): wrap user message with delimiters to prevent LLM from answering`
 - Notes:
 
@@ -226,8 +228,9 @@ Update this file as you complete each phase.
 
 - [ ] Gap prioritization rule added: "pick 1-2 most impactful gaps, not all"
 - [ ] Purpose test rule added: "if I remove this addition, does the AI give a worse answer?"
-- [ ] 4 before/after examples added covering: coding, research, writing, learning
-- [ ] Each example includes "Why this works" explanation showing what was added and what was NOT added
+- [ ] 4 before/after good examples added covering: coding, research, writing, learning
+- [ ] 1 BAD rewrite example added showing filler anti-pattern ("thorough", "comprehensive", "expert")
+- [ ] Example annotations kept short — pattern instruction above, not essays per example
 - [ ] Meta-prompt sections reordered: role → context → process → checklist → prioritization → techniques → rules → examples → critical constraint
 - [ ] Manual test: "help me with my website" → adds specifics, zero filler phrases
 - [ ] Manual test: "how to learn Java" → adds skill level + goal + structure, no "explain thoroughly"

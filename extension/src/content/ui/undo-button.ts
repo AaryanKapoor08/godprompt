@@ -12,7 +12,11 @@ let sendObserver: MutationObserver | null = null
  * Clicking it restores the original prompt via adapter.setPromptText().
  * Auto-dismisses after 10 seconds, or when user edits/sends.
  */
-export function showUndoButton(adapter: PlatformAdapter, originalPrompt: string): void {
+export function showUndoButton(
+  adapter: PlatformAdapter,
+  originalPrompt: string,
+  onUndo?: () => void
+): void {
   // Remove any existing undo button first
   removeUndoButton()
 
@@ -39,6 +43,7 @@ export function showUndoButton(adapter: PlatformAdapter, originalPrompt: string)
   // Click handler: restore original prompt
   button.addEventListener('click', () => {
     try {
+      onUndo?.()
       adapter.setPromptText(originalPrompt)
       console.info('[PromptGod] Original prompt restored via undo')
     } catch (error) {

@@ -139,6 +139,12 @@ export async function* parseOpenAIStream(
   let buffer = ''
   let eventDataLines: string[] = []
 
+  type ParseResult =
+    | { kind: 'token'; value: string }
+    | { kind: 'done' }
+    | { kind: 'parsed-noop' }
+    | { kind: 'invalid' }
+
   function flushEventData(): string | null {
     if (eventDataLines.length === 0) {
       return null
@@ -147,6 +153,34 @@ export async function* parseOpenAIStream(
     const data = eventDataLines.join('\n').trim()
     eventDataLines = []
     return data.length > 0 ? data : null
+  }
+
+  function parseDataPayload(data: string): ParseResult {
+    if (data === '[DONE]') {
+      return { kind: 'done' }
+    }
+
+    try {
+      const parsed = JSON.parse(data)
+
+      if (parsed?.error?.message) {
+        throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
+      }
+
+      // OpenAI SSE format: choices[0].delta.content
+      const content = parsed.choices?.[0]?.delta?.content
+      if (content) {
+        return { kind: 'token', value: content }
+      }
+
+      return { kind: 'parsed-noop' }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('[LLMClient] OpenAI-compatible stream error:')) {
+        throw error
+      }
+
+      return { kind: 'invalid' }
+    }
   }
 
   try {
@@ -168,28 +202,11 @@ export async function* parseOpenAIStream(
             continue
           }
 
-          if (data === '[DONE]') {
+          const parsed = parseDataPayload(data)
+          if (parsed.kind === 'token') {
+            yield parsed.value
+          } else if (parsed.kind === 'done') {
             return
-          }
-
-          try {
-            const parsed = JSON.parse(data)
-
-            if (parsed?.error?.message) {
-              throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
-            }
-
-            // OpenAI SSE format: choices[0].delta.content
-            const content = parsed.choices?.[0]?.delta?.content
-            if (content) {
-              yield content
-            }
-          } catch (error) {
-            if (error instanceof Error && error.message.startsWith('[LLMClient] OpenAI-compatible stream error:')) {
-              throw error
-            }
-
-            // Skip non-JSON data lines
           }
 
           continue
@@ -198,30 +215,33 @@ export async function* parseOpenAIStream(
         if (normalizedLine.startsWith('data:')) {
           const dataPart = normalizedLine.slice(5).trimStart()
           eventDataLines.push(dataPart)
+
+          // Fast path for line-delimited streams that do not emit blank separators.
+          const immediate = eventDataLines.join('\n').trim()
+          if (!immediate) {
+            continue
+          }
+
+          const parsed = parseDataPayload(immediate)
+          if (parsed.kind === 'token') {
+            yield parsed.value
+            eventDataLines = []
+          } else if (parsed.kind === 'done') {
+            return
+          } else if (parsed.kind === 'parsed-noop') {
+            eventDataLines = []
+          }
         }
       }
     }
 
     const trailingData = flushEventData()
-    if (trailingData === '[DONE]') {
-      return
-    }
-
     if (trailingData) {
-      try {
-        const parsed = JSON.parse(trailingData)
-        if (parsed?.error?.message) {
-          throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
-        }
-
-        const content = parsed.choices?.[0]?.delta?.content
-        if (content) {
-          yield content
-        }
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('[LLMClient] OpenAI-compatible stream error:')) {
-          throw error
-        }
+      const parsed = parseDataPayload(trailingData)
+      if (parsed.kind === 'token') {
+        yield parsed.value
+      } else if (parsed.kind === 'done') {
+        return
       }
     }
   } finally {

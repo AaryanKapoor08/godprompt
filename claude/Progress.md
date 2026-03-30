@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15 (15.5 complete, awaiting Chrome Web Store approval)**
+**Current Phase: 15.7 (15.6 complete, awaiting Chrome Web Store approval)**
 
 ---
 
@@ -199,6 +199,44 @@ Update this file as you complete each phase.
 - [x] 12 separate logical commits pushed to GitHub
 - [x] Updated ProjectSummary.md to reflect BYOK-only architecture
 - Notes: The content script and popup JS get different Vite hashes each build (expected), but the actual code logic matches the zip. The llm-client, service-worker, and popup CSS output are byte-for-byte identical.
+
+### PHASE 15.6 — Post-Sync Bugfixes [complete]
+
+- [x] Icon files replaced with branded 人 icons resized from `generated-image.png` at 16x16, 48x48, 128x128
+- [x] Toolbar icon, trigger button icon, and popup header all show correct branded icon
+- [x] ChatGPT trigger button positioned via absolute positioning inside form — stays fixed at bottom regardless of text length
+- [x] `pnpm build` succeeds, 36 unit tests passing
+- [x] Commit: `fix(extension): replace placeholder icons and fix ChatGPT button placement`
+- Notes: Icons cropped from generated-image.png (black 人 on white rounded square) with contrast boost. ChatGPT button uses `position: absolute; bottom: 8px; right: 76px` inside the form to avoid dependency on ChatGPT's internal DOM nesting.
+
+### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [not started]
+
+- [ ] `buildUserMessage()` wraps raw prompt with `"""` delimiters and "Rewrite the following prompt" instruction
+- [ ] System prompt ends with CRITICAL CONSTRAINT block ("You are a REWRITER, not a RESPONDER")
+- [ ] `buildUserMessage()` unit test updated to assert new wrapped format
+- [ ] All unit tests passing
+- [ ] Manual test: "how to learn Java" → returns rewritten question, NOT a Java guide
+- [ ] Manual test: "explain quantum computing" → returns better question, NOT an explanation
+- [ ] Manual test: "write me a poem about rain" → returns more specific prompt, NOT a poem
+- [ ] Manual test: "what's the best database for my app" → returns sharpened question, NOT a comparison
+- [ ] Commit: `fix(meta-prompt): wrap user message with delimiters to prevent LLM from answering`
+- Notes:
+
+### PHASE 15.8 — Meta-Prompt: Consistent Rewrite Quality [not started]
+
+- [ ] Gap prioritization rule added: "pick 1-2 most impactful gaps, not all"
+- [ ] Purpose test rule added: "if I remove this addition, does the AI give a worse answer?"
+- [ ] 4 before/after examples added covering: coding, research, writing, learning
+- [ ] Each example includes "Why this works" explanation showing what was added and what was NOT added
+- [ ] Meta-prompt sections reordered: role → context → process → checklist → prioritization → techniques → rules → examples → critical constraint
+- [ ] Manual test: "help me with my website" → adds specifics, zero filler phrases
+- [ ] Manual test: "how to learn Java" → adds skill level + goal + structure, no "explain thoroughly"
+- [ ] Manual test: "compare AWS and Google Cloud" → adds use case + criteria + format, no "cover all aspects"
+- [ ] Manual test: "write a blog post about AI" → adds audience + angle + length, no "make it engaging"
+- [ ] Each test prompt run 3 times to verify consistency
+- [ ] All unit tests passing, production build clean
+- [ ] Commit: `feat(meta-prompt): add examples, gap prioritization, and purpose test for consistent quality`
+- Notes:
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

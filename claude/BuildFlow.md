@@ -541,6 +541,167 @@ Test with:
 
 ---
 
+## PHASE 15.7 — META-PROMPT: STOP ANSWERING, START REWRITING [DO THIS BEFORE PHASE 15.8]
+
+**Problem:** The LLM sometimes answers the user's prompt instead of rewriting it. When a user types "how to learn Java", the model returns a Java learning guide instead of an improved version of the question. This happens because:
+
+1. `buildUserMessage()` in `llm-client.ts` sends the raw prompt with zero framing — the LLM sees `"how to learn Java"` as a question directed at it
+2. The system prompt's "return ONLY the enhanced prompt" instruction is buried in the middle — weaker models (especially free OpenRouter models) don't attend to it strongly enough
+3. There is no structural delimiter separating "this is input to rewrite" from "this is a request to fulfill"
+
+**Files to modify:**
+- `extension/src/lib/llm-client.ts` — `buildUserMessage()`
+- `extension/src/lib/meta-prompt.ts` — `META_PROMPT_TEMPLATE`
+- `extension/tests/llm-client.test.ts` — update `buildUserMessage()` test
+
+### Task 1: Wrap the raw prompt in `buildUserMessage()`
+
+Change `buildUserMessage()` to wrap the raw prompt with explicit delimiters and a rewrite instruction:
+
+```typescript
+export function buildUserMessage(
+  rawPrompt: string,
+  platform: string,
+  context: ConversationContext
+): string {
+  return `Rewrite the following prompt. Output ONLY the rewritten prompt, nothing else.
+
+PROMPT TO REWRITE:
+"""
+${rawPrompt}
+"""`
+}
+```
+
+The triple-quote delimiters make it structurally unambiguous — the content inside is input data, not a question. The instruction before it reinforces the task at the user-message level, not just the system level.
+
+### Task 2: Add a hard constraint at the END of the system prompt
+
+LLMs attend most strongly to the beginning and end of the system prompt. Add a final block after the existing RULES section:
+
+```
+CRITICAL CONSTRAINT — READ THIS LAST:
+Your ENTIRE response must be the enhanced prompt and nothing else.
+You are a REWRITER, not a RESPONDER.
+NEVER answer the prompt. NEVER explain the prompt. NEVER add commentary.
+If you catch yourself starting to answer, STOP and rewrite instead.
+```
+
+### Task 3: Update the `buildUserMessage()` unit test
+
+The existing test asserts that `buildUserMessage()` returns the raw prompt unchanged. Update it to assert the new wrapped format with delimiters.
+
+### Verification
+
+Test each of these prompts manually (click enhance on ChatGPT with each one):
+- `"how to learn Java"` — must return a rewritten question, NOT a Java guide
+- `"explain quantum computing"` — must return a better version of the question, NOT an explanation
+- `"write me a poem about rain"` — must return a more specific prompt, NOT a poem
+- `"what's the best database for my app"` — must return a sharpened question, NOT a database comparison
+
+**Checkpoint:** All 4 test prompts produce rewrites, not answers. Zero instances of the LLM answering directly.
+
+**Commit:** `fix(meta-prompt): wrap user message with delimiters to prevent LLM from answering`
+
+---
+
+**This phase is complete when:** the LLM consistently rewrites prompts instead of answering them across all 4 test cases. Unit tests updated and passing.
+
+---
+
+## PHASE 15.8 — META-PROMPT: CONSISTENT REWRITE QUALITY [DO THIS AFTER PHASE 15.7]
+
+**Problem:** Even when the LLM rewrites instead of answering, quality is inconsistent:
+- Some rewrites add generic filler ("be thorough", "think step by step") that adds length without value
+- The gap checklist is treated as a menu — the LLM tries to address ALL gaps instead of the 1-2 that actually matter
+- There are no before/after examples to anchor what "good" looks like
+- There is no concrete test for whether an addition is worth keeping
+
+**Files to modify:**
+- `extension/src/lib/meta-prompt.ts` — `META_PROMPT_TEMPLATE`
+
+### Task 1: Add gap prioritization rule
+
+After the DOMAIN-SPECIFIC GAP CHECKLIST section, before TECHNIQUE PRIORITY, add:
+
+```
+GAP PRIORITIZATION:
+Do NOT fill every gap. Identify the ONE or TWO gaps whose absence would cause the AI to guess or give a generic answer. Ignore gaps that don't materially change the response for this specific prompt. A 2-line prompt with the right constraints beats a 10-line prompt that over-specifies.
+```
+
+### Task 2: Add a purpose test rule
+
+Add to the RULES section:
+
+```
+- Before adding anything, apply this test: "If I remove this addition, does the AI give a noticeably worse or more generic answer?" If no, don't add it.
+```
+
+### Task 3: Add before/after examples
+
+Add an EXAMPLES section after the RULES section. These examples cover 4 different niches and demonstrate what "meaningfully better" looks like — each addition serves a clear purpose:
+
+```
+EXAMPLES (study these — every addition must be this purposeful):
+
+Coding:
+Before: "help me fix my React component that keeps re-rendering"
+After: "My React functional component re-renders on every parent state change even though its props haven't changed. I'm using useState and useEffect. What's causing unnecessary re-renders and how do I fix it? Show me the before/after code."
+Why this works: added symptom detail (re-renders on parent change), stack (hooks), and output format (before/after code). Did NOT add "you are an expert React developer" or "be thorough".
+
+Research:
+Before: "compare AWS and Google Cloud"
+After: "Compare AWS and Google Cloud for a startup running a Node.js API with PostgreSQL, handling ~10k requests/day. Focus on cost for the first 12 months, ease of deployment, and managed database options. Present as a comparison table with a final recommendation."
+Why this works: added use case (startup, Node.js, Postgres), scale (10k req/day), evaluation criteria (cost, deployment, managed DB), timeframe (12 months), and output format (table + recommendation). Every addition narrows the answer from "here's everything about AWS vs GCP" to exactly what this person needs.
+
+Writing:
+Before: "write a cover letter for a software engineer job"
+After: "Write a cover letter for a senior frontend engineer applying to Stripe's dashboard team. Tone: confident, concise, not generic. Highlight 4 years of React/TypeScript and a track record of improving page load performance. Keep it under 250 words — no filler paragraphs."
+Why this works: added role specificity (senior frontend, Stripe dashboard), tone, concrete highlights (React/TS, performance), and constraints (250 words, no filler). Did NOT add "make it professional and well-written" — that's implied.
+
+Learning:
+Before: "how to learn Java"
+After: "I'm a Python developer with 2 years of experience. Give me a focused roadmap to learn Java for backend development. Prioritize what's different from Python (static typing, JVM, build tools) and skip basics I already know (variables, loops, OOP concepts). Structure as 4 phases with one hands-on project per phase."
+Why this works: added current skill level (Python, 2 years), goal (backend Java), learning strategy (diff from Python, skip known basics), and structure (4 phases + projects). The rewrite doesn't just ask a better question — it prevents the AI from starting with "Java is a programming language..."
+```
+
+### Task 4: Restructure the meta-prompt section order
+
+The final meta-prompt should flow in this order (top to bottom):
+1. Role + core task (you are PromptGod, you rewrite prompts)
+2. Platform + conversation context
+3. Process (classify → detect → identify gaps → apply techniques → output)
+4. Domain-specific gap checklist
+5. Gap prioritization rule (NEW)
+6. Technique priority
+7. Rules (including purpose test — NEW)
+8. Examples (NEW)
+9. Critical constraint (added in Phase 15.7)
+
+### Verification
+
+Test each of these prompts manually and evaluate rewrite quality:
+- `"help me with my website"` — should add: what kind of site, what's broken/needed, tech stack. Should NOT add: "be detailed and comprehensive"
+- `"how to learn Java"` — should add: skill level, goal, structure. Should NOT add: "explain thoroughly with examples"
+- `"compare AWS and Google Cloud"` — should add: use case, criteria, format. Should NOT add: "cover all aspects"
+- `"write a blog post about AI"` — should add: audience, angle, length, tone. Should NOT add: "make it engaging and well-written"
+
+**Quality bar for each rewrite:**
+- Every added phrase answers "what would the AI guess without this?"
+- No filler phrases ("be thorough", "comprehensive", "you are an expert")
+- Prompt is more specific but not more than 2-3x the original length
+- The rewrite sounds like something a knowledgeable person would actually type
+
+**Checkpoint:** All 4 test prompts produce high-quality rewrites with zero filler. Run 3 times each to verify consistency.
+
+**Commit:** `feat(meta-prompt): add examples, gap prioritization, and purpose test for consistent quality`
+
+---
+
+**This phase is complete when:** rewrites are consistently purposeful across all 4 test domains, with no filler phrases and no over-specification. Unit tests passing, production build clean.
+
+---
+
 ## PHASE 16 — Context Menu: Foundation + Injection [optional]
 
 **Goal:** Right-click on selected text on any webpage shows "Enhance with PromptGod" and injects a handler script that captures the selection and opens a communication port.

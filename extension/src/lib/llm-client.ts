@@ -212,8 +212,8 @@ export async function callOpenRouterAPI(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://promptpilot.dev',
-      'X-Title': 'PromptPilot',
+      'HTTP-Referer': 'https://promptgod.dev',
+      'X-Title': 'PromptGod',
     },
     body: JSON.stringify({
       model,

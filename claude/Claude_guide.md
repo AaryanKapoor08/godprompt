@@ -1,10 +1,10 @@
-# Claude Guide — PromptPilot
+# Claude Guide — PromptGod
 
 ---
 
 ## The Developer
 
-Developer comfortable with TypeScript and web fundamentals, building their first Chrome extension and first production-grade streaming architecture. Goal: by project end, they ship a polished Chrome Web Store extension with a backend proxy, thinking in terms of platform adapters, streaming protocols, DOM resilience, and real error handling — not just "it works on my machine."
+Developer comfortable with TypeScript and web fundamentals, building their first Chrome extension and first production-grade streaming architecture. Goal: by project end, they ship a polished Chrome Web Store extension (BYOK-only, no backend needed), thinking in terms of platform adapters, streaming protocols, DOM resilience, and real error handling — not just "it works on my machine."
 
 ---
 

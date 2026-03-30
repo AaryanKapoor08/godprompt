@@ -9,7 +9,6 @@ import {
   callAnthropicAPI,
   callOpenAIAPI,
   callOpenRouterAPI,
-  callOpenRouterAPIOnce,
   parseAnthropicStream,
   parseOpenAIStream,
 } from './lib/llm-client'
@@ -167,19 +166,13 @@ async function streamOpenRouter(
   userMessage: string,
   model: string
 ): Promise<void> {
+  const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
+  const stream = parseOpenAIStream(response)
+
   try {
-    const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
-
-    const stream = parseOpenAIStream(response)
     const first = await nextWithTimeout(stream, OPENROUTER_FIRST_TOKEN_TIMEOUT_MS)
-
     if (first.done) {
-      console.info(
-        { model },
-        '[PromptGod] OpenRouter stream produced no tokens, falling back to non-stream response'
-      )
-      await fallbackOpenRouterAsChunks(port, apiKey, systemPrompt, userMessage, model)
-      return
+      throw new Error('[ServiceWorker] OpenRouter stream ended before emitting tokens')
     }
 
     sendMessage(port, { type: 'TOKEN', text: first.value })
@@ -192,52 +185,18 @@ async function streamOpenRouter(
       sendMessage(port, { type: 'TOKEN', text: next.value })
     }
   } catch (error) {
-    if (!isTimeoutLike(error)) {
-      throw error
+    if (isTimeoutLike(error)) {
+      throw new Error('[ServiceWorker] OpenRouter stream timed out while waiting for tokens', {
+        cause: error,
+      })
     }
-
-    console.info(
-      { model },
-      '[PromptGod] OpenRouter stream stalled, falling back to non-stream response'
-    )
-
-    await fallbackOpenRouterAsChunks(port, apiKey, systemPrompt, userMessage, model)
+    throw error
   }
-}
-
-async function fallbackOpenRouterAsChunks(
-  port: chrome.runtime.Port,
-  apiKey: string,
-  systemPrompt: string,
-  userMessage: string,
-  model: string
-): Promise<void> {
-  const enhancedText = await callOpenRouterAPIOnce(apiKey, systemPrompt, userMessage, model)
-  const chunks = chunkForStreaming(enhancedText)
-
-  for (const chunk of chunks) {
-    sendMessage(port, { type: 'TOKEN', text: chunk })
-    await sleep(12)
-  }
-}
-
-function chunkForStreaming(text: string): string[] {
-  const chunks = text.match(/\S+\s*/g)
-  if (!chunks || chunks.length === 0) {
-    return [text]
-  }
-  return chunks
 }
 
 function isTimeoutLike(error: unknown): boolean {
   return error instanceof Error
     && (/timed out/i.test(error.message) || /stalled/i.test(error.message))
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
 }
 
 function shouldRetryOpenRouterWithFallback(error: unknown): boolean {

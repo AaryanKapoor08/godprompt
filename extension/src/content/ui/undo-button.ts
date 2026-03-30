@@ -40,9 +40,9 @@ export function showUndoButton(adapter: PlatformAdapter, originalPrompt: string)
   button.addEventListener('click', () => {
     try {
       adapter.setPromptText(originalPrompt)
-      console.info('[PromptPilot] Original prompt restored via undo')
+      console.info('[PromptGod] Original prompt restored via undo')
     } catch (error) {
-      console.error({ cause: error }, '[PromptPilot] Failed to restore original prompt')
+      console.error({ cause: error }, '[PromptGod] Failed to restore original prompt')
     }
     removeUndoButton()
   })

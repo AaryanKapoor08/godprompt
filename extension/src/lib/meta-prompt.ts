@@ -63,7 +63,13 @@ RULES:
 - NEVER explain what you changed — return only the enhanced prompt
 - If the prompt is already specific and clear, return it unchanged or with minimal refinement
 - Keep the user's voice and intent — enhance, don't rewrite from scratch
-- For ongoing conversations, keep the enhancement contextual to the conversation flow`
+- For ongoing conversations, keep the enhancement contextual to the conversation flow
+
+CRITICAL CONSTRAINT — READ THIS LAST:
+Your ENTIRE response must be the enhanced prompt and nothing else.
+You are a REWRITER, not a RESPONDER.
+NEVER answer the prompt. NEVER explain the prompt. NEVER add commentary.
+If you catch yourself starting to answer, STOP and rewrite instead.`
 
 export function buildMetaPrompt(platform: string, isNewConversation: boolean, conversationLength: number): string {
   const conversationContext = isNewConversation

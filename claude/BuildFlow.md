@@ -539,6 +539,46 @@ Test with:
 
 **This phase is complete when:** both icons display correctly (toolbar + trigger button + popup) and the ChatGPT trigger button stays fixed in the bottom bar regardless of text length. Commit and push both fixes.
 
+### Bug 1 status: FIXED
+Icons replaced by resizing `extension/assets/generated-image.png` (the source icon) to 16x16, 48x48, 128x128 using Python PIL with contrast boost. All three sizes look correct.
+
+### Bug 2 status: FIXED
+ChatGPT trigger button now uses absolute positioning (`position: absolute; bottom: 8px; right: 76px`) inside the form instead of DOM walking. This keeps it anchored at the bottom regardless of text growth. CSS is in `.promptpilot-trigger-btn--chatgpt` in `styles.css`.
+
+### Bug 3: Service worker not waking up on port connect (BLOCKING — NOT YET FIXED)
+
+**Problem:** After Phase 15.7 changes were applied, the extension stopped working. The content script loads, button injects, enhance triggers — but nothing happens. No tokens stream, no error toast appears.
+
+**Root cause:** Chrome MV3 service worker lifecycle issue. The service worker goes idle after ~30 seconds and gets terminated. When the content script calls `chrome.runtime.connect({ name: 'enhance' })`, Chrome is supposed to wake the service worker and deliver the `onConnect` event, but it **doesn't reliably do this**. The connection silently fails — no error, no disconnect event.
+
+**Evidence:**
+- With service worker DevTools open (which keeps the worker alive), everything works perfectly: Port connected → ENHANCE received → LLM API called → tokens stream back
+- Without DevTools open, service worker shows only "Service worker started" (from initial load), never "Port connected" — the `onConnect` event never fires
+- Content script shows "Enhance triggered" then nothing — no error, no toast, no tokens
+- This is a known MV3 issue: `onConnect` is less reliable than `onMessage` for waking service workers
+
+**Attempted fix (partially applied, NOT confirmed working):**
+Added a PING/PONG mechanism — content script sends `chrome.runtime.sendMessage({ type: 'PING' })` before opening the port, which reliably wakes the service worker. Service worker has matching `onMessage` listener that responds with `{ type: 'PONG' }`.
+
+Changes made:
+- `extension/src/content/ui/trigger-button.ts` — `handleEnhanceClick()` is now `async`, sends PING before `chrome.runtime.connect()`
+- `extension/src/service-worker.ts` — added `chrome.runtime.onMessage.addListener` for PING at top level
+
+**If PING/PONG doesn't fix it, try these alternatives:**
+1. **Replace ports with sendMessage entirely:** Instead of `chrome.runtime.connect()` for streaming, use `chrome.runtime.sendMessage()` for the ENHANCE request, collect the full LLM response in the service worker, then send the complete text back. Downside: no token-by-token streaming, user sees nothing until the full response arrives.
+2. **Use chrome.alarms keepalive:** Register a recurring alarm every 25 seconds to keep the service worker alive. Downside: slightly wasteful, but reliable.
+3. **Hybrid approach:** Use `sendMessage` for the initial request + first response, then open a port for streaming. The `sendMessage` wakes the worker, and by the time the port opens, the worker is guaranteed alive.
+
+**To test the current PING/PONG fix:**
+1. Reload extension in `chrome://extensions`
+2. Close the service worker DevTools (to test without keepalive)
+3. Refresh ChatGPT or Claude page
+4. Wait 30+ seconds (let service worker go idle)
+5. Click enhance
+6. Check: does it work? If not, open service worker DevTools and check logs
+
+**Commit when fixed:** `fix(service-worker): add PING wakeup before port connect for MV3 lifecycle`
+
 ---
 
 ## PHASE 15.7 — META-PROMPT: STOP ANSWERING, START REWRITING [DO THIS BEFORE PHASE 15.8]

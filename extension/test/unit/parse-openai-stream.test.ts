@@ -131,6 +131,23 @@ describe('parseOpenAIStream', () => {
     expect(tokens).toEqual(['CR', 'LF'])
   })
 
+  it('parses line-delimited events without blank separators', async () => {
+    const sse = [
+      'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"Line"},"finish_reason":null}]}',
+      'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":" by line"},"finish_reason":null}]}',
+      'data: [DONE]',
+    ].join('\n')
+
+    const response = createMockSSEResponse(sse)
+    const tokens: string[] = []
+
+    for await (const text of parseOpenAIStream(response)) {
+      tokens.push(text)
+    }
+
+    expect(tokens).toEqual(['Line', ' by line'])
+  })
+
   it('throws on streamed error payload', async () => {
     const sse = [
       'data: {"error":{"message":"upstream overloaded"}}',

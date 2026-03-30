@@ -1,4 +1,4 @@
-/* PromptPilot — content script styles */
+/* PromptGod — content script styles */
 
 /* === Trigger Button === */
 .promptpilot-trigger-btn {
@@ -9,13 +9,19 @@
   height: 32px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: transparent;
   color: white;
   cursor: pointer;
   padding: 0;
   margin: 0 4px;
   transition: opacity 0.15s, transform 0.15s;
   flex-shrink: 0;
+}
+
+/* ChatGPT: inline left of mic button inside the input bar */
+.promptpilot-trigger-btn--chatgpt {
+  margin: 0 2px;
+  align-self: center;
 }
 
 /* Claude.ai: inline next to model selector */
@@ -51,8 +57,10 @@
 }
 
 .promptpilot-trigger-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: contain;
 }
 
 .promptpilot-trigger-spinner {

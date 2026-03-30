@@ -29,9 +29,19 @@ export function buildUserMessage(
   platform: string,
   context: ConversationContext
 ): string {
-  // The user message is just the raw prompt — the system message (meta-prompt)
-  // handles all framing. No wrapping needed.
-  return rawPrompt
+  const contextLine = context.isNewConversation
+    ? 'New conversation'
+    : `Ongoing conversation, message #${context.conversationLength + 1}`
+
+  return `Rewrite the following prompt. Output ONLY the rewritten prompt, nothing else.
+
+Platform: ${platform}
+Context: ${contextLine}
+
+PROMPT TO REWRITE:
+"""
+${rawPrompt}
+"""`
 }
 
 // Parse Anthropic SSE stream and yield text chunks

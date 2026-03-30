@@ -15,6 +15,16 @@ import {
 
 console.info('[PromptGod] Service worker started')
 
+// Ping listener — content script sends a PING via sendMessage to wake up the
+// service worker before opening a port. MV3 workers go idle and onConnect alone
+// doesn't reliably wake them.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'PING') {
+    sendResponse({ type: 'PONG' })
+  }
+  return false
+})
+
 // Port listener must be registered at top level — not inside async
 // so the service worker wakes up correctly on connect
 chrome.runtime.onConnect.addListener((port) => {

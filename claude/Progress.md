@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15.7 (15.6 complete, awaiting Chrome Web Store approval)**
+**Current Phase: 15.6 (service worker wakeup bug blocking — 15.7 code applied but untested)**
 
 ---
 
@@ -200,22 +200,23 @@ Update this file as you complete each phase.
 - [x] Updated ProjectSummary.md to reflect BYOK-only architecture
 - Notes: The content script and popup JS get different Vite hashes each build (expected), but the actual code logic matches the zip. The llm-client, service-worker, and popup CSS output are byte-for-byte identical.
 
-### PHASE 15.6 — Post-Sync Bugfixes [complete]
+### PHASE 15.6 — Post-Sync Bugfixes [in progress]
 
 - [x] Icon files replaced with branded 人 icons resized from `generated-image.png` at 16x16, 48x48, 128x128
 - [x] Toolbar icon, trigger button icon, and popup header all show correct branded icon
 - [x] ChatGPT trigger button positioned via absolute positioning inside form — stays fixed at bottom regardless of text length
-- [x] `pnpm build` succeeds, 36 unit tests passing
+- [x] `pnpm build` succeeds, 38 unit tests passing
 - [x] Commit: `fix(extension): replace placeholder icons and fix ChatGPT button placement`
-- Notes: Icons cropped from generated-image.png (black 人 on white rounded square) with contrast boost. ChatGPT button uses `position: absolute; bottom: 8px; right: 76px` inside the form to avoid dependency on ChatGPT's internal DOM nesting.
+- [ ] Service worker wakes up reliably when enhance is clicked (MV3 lifecycle bug — BLOCKING)
+- Notes: Icons fixed. ChatGPT button fixed. But service worker doesn't wake up on `chrome.runtime.connect()` — a known MV3 issue. Added PING/PONG wakeup mechanism (sendMessage before connect) but NOT yet confirmed working. See BuildFlow for full diagnosis and alternative approaches. Phase 15.7 code changes (meta-prompt delimiters + critical constraint) are also applied but can't be tested until service worker wakeup is fixed.
 
-### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [not started]
+### PHASE 15.7 — Meta-Prompt: Stop Answering, Start Rewriting [code applied — blocked by 15.6]
 
-- [ ] `buildUserMessage()` wraps raw prompt with `"""` delimiters, "Rewrite the following prompt" instruction, AND platform/context info
-- [ ] Platform and context included in user message (reinforces system prompt for weaker models)
-- [ ] System prompt ends with CRITICAL CONSTRAINT block ("You are a REWRITER, not a RESPONDER")
-- [ ] `buildUserMessage()` unit test updated to assert new wrapped format with platform/context
-- [ ] All unit tests passing
+- [x] `buildUserMessage()` wraps raw prompt with `"""` delimiters, "Rewrite the following prompt" instruction, AND platform/context info
+- [x] Platform and context included in user message (reinforces system prompt for weaker models)
+- [x] System prompt ends with CRITICAL CONSTRAINT block ("You are a REWRITER, not a RESPONDER")
+- [x] `buildUserMessage()` unit test updated to assert new wrapped format with platform/context
+- [x] All unit tests passing (38 tests)
 - [ ] Manual test: "how to learn Java" → returns rewritten question, NOT a Java guide
 - [ ] Manual test: "explain quantum computing" → returns better question, NOT an explanation
 - [ ] Manual test: "write me a poem about rain" → returns more specific prompt, NOT a poem

@@ -178,7 +178,7 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   console.info({ platform: adapter.getPlatform() }, '[PromptGod] Trigger button injected')
 }
 
-function handleEnhanceClick(adapter: PlatformAdapter): void {
+async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   // Double-click guard
   if (isEnhancing) {
     return
@@ -213,6 +213,15 @@ function handleEnhanceClick(adapter: PlatformAdapter): void {
     showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
     setLoading(false)
     return
+  }
+
+  // Wake up the service worker with a ping before opening the port.
+  // Chrome MV3 service workers go idle and onConnect alone doesn't reliably wake them.
+  try {
+    await chrome.runtime.sendMessage({ type: 'PING' })
+  } catch {
+    // Service worker might not have a sendMessage listener yet — that's fine,
+    // the ping itself wakes it up. Ignore errors.
   }
 
   // Open port to service worker for streaming

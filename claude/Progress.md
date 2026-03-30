@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15**
+**Current Phase: 15 (15.5 complete, awaiting Chrome Web Store approval)**
 
 ---
 
@@ -186,6 +186,19 @@ Update this file as you complete each phase.
 - [x] Extension submitted for review
 - [ ] After approval: published extension tested end-to-end
 - Notes: Architecture changed to BYOK-only. No backend deployment needed. Users get their own key from OpenRouter (free models available) or use Anthropic/OpenAI keys directly. Privacy policy written by developer, covers GDPR/CCPA/PIPEDA.
+
+### PHASE 15.5 — Source Code Sync From ZIP [complete]
+
+- [x] Read compiled JS from promptgod.zip dist/assets/
+- [x] Identified all differences: PromptPilot→PromptGod rename, sparkle SVG→brand icon, free tier removal, ChatGPT button placement, popup BYOK-only, OpenRouter headers, web_accessible_resources
+- [x] Updated all TypeScript source files to match zip build
+- [x] Deleted unused config.ts (BACKEND_URL, RATE_LIMIT_PER_HOUR)
+- [x] `pnpm build` succeeds — llm-client, service-worker, and popup CSS hashes match zip exactly
+- [x] 36 unit tests passing
+- [x] Zero remaining "PromptPilot" references in extension/src/
+- [x] 12 separate logical commits pushed to GitHub
+- [x] Updated ProjectSummary.md to reflect BYOK-only architecture
+- Notes: The content script and popup JS get different Vite hashes each build (expected), but the actual code logic matches the zip. The llm-client, service-worker, and popup CSS output are byte-for-byte identical.
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

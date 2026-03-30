@@ -556,7 +556,7 @@ Test with:
 
 ### Task 1: Wrap the raw prompt in `buildUserMessage()`
 
-Change `buildUserMessage()` to wrap the raw prompt with explicit delimiters and a rewrite instruction:
+Change `buildUserMessage()` to wrap the raw prompt with explicit delimiters, a rewrite instruction, AND the platform/context info. Currently the function takes `platform` and `context` as parameters but ignores them — the system prompt has this info via `buildMetaPrompt()`, but reinforcing it in the user message gives weaker models (free OpenRouter) a second signal right next to the actual data:
 
 ```typescript
 export function buildUserMessage(
@@ -564,7 +564,14 @@ export function buildUserMessage(
   platform: string,
   context: ConversationContext
 ): string {
+  const contextLine = context.isNewConversation
+    ? 'New conversation'
+    : `Ongoing conversation, message #${context.conversationLength + 1}`
+
   return `Rewrite the following prompt. Output ONLY the rewritten prompt, nothing else.
+
+Platform: ${platform}
+Context: ${contextLine}
 
 PROMPT TO REWRITE:
 """
@@ -573,7 +580,7 @@ ${rawPrompt}
 }
 ```
 
-The triple-quote delimiters make it structurally unambiguous — the content inside is input data, not a question. The instruction before it reinforces the task at the user-message level, not just the system level.
+The triple-quote delimiters make it structurally unambiguous — the content inside is input data, not a question. The instruction before it reinforces the task at the user-message level, not just the system level. Platform and context are duplicated from the system prompt intentionally — user message content carries more weight on smaller models.
 
 ### Task 2: Add a hard constraint at the END of the system prompt
 
@@ -607,6 +614,8 @@ Test each of these prompts manually (click enhance on ChatGPT with each one):
 
 **This phase is complete when:** the LLM consistently rewrites prompts instead of answering them across all 4 test cases. Unit tests updated and passing.
 
+**GATE: Phase 15.7 must fully pass before starting Phase 15.8.** If the LLM still answers even one of the 4 test prompts, debug and fix here — don't move on. Phase 15.8 tunes rewrite quality, which is pointless if the model is still answering instead of rewriting.
+
 ---
 
 ## PHASE 15.8 — META-PROMPT: CONSISTENT REWRITE QUALITY [DO THIS AFTER PHASE 15.7]
@@ -639,30 +648,35 @@ Add to the RULES section:
 
 ### Task 3: Add before/after examples
 
-Add an EXAMPLES section after the RULES section. These examples cover 4 different niches and demonstrate what "meaningfully better" looks like — each addition serves a clear purpose:
+Add an EXAMPLES section after the RULES section. Include a pattern instruction, 4 good examples with short annotations, and 1 negative example showing what NOT to do. Keep the "Why" lines short — the LLM needs to see the pattern, not read an essay about it:
 
 ```
-EXAMPLES (study these — every addition must be this purposeful):
+EXAMPLES — every addition prevents the AI from guessing. Nothing is added for length.
 
 Coding:
 Before: "help me fix my React component that keeps re-rendering"
 After: "My React functional component re-renders on every parent state change even though its props haven't changed. I'm using useState and useEffect. What's causing unnecessary re-renders and how do I fix it? Show me the before/after code."
-Why this works: added symptom detail (re-renders on parent change), stack (hooks), and output format (before/after code). Did NOT add "you are an expert React developer" or "be thorough".
+(Added: symptom detail, stack, output format. NOT added: "you are an expert React developer".)
 
 Research:
 Before: "compare AWS and Google Cloud"
 After: "Compare AWS and Google Cloud for a startup running a Node.js API with PostgreSQL, handling ~10k requests/day. Focus on cost for the first 12 months, ease of deployment, and managed database options. Present as a comparison table with a final recommendation."
-Why this works: added use case (startup, Node.js, Postgres), scale (10k req/day), evaluation criteria (cost, deployment, managed DB), timeframe (12 months), and output format (table + recommendation). Every addition narrows the answer from "here's everything about AWS vs GCP" to exactly what this person needs.
+(Added: use case, scale, criteria, timeframe, output format. NOT added: "cover all aspects comprehensively".)
 
 Writing:
 Before: "write a cover letter for a software engineer job"
 After: "Write a cover letter for a senior frontend engineer applying to Stripe's dashboard team. Tone: confident, concise, not generic. Highlight 4 years of React/TypeScript and a track record of improving page load performance. Keep it under 250 words — no filler paragraphs."
-Why this works: added role specificity (senior frontend, Stripe dashboard), tone, concrete highlights (React/TS, performance), and constraints (250 words, no filler). Did NOT add "make it professional and well-written" — that's implied.
+(Added: role specificity, tone, concrete highlights, length constraint. NOT added: "make it professional and well-written".)
 
 Learning:
 Before: "how to learn Java"
 After: "I'm a Python developer with 2 years of experience. Give me a focused roadmap to learn Java for backend development. Prioritize what's different from Python (static typing, JVM, build tools) and skip basics I already know (variables, loops, OOP concepts). Structure as 4 phases with one hands-on project per phase."
-Why this works: added current skill level (Python, 2 years), goal (backend Java), learning strategy (diff from Python, skip known basics), and structure (4 phases + projects). The rewrite doesn't just ask a better question — it prevents the AI from starting with "Java is a programming language..."
+(Added: skill level, goal, learning strategy, structure. NOT added: "explain thoroughly with examples".)
+
+BAD rewrite — do NOT do this:
+Before: "how to learn Java"
+After: "Please provide a thorough and comprehensive guide on how to learn Java. You are an expert Java instructor. Be detailed and cover all aspects including syntax, OOP, frameworks, and best practices. Think step by step and provide clear examples for each concept."
+(This adds length, not value. "Thorough", "comprehensive", "expert", "all aspects", "step by step" are filler — they don't tell the AI anything specific about what the user actually needs.)
 ```
 
 ### Task 4: Restructure the meta-prompt section order

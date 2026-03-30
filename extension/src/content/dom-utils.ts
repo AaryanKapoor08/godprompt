@@ -61,7 +61,7 @@ function insertTextViaInputEvent(element: HTMLElement, text: string): boolean {
     element.dispatchEvent(event)
     return true
   } catch (error) {
-    console.error({ cause: error }, '[PromptPilot] InputEvent fallback failed')
+    console.error({ cause: error }, '[PromptGod] InputEvent fallback failed')
     return false
   }
 }

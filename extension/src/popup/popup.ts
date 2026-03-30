@@ -1,17 +1,15 @@
-// Popup script — full settings page with mode toggle, model selection, and usage counter
+// Popup script — BYOK settings page with provider detection and model selection
 
 import { validateApiKey, type Provider } from '../lib/llm-client'
 
 // --- DOM Elements ---
-const modeFreeBtn = document.getElementById('mode-free') as HTMLButtonElement
-const modeByokBtn = document.getElementById('mode-byok') as HTMLButtonElement
-const usageSection = document.getElementById('usage-section') as HTMLDivElement
-const usageFill = document.getElementById('usage-fill') as HTMLDivElement
-const usageText = document.getElementById('usage-text') as HTMLParagraphElement
-const byokSection = document.getElementById('byok-section') as HTMLDivElement
+const headerLogo = document.getElementById('header-logo') as HTMLImageElement
 const apiKeyInput = document.getElementById('api-key') as HTMLInputElement
 const keyStatus = document.getElementById('key-status') as HTMLDivElement
 const modelSelect = document.getElementById('model-select') as HTMLSelectElement
+
+// Set header logo from extension assets
+headerLogo.src = chrome.runtime.getURL('assets/icon-48.png')
 
 // --- Model Options ---
 const MODELS: Record<string, { label: string; value: string }[]> = {
@@ -36,72 +34,14 @@ const PROVIDER_NAMES: Record<string, string> = {
   openrouter: 'OpenRouter',
 }
 
-// --- State ---
-let currentMode: 'free' | 'byok' = 'free'
-let currentProvider: Provider | null = null
-
 // --- Init: Load saved settings ---
-chrome.storage.local.get(
-  ['mode', 'apiKey', 'provider', 'model', 'usageCount', 'usageResetTime', 'rateLimitMax'],
-  (result) => {
-    // Set mode
-    currentMode = result.mode === 'byok' ? 'byok' : 'free'
-    updateModeUI()
-
-    // Set API key
-    if (result.apiKey) {
-      apiKeyInput.value = result.apiKey
-      currentProvider = result.provider ?? null
-      updateKeyValidationUI(result.apiKey)
-      updateModelDropdown(result.provider, result.model)
-    }
-
-    // Check if usage window has expired — reset counter if so
-    const usageResetTime = result.usageResetTime ?? 0
-    const usageCount = (usageResetTime > 0 && Date.now() > usageResetTime)
-      ? 0
-      : (result.usageCount ?? 0)
-
-    updateUsageCounter(usageCount, result.rateLimitMax ?? 10)
-  }
-)
-
-// Listen for storage changes so usage counter updates live
-// (e.g., when service worker syncs rate limit headers after an enhancement)
-chrome.storage.local.onChanged.addListener((changes) => {
-  if (changes.usageCount || changes.rateLimitMax) {
-    const usageCount = changes.usageCount?.newValue ?? 0
-    const rateLimitMax = changes.rateLimitMax?.newValue ?? 10
-    updateUsageCounter(usageCount, rateLimitMax)
+chrome.storage.local.get(['apiKey', 'provider', 'model'], (result) => {
+  if (result.apiKey) {
+    apiKeyInput.value = result.apiKey
+    updateKeyValidationUI(result.apiKey)
+    updateModelDropdown(result.provider, result.model)
   }
 })
-
-// --- Mode Toggle ---
-modeFreeBtn.addEventListener('click', () => {
-  currentMode = 'free'
-  chrome.storage.local.set({ mode: 'free' })
-  updateModeUI()
-})
-
-modeByokBtn.addEventListener('click', () => {
-  currentMode = 'byok'
-  chrome.storage.local.set({ mode: 'byok' })
-  updateModeUI()
-})
-
-function updateModeUI(): void {
-  if (currentMode === 'free') {
-    modeFreeBtn.classList.add('mode-btn--active')
-    modeByokBtn.classList.remove('mode-btn--active')
-    usageSection.style.display = ''
-    byokSection.style.display = 'none'
-  } else {
-    modeFreeBtn.classList.remove('mode-btn--active')
-    modeByokBtn.classList.add('mode-btn--active')
-    usageSection.style.display = 'none'
-    byokSection.style.display = ''
-  }
-}
 
 // --- API Key Input ---
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -117,7 +57,6 @@ apiKeyInput.addEventListener('input', () => {
   saveTimeout = setTimeout(() => {
     if (!key) {
       chrome.storage.local.remove(['apiKey', 'provider', 'model'])
-      currentProvider = null
       showKeyStatus('Key cleared', 'saved')
       clearModelDropdown()
       return
@@ -131,7 +70,6 @@ apiKeyInput.addEventListener('input', () => {
       return
     }
 
-    currentProvider = provider
     chrome.storage.local.set({ apiKey: key, provider }, () => {
       showKeyStatus(`${PROVIDER_NAMES[provider!]} key saved`, 'saved')
       updateModelDropdown(provider!)
@@ -172,7 +110,6 @@ function updateModelDropdown(provider: Provider | null, selectedModel?: string):
     modelSelect.value = selectedModel
   } else {
     modelSelect.value = models[0].value
-    // Save default model selection
     chrome.storage.local.set({ model: models[0].value })
   }
 }
@@ -187,21 +124,6 @@ modelSelect.addEventListener('change', () => {
     chrome.storage.local.set({ model })
   }
 })
-
-// --- Usage Counter ---
-function updateUsageCounter(used: number, max: number): void {
-  const percent = Math.min((used / max) * 100, 100)
-  usageFill.style.width = `${percent}%`
-
-  usageFill.classList.remove('usage-bar__fill--warning', 'usage-bar__fill--full')
-  if (percent >= 100) {
-    usageFill.classList.add('usage-bar__fill--full')
-  } else if (percent >= 70) {
-    usageFill.classList.add('usage-bar__fill--warning')
-  }
-
-  usageText.textContent = `${used} of ${max} enhancements used this hour`
-}
 
 // --- Status Helpers ---
 function showKeyStatus(message: string, type: 'saved' | 'error'): void {

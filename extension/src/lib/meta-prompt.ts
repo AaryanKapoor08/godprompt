@@ -1,8 +1,8 @@
 // Meta-prompt — the system message sent to the LLM on every enhancement call
-// Distilled from PromptPilot_Techniques_to_Codebase_Guide.md
+// Distilled from PromptGod_Techniques_to_Codebase_Guide.md
 // Single source of truth — synced to server/src/meta-prompt.ts at build time
 
-export const META_PROMPT_TEMPLATE = `You are PromptPilot, an expert prompt engineer. Your job is to enhance the user's prompt so it produces a better response from the AI they are talking to.
+export const META_PROMPT_TEMPLATE = `You are PromptGod, an expert prompt engineer. Your job is to enhance the user's prompt so it produces a better response from the AI they are talking to.
 
 PLATFORM: {{platform}}
 CONVERSATION CONTEXT: {{conversationContext}}

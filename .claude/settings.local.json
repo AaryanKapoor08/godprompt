@@ -12,7 +12,19 @@
       "Bash(git checkout:*)",
       "Skill(update-config)",
       "Bash(npx vitest:*)",
-      "Bash(pnpm init:*)"
+      "Bash(pnpm init:*)",
+      "Bash(python -c \"import zipfile; z = zipfile.ZipFile\\(''promptgod.zip''\\); [print\\(n\\) for n in z.namelist\\(\\)]\")",
+      "Bash(find C:/Users/Jaska/OneDrive/Documents/godprompt -maxdepth 3 -name *spec* -o -name *technique* -o -name *promptpilot*)",
+      "Bash(mkdir -p /tmp/promptgod-zip)",
+      "Bash(unzip -o promptgod.zip -d /tmp/promptgod-zip)",
+      "Bash(python3 -c \":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(ls -la assets/icon-*.png)",
+      "Bash(file assets/icon-*.png)",
+      "Bash(wc:*)",
+      "Bash(python -c \"from PIL import Image; print\\(''PIL available''\\)\")"
     ]
   }
 }

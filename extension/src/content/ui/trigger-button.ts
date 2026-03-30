@@ -156,38 +156,17 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
     }
   } else if (platform === 'chatgpt') {
     button.classList.add('promptpilot-trigger-btn--chatgpt')
+    // Absolute-position the button inside the form so it stays fixed at the bottom
+    // regardless of ChatGPT's internal DOM nesting or text area growth.
     const input = adapter.getInputElement()
     const form = input?.closest('form')
-
-    if (form && input) {
-      // Walk up from send button to find the common container with the input
-      let container = sendButton.parentElement
-      while (container && container !== form && !container.contains(input)) {
-        container = container.parentElement
+    if (form) {
+      // Ensure the form is a positioning context
+      const formPosition = getComputedStyle(form).position
+      if (formPosition === 'static') {
+        form.style.position = 'relative'
       }
-      if (container && container.contains(input) && container.contains(sendButton)) {
-        // Find the direct child that contains the input
-        let inputChild: HTMLElement | null = input
-        while (inputChild && inputChild.parentElement !== container) {
-          inputChild = inputChild.parentElement
-        }
-        if (inputChild) {
-          // Find buttons inside this child (excluding our trigger)
-          const buttons = Array.from(inputChild.querySelectorAll('button')).filter(
-            (b) => b.id !== 'promptpilot-trigger'
-          )
-          if (buttons.length > 0) {
-            const lastBtn = buttons[buttons.length - 1]
-            lastBtn.parentElement?.insertBefore(button, lastBtn)
-          } else {
-            inputChild.appendChild(button)
-          }
-        } else {
-          sendButton.parentElement?.insertBefore(button, sendButton)
-        }
-      } else {
-        sendButton.parentElement?.insertBefore(button, sendButton)
-      }
+      form.appendChild(button)
     } else {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }

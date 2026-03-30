@@ -18,10 +18,12 @@
   flex-shrink: 0;
 }
 
-/* ChatGPT: inline left of mic button inside the input bar */
+/* ChatGPT: absolutely positioned inside the form, bottom-right, left of mic/send */
 .promptpilot-trigger-btn--chatgpt {
-  margin: 0 2px;
-  align-self: center;
+  position: absolute;
+  bottom: 8px;
+  right: 76px;
+  z-index: 10;
 }
 
 /* Claude.ai: inline next to model selector */

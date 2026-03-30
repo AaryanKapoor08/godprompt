@@ -474,45 +474,70 @@ A phase is done when the checkpoint passes, not when the code is written.
 
 ---
 
-## PHASE 15.5 — SOURCE CODE SYNC FROM ZIP [DO THIS BEFORE PHASE 16]
+## PHASE 15.5 — SOURCE CODE SYNC FROM ZIP [COMPLETE]
 
-> **REMINDER:** Before starting Phase 16, the TypeScript source must be synced with the latest working build that was submitted to the Chrome Web Store. The zip (`promptgod.zip` at repo root) is the only copy of the latest working state. The GitHub repo is behind.
-
-**Run this prompt with Opus before doing anything else:**
+Source code sync completed on 2026-03-29. 13 commits pushed. See Progress.md for details.
 
 ---
 
-Context:
-I'm working on a Chrome extension called PromptGod (repo at `C:\Users\Jaska\OneDrive\Documents\godprompt`). The project has a TypeScript source in `extension/src/` and a built output in `extension/dist/`.
+## PHASE 15.6 — POST-SYNC BUGFIXES [DO THIS BEFORE PHASE 16]
 
-What happened:
-- The latest working code was submitted to the Chrome Web Store as `promptgod.zip` (located at the repo root)
-- Someone used Codex to work on phases 16-18, which broke things
-- We reverted by pulling from GitHub, but the GitHub repo was behind — it doesn't have the latest fixes
-- The zip is the only copy of the latest working built output
-- The zip contains the compiled `dist/` files (JS, CSS, HTML) — NOT the TypeScript source
+Two bugs found after loading the synced build in Chrome on ChatGPT:
 
-What's confirmed in the zip (vs current source):
-1. Trigger button uses brand icon (`chrome.runtime.getURL("assets/icon-48.png")`) instead of sparkle SVG
-2. Free tier is fully removed (`freeTier`, `handleFree` — zero mentions)
-3. Various other fixes (ChatGPT button placement, popup styling, etc.)
+### Bug 1: Icon files are plain blue squares (placeholder PNGs never replaced)
 
-The goal:
-1. Read the compiled JS from `extension/dist/assets/` (zip contents already copied there) to understand what changed vs the TypeScript source in `extension/src/`
-2. Update the TypeScript source files in `extension/src/` to match — without touching the zip file
-3. Run `pnpm build` and verify the extension works
-4. Commit the changes to GitHub in at least 10 separate logical commits (one per file or feature area) — not one big dump
+**Problem:** `extension/assets/icon-16.png`, `icon-48.png`, and `icon-128.png` are all solid blue squares (79–307 bytes). They were placeholder files that were never replaced with the real branded 人 icon. This affects:
+- The extension icon in Chrome's toolbar (Extensions panel shows a blue square)
+- The trigger button in the content script (loads `icon-48.png` via `chrome.runtime.getURL`)
+- The popup header logo (loads `icon-48.png` via `chrome.runtime.getURL`)
 
-Rules:
-- Do NOT modify or extract over `promptgod.zip` — it is read-only reference
-- Commits must follow `type(scope): description` format
-- Each commit should be a coherent, standalone change
+**Fix:** Replace all three PNG files with proper branded icons. The icon should be the 人 (person/god) character used in the Chrome Web Store submission. If the original icon files are lost, create new ones:
+- Design a simple icon: white 人 character on an indigo (#6366f1) rounded background
+- Generate at 16x16, 48x48, and 128x128 sizes
+- Save to `extension/assets/icon-16.png`, `icon-48.png`, `icon-128.png`
+- Verify: reload extension in Chrome, check toolbar icon and trigger button both show the new icon
 
-Start by reading the compiled JS files from `extension/dist/assets/` and diffing them against the current TypeScript source to identify all the changes needed.
+**Commit:** `fix(assets): replace placeholder icon PNGs with branded icons`
+
+### Bug 2: ChatGPT trigger button floats up as text grows instead of staying in the bottom bar
+
+**Problem:** On ChatGPT, when the user types multiple lines of text, the trigger button moves upward with the text instead of staying fixed in the bottom toolbar next to the mic and send buttons. The button is being inserted inside or near the text area's scrollable content region, not in the fixed bottom action bar.
+
+**Root cause:** The ChatGPT DOM walking logic in `extension/src/content/ui/trigger-button.ts` (the `platform === 'chatgpt'` branch) finds a common ancestor of the input element and send button, then inserts the trigger button as a sibling of buttons inside that container. But ChatGPT's composer has two distinct regions:
+1. The **text area** (scrollable, grows with content) — `div#prompt-textarea`
+2. The **bottom action bar** (fixed at bottom) — contains [+], [mic], [send] buttons
+
+The current code inserts the trigger button into region 1 (near buttons inside the text area's parent), when it should be in region 2 (the bottom bar, left of the mic button).
+
+**Fix:** Change the ChatGPT branch to target the bottom action bar directly:
+1. Find the send button (already done — `adapter.getSendButton()`)
+2. The send button's parent row is the bottom action bar — insert the trigger button **before the mic button** (which is the button immediately left of the send button in that row)
+3. If the mic button can't be identified, fall back to inserting before the send button in its direct parent
+
+The key insight: don't walk up from the text area. Walk from the **send button's parent** — that's already the bottom bar. Insert there.
+
+Rough approach:
+```typescript
+// ChatGPT: insert into the bottom action bar, left of mic button
+const sendParent = sendButton.parentElement
+if (sendParent) {
+  // The mic button is typically the sibling before the send button
+  sendParent.insertBefore(button, sendButton)
+} else {
+  sendButton.parentElement?.insertBefore(button, sendButton)
+}
+```
+
+Test with:
+- Short prompt (1 line) — button should be in bottom bar
+- Long prompt (5+ lines, text area scrolls) — button must stay in bottom bar, NOT scroll up
+- New chat navigation — button should re-appear via MutationObserver
+
+**Commit:** `fix(chatgpt): anchor trigger button to bottom action bar instead of text area`
 
 ---
 
-**This phase is complete when:** all TypeScript source matches the zip build, `pnpm build` succeeds, extension loads in Chrome, and all changes are committed to GitHub in 10+ commits.
+**This phase is complete when:** both icons display correctly (toolbar + trigger button + popup) and the ChatGPT trigger button stays fixed in the bottom bar regardless of text length. Commit and push both fixes.
 
 ---
 

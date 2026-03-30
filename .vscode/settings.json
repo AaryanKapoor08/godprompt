@@ -3,6 +3,9 @@
         "pnpm": true,
         "git add": true,
         "git commit": true,
-        "git push": true
+        "git push": true,
+        "git fetch": true,
+        "git rev-list": true,
+        ".vscode/settings.json": true
     }
 }

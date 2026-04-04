@@ -3,7 +3,7 @@
   "name": "PromptGod",
   "version": "1.0.0",
   "description": "Make your AI prompts smarter with one click",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",

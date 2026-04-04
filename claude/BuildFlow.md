@@ -873,6 +873,35 @@ Expected behavior:
 
 ---
 
+## PHASE 15.15 — Deployment: Chrome Web Store Compliance & Resubmission
+
+**Goal:** Fix Chrome Web Store rejection, ensure full policy compliance, and get the extension published.
+
+**Tasks:**
+- Remove unused `activeTab` permission from manifest.json (rejection reason: Purple Potassium)
+- Audit all remaining permissions against actual code usage
+- Audit codebase for remote code execution, tracking, hardcoded secrets
+- Update privacy policy: disclose "Website Content" (prompt text read from DOM)
+- Update privacy policy: label API keys as "Authentication Information"
+- Update privacy policy: add Permissions section justifying each requested permission
+- Update privacy policy: expand Limited Use compliance with specific bullet points
+- Deploy updated privacy policy to GitHub Pages
+- Complete Developer Dashboard privacy practices tab (Authentication Information, Website Content, Limited Use certifications)
+- Re-zip dist/ folder and upload to Chrome Web Store
+- Resubmit for review
+
+**Checkpoint:**
+- [x] `activeTab` removed from manifest.json and dist/manifest.json
+- [x] All remaining permissions verified as used in code
+- [x] No remote code execution, tracking, or hardcoded secrets
+- [x] Privacy policy updated and deployed
+- [x] Developer Dashboard privacy checkboxes completed
+- [ ] New zip uploaded and submitted
+- [ ] Extension approved by Chrome Web Store
+- [ ] Published extension tested end-to-end on ChatGPT, Claude.ai, Gemini, Perplexity
+
+---
+
 ## PHASE 16 — Context Menu: Foundation + Injection [optional]
 
 **Goal:** Right-click on selected text on any webpage shows "Enhance with PromptGod" and injects a handler script that captures the selection and opens a communication port.

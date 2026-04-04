@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 15.14 (in progress)** 
+**Current Phase: 15.15 — Deployment (in progress)** 
 
 
 
@@ -365,6 +365,29 @@ Update this file as you complete each phase.
 
 - [ ] Commit: pending
 - Notes: Implemented in `extension/src/content/ui/trigger-button.ts` with token-boundary spacing reconciliation that preserves raw stream accumulation and keeps progressive character-slice rendering. Added focused tests in `extension/test/unit/trigger-boundary-spacing.test.ts` covering merged-word prevention and punctuation/URL/decimal safety. Validation: `pnpm test` => 55/55 passing, `pnpm build` => pass. Manual live-site verification remains pending.
+
+### PHASE 15.15 — Deployment: Chrome Web Store Compliance & Resubmission [in progress]
+
+- [x] Removed unused `activeTab` permission from `extension/manifest.json` (violation: Purple Potassium)
+- [x] Removed unused `activeTab` permission from `extension/dist/manifest.json`
+- [x] Audited all remaining permissions — every permission justified by actual code usage
+- [x] Audited codebase for remote code execution, tracking, hardcoded secrets — all clear
+- [x] Updated privacy policy: added "Website Content" disclosure (prompt text read from page DOM)
+- [x] Updated privacy policy: labeled API keys as "Authentication Information" per Chrome terminology
+- [x] Updated privacy policy: added explicit Permissions section (section 6) justifying each permission
+- [x] Updated privacy policy: expanded Limited Use compliance section (section 11) with 5 specific bullet points
+- [x] Updated privacy policy: added HTTPS encryption-in-transit disclosure
+- [x] Updated privacy policy: removed contradictory "No prompt content" claim from NOT-collected list
+- [x] Privacy policy deployed to GitHub Pages (https://aaryankapoor08.github.io/promptGod-privacypolicy/)
+- [x] Developer Dashboard: checked "Authentication Information" checkbox
+- [x] Developer Dashboard: checked "Website Content" checkbox
+- [x] Developer Dashboard: checked all 3 Limited Use certification boxes
+- [ ] Re-zip `dist/` folder with updated manifest (activeTab removed)
+- [ ] Upload new zip to Chrome Web Store Developer Dashboard
+- [ ] Resubmit extension for review
+- [ ] Extension approved and published
+- [ ] Published extension tested end-to-end on all 4 platforms
+- Notes: Initial submission rejected for requesting but not using `activeTab` permission (violation ref: Purple Potassium). Full compliance audit performed — manifest, privacy policy, and dashboard disclosures all aligned.
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

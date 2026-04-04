@@ -9,7 +9,7 @@ const REWRITE_TEMPERATURE = 0.4
 const REQUEST_TIMEOUT_MS = {
   anthropic: 60000,
   openai: 60000,
-  openrouter: 25000,
+  openrouter: 60000,
 } as const
 
 interface OpenRouterNonStreamResponse {

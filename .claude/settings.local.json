@@ -24,7 +24,9 @@
       "Bash(ls -la assets/icon-*.png)",
       "Bash(file assets/icon-*.png)",
       "Bash(wc:*)",
-      "Bash(python -c \"from PIL import Image; print\\(''PIL available''\\)\")"
+      "Bash(python -c \"from PIL import Image; print\\(''PIL available''\\)\")",
+      "Bash(npx pnpm:*)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

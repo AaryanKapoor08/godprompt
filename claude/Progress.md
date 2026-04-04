@@ -2,7 +2,9 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 16 (optional context-menu scope, not started)**
+**Current Phase: 15.14 (in progress)** 
+
+
 
 ---
 
@@ -318,6 +320,51 @@ Update this file as you complete each phase.
   - Re-test with a non-rate-limited model/key (OpenRouter 429 blocked repeat checks during this session)
 - [ ] Commit: pending
 - Notes: This phase is intentionally scoped to injection/render and rewrite-rule behavior only. Phase 15.6-15.10 reliability/quality foundations remain in place; remaining risk is manual UX verification under real provider output variance.
+
+### PHASE 15.14 — Injection Spacing Integrity Hardening [in progress]
+
+- [x] Objective: keep live progressive typing while guaranteeing final injected text preserves intended word boundaries
+- [x] Scope lock (only):
+  - `extension/src/content/ui/trigger-button.ts`
+  - `extension/test/unit/` (new focused tests only if needed)
+- [x] Non-goals (must NOT change):
+  - No provider routing changes (`service-worker.ts`)
+  - No parser contract changes (`llm-client.ts`) unless a failing test proves parser boundary loss
+  - No popup/settings/meta-prompt behavior changes
+  - No main-branch push
+
+- [ ] Implementation plan (no gaps):
+  - [x] Keep raw stream accumulation exact (never trim token text, never regex-split by words)
+  - [x] Keep progressive rendering from a pending raw-text buffer (character slices only)
+  - [x] Add boundary reconciler guard during injection:
+    - If previous rendered char is `[A-Za-z0-9]`
+    - And incoming first char is `[A-Za-z0-9]`
+    - And there is no existing separator at boundary
+    - Insert one single space before applying incoming slice
+  - [x] Do NOT force spaces around punctuation/symbols
+  - [x] Preserve contractions, decimals, URLs, and code punctuation as-is
+  - [x] Keep final exact sync on `DONE` (single re-apply of fully accumulated text)
+  - [x] Keep ERROR/disconnect behavior: flush pending text, keep partial result, keep undo available
+  - [x] Keep undo semantics unchanged (during + after stream)
+
+- [ ] Validation checklist:
+  - [x] `pnpm test` passes
+  - [x] `pnpm build` passes
+  - [ ] Manual live-typing test prompts (no merged words):
+    - "to start phase 15.12"
+    - "Compare AWS and Google Cloud"
+    - "Create a structured learning roadmap"
+    - "help me with my app"
+  - [ ] Verify no artifacts like `AWSand`, `tostart`, `structuredlearning`, `learningroadmap`
+  - [ ] Verify no punctuation regressions (`e.g.`, `3.5`, `foo_bar`, URLs)
+  - [ ] Verify no delay regression versus current progressive typing
+
+- [ ] Rollback criteria:
+  - [ ] If spacing fix introduces punctuation corruption or slower UX, revert only Phase 15.14 patch set
+  - [ ] Keep Phase 15.6-15.13 reliability and rewrite-quality behavior intact
+
+- [ ] Commit: pending
+- Notes: Implemented in `extension/src/content/ui/trigger-button.ts` with token-boundary spacing reconciliation that preserves raw stream accumulation and keeps progressive character-slice rendering. Added focused tests in `extension/test/unit/trigger-boundary-spacing.test.ts` covering merged-word prevention and punctuation/URL/decimal safety. Validation: `pnpm test` => 55/55 passing, `pnpm build` => pass. Manual live-site verification remains pending.
 
 ### PHASE 16 — Context Menu: Foundation + Injection [optional — not started]
 

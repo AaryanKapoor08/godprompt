@@ -292,3 +292,39 @@ Primary consolidation commit:
 
 - `c562650` — `docs(buildflow): mark phases 15.9 and 15.10 checkpoints complete`
 - `5cc717b` — `docs(progress): set current phase to 16 and sync 15.10 notes`
+
+---
+
+## Phase 15.11–15.14 — Streaming Reliability + Injection Hardening (2026-04-03)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `2ba1013` | `chore(config): update claude local settings` | `main` |
+| `4b90b50` | `chore(vscode): add workspace auto approve settings` | `main` |
+| `8859c8e` | `docs(buildflow): update phase instructions` | `main` |
+| `3d201bc` | `docs(progress): record phase 15 progress` | `main` |
+| `df2550f` | `fix(streaming): refine progressive input injection` | `main` |
+| `934f445` | `fix(undo): support on-undo callback hook` | `main` |
+| `f9702be` | `fix(streaming): harden openai-compatible sse parsing` | `main` |
+| `2177fc8` | `feat(meta-prompt): enforce critical-context rewrites` | `main` |
+| `72a6dd2` | `fix(service-worker): keep openrouter stream-only flow` | `main` |
+| `ccdef46` | `test(meta-prompt): cover critical-context behavior` | `main` |
+| `d84a052` | `test(streaming): add line-delimited sse coverage` | `main` |
+| `1efcd60` | `chore(vscode): update terminal auto-approve entries` | `main` |
+| `430df77` | `docs(progress): add phase 15.13 handoff snapshot` | `main` |
+| `091b1b3` | `fix(llm-client): increase openrouter timeout to 60s` | `main` |
+| `600a16d` | `feat(dom-utils): add appendText helper for cursor-at-end insert` | `main` |
+| `a52b8b5` | `feat(streaming): rework progressive render to word-boundary loop` | `main` |
+| `9c194af` | `docs(progress): add phase 15.14 injection spacing integrity hardening` | `main` |
+
+**What was done:**
+- Meta-prompt enforces critical-context rewrites — questions only for missing context that changes the answer
+- OpenAI-compatible SSE parser hardened against line-delimited and chunked responses
+- OpenRouter locked to stream-only path (non-stream fallback removed)
+- Undo button supports on-undo callback hook for post-restore side effects
+- Progressive injection refined: character-slice rAF scheduler replaced with word-boundary render loop
+- Field not cleared until first token arrives — original prompt stays visible during API wait
+- Final exact sync via `setPromptText` on stream complete; ERROR/disconnect flush partial result
+- `appendText` helper added to `dom-utils.ts` for cursor-at-end append without clearing
+- OpenRouter request timeout increased from 25s to 60s (matches Anthropic/OpenAI)
+- 55 tests passing, production build clean

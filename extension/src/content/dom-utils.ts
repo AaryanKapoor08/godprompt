@@ -67,6 +67,23 @@ function insertTextViaInputEvent(element: HTMLElement, text: string): boolean {
 }
 
 /**
+ * Append text to a contenteditable element at the current cursor position.
+ * Moves cursor to end first, then inserts. No clearing — pure append.
+ */
+export function appendText(element: HTMLElement, text: string): boolean {
+  element.focus()
+
+  // Move cursor to end so we always append
+  const selection = window.getSelection()
+  if (selection) {
+    selection.selectAllChildren(element)
+    selection.collapseToEnd()
+  }
+
+  return insertText(element, text)
+}
+
+/**
  * Replace all text in a contenteditable element.
  * Clears existing content, then inserts the new text.
  * Dispatches a bubbling input event to notify the platform.

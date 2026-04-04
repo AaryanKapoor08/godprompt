@@ -328,3 +328,26 @@ Primary consolidation commit:
 - `appendText` helper added to `dom-utils.ts` for cursor-at-end append without clearing
 - OpenRouter request timeout increased from 25s to 60s (matches Anthropic/OpenAI)
 - 55 tests passing, production build clean
+
+---
+
+## Phase 15.15 — Deployment: Chrome Web Store Compliance & Resubmission (2026-04-04)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `1c8ffb7` | `fix(deployment): remove unused activeTab permission and add compliance phase` | `main` |
+
+**What was done:**
+- Removed unused `activeTab` permission from `extension/manifest.json` (Chrome Web Store rejection: Purple Potassium)
+- Removed `activeTab` from `extension/dist/manifest.json`
+- Full codebase compliance audit: all permissions justified, no RCE, no tracking, no hardcoded secrets
+- Privacy policy overhauled:
+  - Added "Website Content" disclosure (prompt text read from page DOM)
+  - Labeled API keys as "Authentication Information" per Chrome terminology
+  - Added explicit Permissions section (section 6) justifying each permission
+  - Expanded Limited Use compliance section with 5 specific bullet points
+  - Added HTTPS encryption-in-transit disclosure
+  - Removed contradictory "No prompt content" claim
+- Privacy policy deployed to GitHub Pages
+- Developer Dashboard updated: Authentication Information, Website Content, and all Limited Use certifications checked
+- Added Phase 15.15 tracking to Progress.md and BuildFlow.md

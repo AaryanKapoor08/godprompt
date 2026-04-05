@@ -8,6 +8,7 @@ export interface EnhanceMessage {
   rawPrompt: string
   platform: Platform
   context: ConversationContext
+  recentContext?: string
 }
 
 // Service worker → Content script

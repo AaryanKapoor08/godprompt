@@ -86,4 +86,20 @@ export class ClaudeAdapter implements PlatformAdapter {
       conversationLength,
     }
   }
+
+  getRecentMessages(maxTokens: number): string {
+    const messages = Array.from(document.querySelectorAll(
+      '[class*="human"], [class*="assistant"], [data-testid*="message"], .group\\/conversation-turn'
+    ))
+    if (messages.length === 0) return ''
+
+    const recent = messages.slice(-2)
+    let text = ''
+    for (const msg of recent) {
+      const content = msg.textContent?.trim() ?? ''
+      text += content + '\n'
+      if (text.length > maxTokens * 4) break
+    }
+    return text.slice(0, maxTokens * 4).trim()
+  }
 }

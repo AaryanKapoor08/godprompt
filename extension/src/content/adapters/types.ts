@@ -16,4 +16,5 @@ export interface PlatformAdapter {
   getSendButton(): HTMLElement | null
   getPlatform(): Platform
   getConversationContext(): ConversationContext
+  getRecentMessages(maxTokens: number): string
 }

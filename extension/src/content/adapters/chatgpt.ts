@@ -65,4 +65,18 @@ export class ChatGPTAdapter implements PlatformAdapter {
       conversationLength,
     }
   }
+
+  getRecentMessages(maxTokens: number): string {
+    const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
+    if (turns.length === 0) return ''
+
+    const recent = turns.slice(-2)
+    let text = ''
+    for (const turn of recent) {
+      const content = turn.textContent?.trim() ?? ''
+      text += content + '\n'
+      if (text.length > maxTokens * 4) break
+    }
+    return text.slice(0, maxTokens * 4).trim()
+  }
 }

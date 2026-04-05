@@ -1,11 +1,21 @@
 // Meta-prompt — the system message sent to the LLM on every enhancement call
 // Distilled from PromptGod_Techniques_to_Codebase_Guide.md
-// Single source of truth — synced to server/src/meta-prompt.ts at build time
+// Single source of truth
+
+const PLATFORM_HINTS: Record<string, string> = {
+  chatgpt: 'The AI responds well to numbered instructions and explicit output format.',
+  claude: 'The AI responds well to XML-tagged structure and clear role definitions.',
+  gemini: 'The AI responds well to structured prompts with clear context boundaries.',
+  perplexity: 'This is a search-focused AI — prompts benefit from specific search criteria and source preferences.',
+}
 
 export const META_PROMPT_TEMPLATE = `You are PromptGod, an expert prompt engineer. Your job is to rewrite the user's prompt so it produces a better response from the AI they are talking to.
 
 PLATFORM: {{platform}}
+{{platformHint}}
 CONVERSATION CONTEXT: {{conversationContext}}
+{{rewriteIntensity}}
+{{recentContext}}
 
 PROCESS (internal, do not output reasoning):
 1. Classify domain: coding / writing / research / learning / creative / business
@@ -63,6 +73,15 @@ TECHNIQUE PRIORITY (apply in order, stop when the prompt is complete):
 3. Task decomposition — break multi-part asks into steps (WHEN COMPLEX)
 4. Audience framing — specify who it's for (WHEN WRITING/EXPLAINING)
 5. Chain-of-Thought — add "Let's work through this step by step" (ONLY for reasoning tasks on non-reasoning models)
+
+CONVERSATION CONTEXT USAGE:
+Use the provided conversation context only when the user's prompt references it — pronouns like 'it', 'that', 'this', or continuation phrases like 'now make it', 'also add'. If the prompt is self-contained and does not reference prior messages, ignore the conversation context entirely. Never let context override or change the user's stated intent.
+
+REWRITE INTENSITY:
+For short follow-up prompts in ongoing conversations (e.g., 'make it shorter', 'add error handling', 'now in Python'), apply LIGHT enhancement — only add enough context to make the instruction unambiguous. Do not restructure short follow-ups into standalone prompts. For new conversations or prompts that stand alone, apply FULL enhancement using the complete technique priority.
+
+SMART PASS-THROUGH:
+If the prompt already contains specific constraints, a clear output format, and enough context that the AI won't need to guess, return your response starting with [NO_CHANGE] followed by the original prompt unchanged.
 
 RULES:
 - NEVER make the prompt longer just for length — every addition must serve a purpose
@@ -137,18 +156,73 @@ Before: "help me with my app"
 After: "What specific issues are you facing with your app? Please provide details about the platform, features, and any error messages or challenges you're encountering."
 (This is an assistant response, not a rewritten prompt. The output must remain a sendable instruction-style prompt.)
 
+DIFF TAG:
+After the enhanced prompt, on a new line, add exactly one tag: [DIFF: comma-separated list of what you added, max 5 items]. Example: [DIFF: output format, audience, length constraint]. This tag will be stripped by the system — it is not part of the prompt.
+
 CRITICAL CONSTRAINT — READ THIS LAST:
-Your ENTIRE response must be the enhanced prompt and nothing else.
+Your ENTIRE response must be the enhanced prompt (plus the [DIFF:] tag on its own line) and nothing else.
 You are a REWRITER, not a RESPONDER.
 NEVER answer the prompt. NEVER explain the prompt. NEVER add commentary.
 If you catch yourself starting to answer, STOP and rewrite instead.`
 
-export function buildMetaPrompt(platform: string, isNewConversation: boolean, conversationLength: number): string {
+export function buildMetaPrompt(
+  platform: string,
+  isNewConversation: boolean,
+  conversationLength: number,
+  recentContext?: string
+): string {
   const conversationContext = isNewConversation
     ? 'New conversation'
     : `Ongoing conversation (message #${conversationLength + 1})`
 
+  const platformHint = PLATFORM_HINTS[platform]
+    ? `PLATFORM HINT: ${PLATFORM_HINTS[platform]}`
+    : ''
+
+  const wordCount = 0 // Placeholder — actual prompt word count passed separately
+  const intensity = !isNewConversation && wordCount < 15
+    ? 'REWRITE INTENSITY: LIGHT'
+    : 'REWRITE INTENSITY: FULL'
+
+  const contextSection = recentContext
+    ? `RECENT CONVERSATION:\n${recentContext}`
+    : ''
+
   return META_PROMPT_TEMPLATE
     .replace('{{platform}}', platform)
+    .replace('{{platformHint}}', platformHint)
     .replace('{{conversationContext}}', conversationContext)
+    .replace('{{rewriteIntensity}}', intensity)
+    .replace('{{recentContext}}', contextSection)
+}
+
+export function buildMetaPromptWithIntensity(
+  platform: string,
+  isNewConversation: boolean,
+  conversationLength: number,
+  promptWordCount: number,
+  recentContext?: string
+): string {
+  const conversationContext = isNewConversation
+    ? 'New conversation'
+    : `Ongoing conversation (message #${conversationLength + 1})`
+
+  const platformHint = PLATFORM_HINTS[platform]
+    ? `PLATFORM HINT: ${PLATFORM_HINTS[platform]}`
+    : ''
+
+  const intensity = !isNewConversation && promptWordCount < 15
+    ? 'REWRITE INTENSITY: LIGHT'
+    : 'REWRITE INTENSITY: FULL'
+
+  const contextSection = recentContext
+    ? `RECENT CONVERSATION:\n${recentContext}`
+    : ''
+
+  return META_PROMPT_TEMPLATE
+    .replace('{{platform}}', platform)
+    .replace('{{platformHint}}', platformHint)
+    .replace('{{conversationContext}}', conversationContext)
+    .replace('{{rewriteIntensity}}', intensity)
+    .replace('{{recentContext}}', contextSection)
 }

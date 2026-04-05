@@ -44,7 +44,7 @@ export function insertText(element: HTMLElement, text: string): boolean {
  * Fallback text insertion using InputEvent with DataTransfer.
  * Creates a synthetic input event that mimics real user typing.
  */
-function insertTextViaInputEvent(element: HTMLElement, text: string): boolean {
+export function insertTextViaInputEvent(element: HTMLElement, text: string): boolean {
   try {
     const dataTransfer = new DataTransfer()
     dataTransfer.setData('text/plain', text)

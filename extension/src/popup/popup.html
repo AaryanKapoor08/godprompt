@@ -28,12 +28,31 @@
     <select id="model-select" class="model-select">
       <option value="">Enter an API key first</option>
     </select>
+    <span id="cost-hint" class="cost-hint"></span>
+
+    <div id="custom-model-section" class="custom-model-section" style="display:none;">
+      <label for="custom-model">Custom model ID (optional)</label>
+      <input type="text" id="custom-model" placeholder="org/model-name" autocomplete="off" spellcheck="false">
+      <div id="custom-model-status" class="status"></div>
+    </div>
+  </div>
+
+  <!-- Context Toggle -->
+  <div class="section toggle-section">
+    <label class="toggle-label">
+      <input type="checkbox" id="context-toggle" checked>
+      <span>Include conversation context</span>
+    </label>
   </div>
 
   <div id="status" class="status"></div>
 
+  <p class="supported-sites">Works on ChatGPT, Claude, Gemini, Perplexity</p>
+
   <div class="footer">
     <span class="footer-link">v1.0.0</span>
+    <span class="footer-sep">&middot;</span>
+    <span id="enhancement-count" class="footer-link"></span>
   </div>
 
   <script type="module" src="./popup.ts"></script>

@@ -62,7 +62,7 @@ export class GeminiAdapter implements PlatformAdapter {
     return 'gemini'
   }
 
-  // Debug helper — call from console: promptpilotAdapter.debugSelectors()
+  // Debug helper — call from console: adapter.debugSelectors()
   debugSelectors(): void {
     console.info('[GeminiAdapter] input:', this.getInputElement())
     console.info('[GeminiAdapter] sendButton:', this.getSendButton())
@@ -82,5 +82,21 @@ export class GeminiAdapter implements PlatformAdapter {
       isNewConversation: conversationLength === 0,
       conversationLength,
     }
+  }
+
+  getRecentMessages(maxTokens: number): string {
+    const turns = Array.from(document.querySelectorAll(
+      'model-response, user-query, [class*="conversation-turn"], [data-turn-index]'
+    ))
+    if (turns.length === 0) return ''
+
+    const recent = turns.slice(-2)
+    let text = ''
+    for (const turn of recent) {
+      const content = turn.textContent?.trim() ?? ''
+      text += content + '\n'
+      if (text.length > maxTokens * 4) break
+    }
+    return text.slice(0, maxTokens * 4).trim()
   }
 }

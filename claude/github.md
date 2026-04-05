@@ -351,3 +351,41 @@ Primary consolidation commit:
 - Privacy policy deployed to GitHub Pages
 - Developer Dashboard updated: Authentication Information, Website Content, and all Limited Use certifications checked
 - Added Phase 15.15 tracking to Progress.md and BuildFlow.md
+
+---
+
+## Phase 16 — Post-Launch Optimization (2026-04-05)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `e82821e` | `feat(types): add recentContext to EnhanceMessage for conversation context` | `main` |
+| `9456cc5` | `feat(adapters): add getRecentMessages to PlatformAdapter interface` | `main` |
+| `07946b1` | `feat(chatgpt): add getRecentMessages for conversation context scraping` | `main` |
+| `cecac29` | `feat(claude): add getRecentMessages for conversation context scraping` | `main` |
+| `b0384b2` | `feat(gemini): add getRecentMessages for conversation context scraping` | `main` |
+| `4b76c0b` | `feat(perplexity): add getRecentMessages for conversation context scraping` | `main` |
+| `15e6393` | `refactor(dom-utils): export insertTextViaInputEvent for testability` | `main` |
+| `8d62686` | `perf(llm-client): reduce max_tokens to 768, temperature to 0.2, remove dead code` | `main` |
+| `8dddabd` | `feat(meta-prompt): add platform hints, context rules, smart pass-through, and rewrite intensity` | `main` |
+| `3e74dab` | `perf(service-worker): add abort, retry, settings cache, and usage counters` | `main` |
+| `b692df3` | `fix(content): increase retry attempts, add stale-selector warning and first-run tooltip` | `main` |
+| `5365fe5` | `style(content): rename promptpilot to promptgod, add diff label and status styles` | `main` |
+| `0681138` | `refactor(toast): rename promptpilot class prefix to promptgod` | `main` |
+| `c4eace1` | `feat(trigger): add re-enhance, DIFF stripping, preview mode, and enhancing status` | `main` |
+| `e6fa141` | `feat(undo): persistent undo button with diff label display` | `main` |
+| `4b52112` | `feat(popup): add context toggle, cost hints, counter, and custom model input` | `main` |
+| `07cbade` | `feat(popup): add context toggle, cost hints, counter, and OpenRouter model fetch` | `main` |
+| `687b302` | `style(popup): add toggle, cost hint, custom model, and footer styles` | `main` |
+| `35e0ea2` | `chore(test): remove dead openrouter-nonstream test` | `main` |
+| `64c69fd` | `chore: remove unused server directory (BYOK-only architecture)` | `main` |
+| `e925013` | `docs(buildflow): update phase 16 tasks and checkpoints` | `main` |
+| `95c90ab` | `docs(progress): record phase 16 code completion and DIFF stripping fix` | `main` |
+
+**What was done:**
+- **16.1 Quick Wins:** max_tokens reduced to 768, temperature set to 0.2 (tested with 6 prompt types), dead code removed (callOpenRouterAPIOnce, server/)
+- **16.2 Speed & Reliability:** AbortController cancels on disconnect, settings cached with invalidation, retry with 1s backoff for 429/500/503, 20 injection retries, privacy-browser error messages
+- **16.3 Prompt Quality:** Platform-specific meta-prompt hints, getRecentMessages on all 4 adapters, conversation context toggle, [NO_CHANGE] smart pass-through, rewrite intensity rules
+- **16.4 UX Polish:** Persistent undo (no 10s dismiss), re-enhance logic, Ctrl+Shift+G shortcut, first-run tooltip, cost hints, usage counters, [DIFF:] stripping with render ceiling, enhancing status text
+- **16.5 Resilience:** insertTextViaInputEvent exported, stale-selector warning, custom OpenRouter model input, Shift+click preview mode
+- **CSS/branding:** All promptpilot→promptgod class renames
+- **Manual testing pending** — see Progress.md Phase 16 for full checklist

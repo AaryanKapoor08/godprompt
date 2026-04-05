@@ -480,7 +480,7 @@ Source code sync completed on 2026-03-29. 13 commits pushed. See Progress.md for
 
 ---
 
-## PHASE 15.6 — POST-SYNC BUGFIXES [DO THIS BEFORE PHASE 16]
+## PHASE 15.6 — POST-SYNC BUGFIXES [DO THIS BEFORE PHASE 17]
 
 Two bugs found after loading the synced build in Chrome on ChatGPT:
 
@@ -785,7 +785,7 @@ Test each of these prompts manually and evaluate rewrite quality:
 
 ---
 
-## PHASE 15.10 — SENDABLE REWRITES, CRITICAL QUESTIONS ONLY [DO THIS BEFORE PHASE 16]
+## PHASE 15.10 — SENDABLE REWRITES, CRITICAL QUESTIONS ONLY [DO THIS BEFORE PHASE 17]
 
 **Goal:** Rewrites are always immediately sendable, never include placeholders, and ask clarifying questions only when missing context is truly critical.
 
@@ -902,12 +902,189 @@ Expected behavior:
 
 ---
 
-## PHASE 16 — Context Menu: Foundation + Injection [optional]
+## PHASE 16 — Post-Launch Optimization
+
+**Goal:** Improve speed, prompt quality, UX, and resilience across the extension without breaking existing functionality. Five sub-phases grouped by theme and risk.
+
+---
+
+### PHASE 16.1 — Quick Wins (zero-risk, high-value)
+
+**Goal:** Low-risk changes that immediately improve performance and code hygiene.
+
+**Tasks:**
+- Reduce `max_tokens` from 2048 to 768 in `callAnthropicAPI()` (`llm-client.ts`)
+- Add `max_tokens: 768` to `callOpenAIAPI()` and `callOpenRouterAPI()` (currently missing entirely)
+- Reduce `REWRITE_TEMPERATURE` from 0.4 to 0.2 (`llm-client.ts`). **Quality gate:** before committing, test at 0.2 with the standard 6 prompts (coding, research, writing, learning, creative, business). If creative prompts produce noticeably rigid/formulaic rewrites, use 0.3 as a compromise instead.
+- Remove dead `callOpenRouterAPIOnce()` function and its `OpenRouterNonStreamResponse` type (`llm-client.ts`)
+- Remove `server/` directory from repo (unused — BYOK-only architecture)
+- Rename CSS class prefix from `promptpilot-` to `promptgod-` across `styles.css` and all UI files (`trigger-button.ts`, `undo-button.ts`, `toast.ts`)
+- Add supported sites list to popup: "Works on ChatGPT, Claude, Gemini, Perplexity" (`popup.html`)
+
+**Checkpoint:**
+- [ ] `max_tokens: 768` present in all three provider call functions
+- [ ] Temperature is 0.2 (or 0.3 if creative prompts degraded — document the decision)
+- [ ] `callOpenRouterAPIOnce` and `OpenRouterNonStreamResponse` removed
+- [ ] `server/` directory removed from repo
+- [ ] Zero remaining `promptpilot-` CSS class references in `extension/src/`
+- [ ] Popup shows supported sites list
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Commit: `perf(llm-client): reduce max_tokens, temperature, and remove dead code`
+
+---
+
+### PHASE 16.2 — Speed & Reliability
+
+**Goal:** Reduce wasted resources, improve error recovery, and make the observer less expensive.
+
+**Tasks:**
+- Wire `AbortController` in service worker — create controller per enhancement, pass signal to `fetchWithTimeout()`, abort when port disconnects (`service-worker.ts`)
+- Debounce `MutationObserver` callback in `observeComposer()` with 200ms delay (`trigger-button.ts`)
+- Cache `chrome.storage.local` settings in service worker memory with `chrome.storage.onChanged` listener to invalidate (`service-worker.ts`)
+- Add single retry with 1s backoff for 429/500/503 errors — pre-first-token only. Skip retry on 401/403/422. (`service-worker.ts`)
+- Increase input element retry from 10 to 20 attempts in `waitForInputAndInject()` (`content/index.ts`)
+- Add smarter error messages for Brave/privacy-browser users: if a fetch to the LLM API fails with a network error (not an HTTP status), check if the error looks like a blocked request and show "API request blocked — if you're using Brave or a privacy browser, allow requests from extensions in your shield/privacy settings" instead of the generic "Enhancement failed" (`service-worker.ts`)
+
+**Checkpoint:**
+- [ ] AbortController cancels in-flight fetch when port disconnects (verify in DevTools Network tab)
+- [ ] MutationObserver callback fires at most once per 200ms (no burst re-injection)
+- [ ] Settings cached — `chrome.storage.local.get` not called on every enhance request
+- [ ] 429 error triggers one retry after 1s delay, then surfaces error toast if retry also fails
+- [ ] 401/403 errors are NOT retried — immediate error toast
+- [ ] Input element retry increased to 20 attempts (10s total wait)
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Network-blocked fetch shows privacy-browser-specific error message (test on Brave with Shields up)
+- [ ] Manual test: enhance on all 4 platforms, undo works, errors display correctly
+- [ ] Commit: `perf(service-worker): add abort, retry, caching, and observer debounce`
+
+---
+
+### PHASE 16.3 — Prompt Quality
+
+**Goal:** Make the meta-prompt smarter about platform and conversation context.
+
+**Tasks:**
+- Add platform-specific hints to meta-prompt system message:
+  - ChatGPT: "The AI responds well to numbered instructions and explicit output format"
+  - Claude: "The AI responds well to XML-tagged structure and clear role definitions"
+  - Gemini: "The AI responds well to structured prompts with clear context boundaries"
+  - Perplexity: "This is a search-focused AI — prompts benefit from specific search criteria and source preferences"
+  - Generic/fallback: neutral, no platform hints
+- Add conversation context scraping: each adapter gets a `getRecentMessages(maxTokens: number): string` method that scrapes the last 1-2 visible assistant/user messages (cap at ~500 tokens). Return empty string if new conversation.
+- Pass scraped context into `buildUserMessage()` as an optional `recentContext` parameter
+- **Quality gate — add context-use rule to meta-prompt:** "CONVERSATION CONTEXT USAGE: Use the provided conversation context only when the user's prompt references it — pronouns like 'it', 'that', 'this', or continuation phrases like 'now make it', 'also add'. If the prompt is self-contained and does not reference prior messages, ignore the conversation context entirely. Never let context override or change the user's stated intent."
+- Add "Include conversation context" toggle in popup settings (default: on), stored in `chrome.storage.local` as `includeConversationContext`
+- Service worker reads the toggle and only passes context if enabled
+- Update privacy policy on GitHub Pages: disclose that recent conversation messages may be sent to the LLM API when the toggle is on
+- **Smart pass-through for already-good prompts:** Add a `[NO_CHANGE]` prefix convention to the meta-prompt. Rule: "If the prompt already contains specific constraints, a clear output format, and enough context that the AI won't need to guess, return your response starting with `[NO_CHANGE]` followed by the original prompt unchanged." In the content script, detect `[NO_CHANGE]` prefix in accumulated text → strip the prefix, show info toast "Your prompt is already strong" instead of replacing input, skip undo. This prevents the product from making unnecessary changes.
+- **Light vs full enhancement based on conversation context:** Add a rewriting intensity rule to the meta-prompt: "REWRITE INTENSITY: For short follow-up prompts in ongoing conversations (e.g., 'make it shorter', 'add error handling', 'now in Python'), apply LIGHT enhancement — only add enough context to make the instruction unambiguous. Do not restructure short follow-ups into standalone prompts. For new conversations or prompts that stand alone, apply FULL enhancement using the complete technique priority." The signal: `isNewConversation === false` AND prompt word count < 15 → the meta-prompt receives a `REWRITE INTENSITY: LIGHT` line; otherwise `REWRITE INTENSITY: FULL`.
+
+**Checkpoint:**
+- [ ] Meta-prompt includes platform-specific hint for each of the 4 platforms
+- [ ] `getRecentMessages()` returns last 1-2 messages capped at ~500 tokens on all 4 platforms
+- [ ] `getRecentMessages()` returns empty string on new conversations
+- [ ] Toggle visible in popup, default on, persists across sessions
+- [ ] Toggle off → no conversation context sent in `buildUserMessage()`
+- [ ] Privacy policy updated and deployed
+- [ ] `[NO_CHANGE]` prefix detected → info toast shown, input not replaced
+- [ ] Already-specific prompt (e.g., detailed AWS comparison with format/criteria) triggers pass-through
+- [ ] Short follow-up in ongoing conversation gets light enhancement (not restructured)
+- [ ] Long/vague prompt in new conversation gets full enhancement
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Manual test: enhance in ongoing conversation vs new conversation — verify quality difference
+- [ ] Manual test: self-contained prompt in middle of conversation — verify context is ignored, not injected
+- [ ] Manual test: "make it shorter" in message #5 → light touch, not a standalone rewrite
+- [ ] Manual test: detailed prompt with constraints → "Your prompt is already strong" toast
+- [ ] Commit: `feat(meta-prompt): add platform hints, conversation context, smart pass-through, and rewrite intensity`
+
+---
+
+### PHASE 16.4 — UX Polish
+
+**Goal:** Improve the user experience with better feedback, persistent undo, re-enhance, and usage visibility.
+
+**Tasks:**
+- Add "Enhancing..." status text below trigger button during API wait (between click and first token). Remove on first token or error. (`trigger-button.ts`, `styles.css`)
+- Make undo button persistent until user sends message or starts typing — remove the 10s auto-dismiss timeout (`undo-button.ts`)
+- Store pre-first-enhancement original in a module-level variable — second enhance click uses that original, not the enhanced text. (`trigger-button.ts`) **Quality gate — reset logic:** Track `lastEnhancedText` alongside `storedOriginal`. On enhance click, compare current input text to `lastEnhancedText` — if they match (user hasn't edited), use `storedOriginal`. If they differ (user manually edited the enhanced text), treat current text as the new original. Reset both variables when user sends the message. Add a keydown listener on the input field to detect manual edits.
+- Change keyboard shortcut from Ctrl+Shift+E to Ctrl+Shift+G (PromptGod) to avoid conflicts with browser dev tools (`trigger-button.ts`)
+- Add first-run tooltip on trigger button: "Click to enhance your prompt" — shown once, gated by `chrome.storage.local` `hasSeenTooltip` flag. Tooltip dismisses on click or after 5s. (`trigger-button.ts`, `styles.css`)
+- Add cost hint per model in popup model dropdown area (static text, e.g., "~$0.001/enhance" for Haiku, "Free" for Nemotron) (`popup.ts`, `popup.html`)
+- Add local usage counters in `chrome.storage.local`: `{ totalEnhancements, enhancementsByPlatform: Record<string, number>, errorCount }`. Increment on DONE/ERROR in service worker.
+- Show enhancement count in popup footer: "42 prompts enhanced" (`popup.ts`, `popup.html`)
+- **Enhancement diff label:** After enhancement completes, show a subtle label on or near the undo button summarizing what was added, e.g., "Added: output format, audience" or "Added: constraints, structure". Implementation: have the meta-prompt output a `[DIFF: ...]` tag at the very end of its response (after the rewritten prompt). The content script strips this tag before inserting text into the input field, and extracts the diff summary for the label. Add a meta-prompt rule: "After the enhanced prompt, on a new line, add exactly one tag: `[DIFF: comma-separated list of what you added, max 5 items]`. Example: `[DIFF: output format, audience, length constraint]`. This tag will be stripped by the system — it is not part of the prompt." Show the diff as small muted text next to the undo button. (`trigger-button.ts`, `undo-button.ts`, `styles.css`, `meta-prompt.ts`)
+
+**Checkpoint:**
+- [ ] "Enhancing..." text visible during API wait, disappears on first token
+- [ ] Undo button stays visible until user types or sends — no auto-dismiss timer
+- [ ] Second enhance click enhances the original prompt, not the already-enhanced text
+- [ ] Third enhance click also uses the original (not the second enhancement)
+- [ ] If user edits the enhanced text and clicks enhance, the edited version is treated as the new input (not the stale original)
+- [ ] Ctrl+Shift+G triggers enhancement (old Ctrl+Shift+E no longer works)
+- [ ] First-run tooltip appears on first install, not on subsequent visits
+- [ ] Cost hints visible next to model names in popup
+- [ ] Enhancement counter increments on each successful enhance and displays in popup footer
+- [ ] Error counter increments on each error
+- [ ] `[DIFF: ...]` tag stripped from enhanced text before DOM insertion
+- [ ] Diff label visible next to undo button (e.g., "Added: output format, audience")
+- [ ] If model doesn't output `[DIFF:]` tag, no label shown (graceful degradation)
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Manual test: first-run flow, undo persistence, re-enhance with original, counters increment
+- [ ] Commit: `feat(ux): persistent undo, re-enhance, first-run tooltip, usage stats`
+
+---
+
+### PHASE 16.5 — Resilience & Future-Proofing
+
+**Goal:** Prepare for DOM changes, deprecated APIs, and power-user needs.
+
+**Tasks:**
+- Harden `insertTextViaInputEvent()` fallback in `dom-utils.ts`:
+  - Test with `execCommand` disabled (Chrome flag `chrome://flags/#enable-experimental-web-platform-features` or mocking `document.execCommand` to return `false`) on all 4 platforms
+  - If fallback doesn't work on ProseMirror (ChatGPT/Claude), investigate `ClipboardEvent` or direct model manipulation as alternative
+- Add "PromptGod may need an update" warning toast if trigger button injection fails 3 consecutive times in `waitForInputAndInject()` (`content/index.ts`)
+- Add custom model ID text input for OpenRouter users — optional field below the dropdown. If filled, overrides dropdown selection. Validate format (must contain `/`). (`popup.ts`, `popup.html`)
+- Fetch OpenRouter model list via `https://openrouter.ai/api/v1/models` on popup open, cache in `chrome.storage.local` with 24h TTL, fallback to hardcoded list on failure. Only for OpenRouter provider. (`popup.ts`)
+- Add preview mode: hold Shift+click trigger → shows enhanced prompt in a floating overlay/modal instead of replacing input. Overlay has "Use this" button (replaces input) and "Dismiss" button. (`trigger-button.ts`, `styles.css`)
+
+**Checkpoint:**
+- [ ] `insertTextViaInputEvent()` fallback tested on all 4 platforms with `execCommand` mocked to fail
+- [ ] If fallback fails on a platform, a documented plan exists for an alternative approach
+- [ ] Stale-selector warning appears after 3 failed injection attempts
+- [ ] Custom model ID input visible for OpenRouter users, overrides dropdown when filled
+- [ ] Custom model ID validates format (must contain `/`)
+- [ ] OpenRouter model list fetched and cached (verify in DevTools → Application → Storage)
+- [ ] Hardcoded fallback used when fetch fails (e.g., airplane mode)
+- [ ] Shift+click shows preview overlay with enhanced prompt
+- [ ] "Use this" button in overlay replaces input field text
+- [ ] "Dismiss" button closes overlay without changes
+- [ ] Normal click (no Shift) still works as before — no regression
+- [ ] `pnpm test` passes
+- [ ] `pnpm build` passes
+- [ ] Manual test: custom model works, preview mode shows overlay, stale-selector warning appears
+- [ ] Commit: `feat(resilience): fallback hardening, custom models, preview mode`
+
+---
+
+**Deferred — NOT in Phase 16:**
+- i18n (internationalization) → separate future phase when user base justifies localization
+- Firefox MV3 support → separate future phase requiring manifest + API abstraction layer
+- These are tracked as expansion paths in Phase 21.
+
+---
+
+## PHASE 17 — Context Menu: Foundation + Injection [optional]
 
 **Goal:** Right-click on selected text on any webpage shows "Enhance with PromptGod" and injects a handler script that captures the selection and opens a communication port.
 
+**Permission note:** This phase re-adds `activeTab` to the manifest. In Phase 15.15 it was removed because it was unused — now it has a legitimate use: context menu clicks grant temporary `activeTab` permission, which `chrome.scripting.executeScript()` requires to inject the handler into arbitrary pages. Document this justification in the Chrome Web Store submission notes to avoid another rejection.
+
 **Tasks:**
-- Add `contextMenus` and `scripting` permissions to `manifest.json`
+- Add `contextMenus`, `scripting`, and `activeTab` permissions to `manifest.json` (activeTab is required for `chrome.scripting.executeScript` on arbitrary pages — context menu click grants temporary access)
 - Add `'generic'` to the `Platform` type union in `src/content/adapters/types.ts`
 - Update `buildMetaPrompt()` in `src/lib/meta-prompt.ts` to handle `'generic'` platform — use neutral context ("User is on a webpage", no platform-specific DOM or send-button guidance)
 - Register context menu item in service worker inside `chrome.runtime.onInstalled` listener:
@@ -943,7 +1120,7 @@ Expected behavior:
 
 ---
 
-## PHASE 17 — Context Menu: Enhancement + Text Replacement [optional]
+## PHASE 18 — Context Menu: Enhancement + Text Replacement [optional]
 
 **Goal:** Full enhancement pipeline works via context menu — selected text gets replaced in editable fields or copied to clipboard on any webpage.
 
@@ -953,10 +1130,12 @@ Expected behavior:
   - Detects platform from tab URL: if hostname matches a known platform, use that; otherwise use `'generic'`
   - Makes LLM call using existing `callAnthropicAPI`/`callOpenRouterAPI`/`callOpenAIAPI`
   - Collects the full response by concatenating all tokens (do NOT stream token-by-token into DOM — arbitrary pages have unpredictable editors, wait for complete text)
+  - Uses same `max_tokens: 768` as the main enhancement path
   - Sends `{ type: 'RESULT', text: enhancedText }` through port on completion
   - Sends `{ type: 'ERROR', message }` through port on failure
   - Disconnects port after sending
 - Add `ContextMenuResult` and `ContextMenuError` to message types in `src/lib/types.ts`
+- Show a progress indicator in the loading toast: "Enhancing your prompt..." with a spinner or pulsing animation — since the context menu path doesn't stream, users see nothing until the full response arrives (could be 3-8 seconds)
 - Handler receives RESULT message and determines replacement strategy based on saved active element:
   - **Textarea or input:** Use `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set` (or `HTMLInputElement.prototype`) to set value via the native setter — this bypasses React/framework controlled component guards. Replace only the selected portion using saved `selectionStart`/`selectionEnd`: `value = before + enhancedText + after`. Dispatch `new Event('input', { bubbles: true })` to notify frameworks.
   - **Contenteditable:** Restore the saved range via `window.getSelection().removeAllRanges()` then `addRange(savedRange)`. Delete range contents via `savedRange.deleteContents()`. Insert enhanced text via `document.execCommand('insertText', false, enhancedText)`. If execCommand returns false, fall back to creating a text node and inserting it at the range position, then dispatch InputEvent.
@@ -983,7 +1162,7 @@ Expected behavior:
 
 ---
 
-## PHASE 18 — Context Menu: Undo + Edge Cases + Cross-site QA [optional]
+## PHASE 19 — Context Menu: Undo + Edge Cases + Cross-site QA [optional]
 
 **Goal:** Undo works for context menu enhancements, edge cases are handled gracefully, and the feature is verified across a wide range of sites.
 
@@ -1014,6 +1193,10 @@ Expected behavior:
   - Handler registers `port.onDisconnect` — if port disconnects unexpectedly (navigation, tab close), clean up toast and timers silently, no error shown
 - **Privacy policy update:**
   - Add disclosure for `contextMenus` and `scripting` permissions: "When you right-click and choose 'Enhance with PromptGod', the extension reads the text you selected on that page. This requires temporary access to the active tab. Selected text is sent to your configured LLM provider for enhancement. No text is stored or collected."
+- **Multi-element selection:**
+  - If user selects text spanning multiple DOM elements (e.g., across paragraphs or list items), `getRangeAt(0)` captures the full range. For contenteditable replacement, `deleteContents()` + `insertText` handles this. For textarea, selection is always contiguous. Test with cross-paragraph selections on Notion and Gmail.
+- **Chrome internal pages:**
+  - `chrome://`, `chrome-extension://`, `edge://`, and Chrome Web Store pages block `executeScript`. Detect these URLs in the `onClicked` handler and show a notification: "PromptGod can't run on this page" instead of attempting injection.
 - **Cross-site testing matrix:**
   - OpenAI Playground (textarea replacement)
   - Google AI Studio (textarea/contenteditable replacement)
@@ -1026,6 +1209,9 @@ Expected behavior:
   - Text inside an iframe (iframe handling)
   - ChatGPT (coexistence with trigger button)
   - Claude.ai (coexistence with trigger button)
+  - Gmail compose (contenteditable replacement)
+  - Outlook Web compose (contenteditable replacement)
+  - Cross-paragraph selection on Notion or Google Docs (multi-element range)
 
 **Checkpoint:**
 - [ ] After inline replacement: toast shows "Prompt enhanced — Undo" with clickable undo action
@@ -1050,15 +1236,62 @@ Expected behavior:
 - [ ] iframe content — replacement or clipboard works
 - [ ] ChatGPT — trigger button and context menu coexist without conflict
 - [ ] Claude.ai — trigger button and context menu coexist without conflict
+- [ ] Gmail compose — contenteditable replacement works
+- [ ] Outlook Web compose — contenteditable replacement works
+- [ ] Cross-paragraph selection — replacement or clipboard works correctly
+- [ ] Chrome internal pages (chrome://, Web Store) — graceful "can't run here" notification
 - [ ] Commit: `feat(context-menu): add undo, edge case handling, and cross-site verification`
 
 ---
 
-## PHASE 19 — Future Expansion [optional — pick any]
+## PHASE 20 — Future Expansion [optional — pick any]
 
-These are independent expansion paths. Pick one or both. Order doesn't matter.
+These are independent expansion paths. Pick any. Order doesn't matter.
 
-### Option A — System-wide Clipboard Enhancer
+### Option A — Email Platform Adapters (Gmail, Outlook)
+
+**Goal:** Dedicated adapters for email platforms — trigger button in compose toolbar, email-aware enhancement, streaming into compose editor. Transforms PromptGod from "AI prompt enhancer" to "writing enhancer."
+
+**Tasks:**
+- Add `mail.google.com` and `outlook.office.com` / `outlook.live.com` to manifest `host_permissions` and `content_scripts.matches`
+- Create `GmailAdapter` implementing `PlatformAdapter`:
+  - `matches()`: hostname `mail.google.com`
+  - `getInputElement()`: Gmail compose uses a contenteditable `div[aria-label="Message Body"]` or `div[role="textbox"]` inside the compose window
+  - `getPromptText()`: read compose body text
+  - `setPromptText()`: use same `replaceText()` from `dom-utils.ts`
+  - `getSendButton()`: find Send button by `div[aria-label="Send"]` or `[data-tooltip="Send"]`
+  - `getConversationContext()`: read email thread — extract subject line, last 1-2 reply messages for context
+  - `getPlatform()`: returns `'gmail'`
+- Create `OutlookAdapter` implementing `PlatformAdapter`:
+  - Similar structure — Outlook Web compose uses contenteditable div
+  - Read subject, recipients, thread context
+- Add `'gmail'` and `'outlook'` to `Platform` type union
+- Add email-specific meta-prompt branch:
+  - Don't use "prompt engineering" language — use "communication enhancement"
+  - Focus on: clarity, tone, conciseness, appropriate formality
+  - Don't add: "ask clarifying questions", output format constraints, chain-of-thought
+  - Read subject line and thread context to inform tone (formal reply vs. casual new email)
+  - Rule: "This is an email, not an AI prompt. Enhance for human communication: clearer structure, better tone, more concise. Do not add AI-specific instructions."
+- Handle Gmail's multiple compose windows (multiple open drafts) — inject button into each
+- Handle Outlook's inline reply vs. new window compose
+- MutationObserver for Gmail SPA navigation and compose window open/close
+- Update popup supported sites: "Works on ChatGPT, Claude, Gemini, Perplexity, Gmail, Outlook"
+- Update privacy policy: disclose email content processing
+
+**Checkpoint:**
+- [ ] Trigger button appears in Gmail compose toolbar
+- [ ] Trigger button appears in Outlook Web compose toolbar
+- [ ] Enhancement reads email thread context (subject, recent replies)
+- [ ] Enhanced email is concise, clear, and appropriately toned — not "prompt-engineered"
+- [ ] Streaming replacement works in Gmail compose
+- [ ] Streaming replacement works in Outlook compose
+- [ ] Undo restores original email text
+- [ ] Multiple Gmail compose windows each get their own trigger button
+- [ ] Button re-appears when opening a new compose window
+- [ ] `pnpm test` passes, `pnpm build` passes
+- [ ] Commit: `feat(email): add Gmail and Outlook adapters with email-aware enhancement`
+
+### Option B — System-wide Clipboard Enhancer
 
 **Goal:** Desktop app that enhances any copied text via a global hotkey, working across all applications.
 
@@ -1079,7 +1312,7 @@ These are independent expansion paths. Pick one or both. Order doesn't matter.
 - [ ] Builds for Windows + Mac + Linux
 - [ ] Commit: `feat(desktop): system-wide clipboard prompt enhancer`
 
-### Option B — Public API + npm SDK
+### Option C — Public API + npm SDK
 
 **Goal:** Expose prompt enhancement as a service for other developers to integrate.
 
@@ -1098,6 +1331,51 @@ These are independent expansion paths. Pick one or both. Order doesn't matter.
 - [ ] SDK `enhance()` function works in Node.js and browser
 - [ ] API docs hosted publicly
 - [ ] Commit: `feat(api): public prompt enhancement API and SDK`
+
+---
+
+## PHASE 21 — Platform Expansion [optional]
+
+These were deferred from Phase 16 as they require significant infrastructure work.
+
+### Option A — Firefox MV3 Support
+
+**Goal:** PromptGod works on Firefox with the same feature set.
+
+**Tasks:**
+- Create a Firefox-compatible `manifest.json` (Firefox MV3 has differences: `browser_specific_settings`, background `scripts` instead of `service_worker` in some versions)
+- Abstract `chrome.*` API calls behind a thin compatibility layer (`browser.*` on Firefox)
+- Test all 4 platform adapters on Firefox (DOM structure is the same — selectors should work)
+- Handle Firefox-specific quirks: `execCommand` behavior, port lifecycle differences
+- Set up separate build target in Vite for Firefox output
+- Submit to Firefox Add-ons (AMO)
+
+**Checkpoint:**
+- [ ] Firefox-compatible manifest created
+- [ ] Compatibility layer handles `chrome.*` vs `browser.*`
+- [ ] All 4 platform adapters work on Firefox
+- [ ] Streaming, undo, and error handling work on Firefox
+- [ ] Firefox build output is separate from Chrome build
+- [ ] Submitted to AMO
+- [ ] Commit: `feat(firefox): add Firefox MV3 support`
+
+### Option B — Internationalization (i18n)
+
+**Goal:** Extension UI and meta-prompt support multiple languages.
+
+**Tasks:**
+- Extract all user-facing strings to Chrome's `_locales/` i18n system
+- Create `_locales/en/messages.json` as base
+- Use `chrome.i18n.getMessage()` for popup text, toast messages, tooltips
+- Meta-prompt language: detect browser language via `navigator.language`, add instruction: "Rewrite the prompt in the same language the user wrote it in"
+- Add at least one additional locale (e.g., Spanish, Hindi) to validate the pipeline
+
+**Checkpoint:**
+- [ ] All popup strings use `chrome.i18n.getMessage()`
+- [ ] All toast/tooltip strings use `chrome.i18n.getMessage()`
+- [ ] Meta-prompt includes language-matching instruction
+- [ ] Extension works correctly in at least 2 locales
+- [ ] Commit: `feat(i18n): add internationalization support`
 
 ---
 

@@ -15,7 +15,7 @@ export function showToast({ message, variant = 'info', duration = 3000 }: ToastO
   dismissToast()
 
   const toast = document.createElement('div')
-  toast.className = `promptpilot-toast promptpilot-toast--${variant}`
+  toast.className = `promptgod-toast promptgod-toast--${variant}`
   toast.textContent = message
   toast.setAttribute('role', 'alert')
 
@@ -24,7 +24,7 @@ export function showToast({ message, variant = 'info', duration = 3000 }: ToastO
 
   // Trigger entrance animation on next frame
   requestAnimationFrame(() => {
-    toast.classList.add('promptpilot-toast--visible')
+    toast.classList.add('promptgod-toast--visible')
   })
 
   setTimeout(() => {

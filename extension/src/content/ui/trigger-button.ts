@@ -10,6 +10,19 @@ import { showUndoButton, removeUndoButton } from './undo-button'
 let isEnhancing = false
 let injectedButton: HTMLButtonElement | null = null
 
+// Track original prompt across re-enhance clicks
+let storedOriginal: string | null = null
+let lastEnhancedText: string | null = null
+
+function stripDiffTag(text: string): { cleanText: string; diffLabel: string | null } {
+  const match = text.match(/\n?\[DIFF:\s*([^\]]*)\]\s*$/)
+  if (!match) return { cleanText: text.trimEnd(), diffLabel: null }
+  return {
+    cleanText: text.slice(0, match.index).trimEnd(),
+    diffLabel: match[1].trim() || null,
+  }
+}
+
 function isExtensionContextInvalidated(error: unknown): boolean {
   return error instanceof Error && /extension context invalidated/i.test(error.message)
 }
@@ -35,27 +48,33 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   }
 
   const button = document.createElement('button')
-  button.id = 'promptpilot-trigger'
+  button.id = 'promptgod-trigger'
   button.type = 'button'
-  button.className = 'promptpilot-trigger-btn'
+  button.className = 'promptgod-trigger-btn'
   button.title = 'Enhance prompt'
   button.setAttribute('aria-label', 'Enhance prompt')
 
   // Brand icon loaded via chrome.runtime.getURL (requires web_accessible_resources)
   const iconUrl = chrome.runtime.getURL('assets/icon-48.png')
   button.innerHTML = `
-    <img class="promptpilot-trigger-icon" src="${iconUrl}" alt="PromptGod" />
-    <svg class="promptpilot-trigger-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <img class="promptgod-trigger-icon" src="${iconUrl}" alt="PromptGod" />
+    <svg class="promptgod-trigger-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-dashoffset="0"/>
     </svg>
   `
 
-  button.addEventListener('click', () => handleEnhanceClick(adapter))
+  button.addEventListener('click', (e) => {
+    if (e.shiftKey) {
+      handlePreviewEnhance(adapter)
+    } else {
+      handleEnhanceClick(adapter)
+    }
+  })
 
   // Platform-specific insertion
   const platform = adapter.getPlatform()
   if (platform === 'claude') {
-    button.classList.add('promptpilot-trigger-btn--claude')
+    button.classList.add('promptgod-trigger-btn--claude')
     const input = adapter.getInputElement()
     const composer = input?.closest('fieldset') ?? input?.closest('form') ?? input?.parentElement?.parentElement?.parentElement
 
@@ -87,7 +106,7 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'gemini') {
-    button.classList.add('promptpilot-trigger-btn--gemini')
+    button.classList.add('promptgod-trigger-btn--gemini')
     const input = adapter.getInputElement()
     const composer = input?.closest('form, [class*="input-area"], [class*="composer"]')
       ?? input?.parentElement?.parentElement?.parentElement
@@ -122,7 +141,7 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'perplexity') {
-    button.classList.add('promptpilot-trigger-btn--perplexity')
+    button.classList.add('promptgod-trigger-btn--perplexity')
     const input = adapter.getInputElement()
     const composer = input?.closest('form, [class*="input"], [class*="composer"]')
       ?? input?.parentElement?.parentElement?.parentElement
@@ -168,7 +187,7 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
       sendButton.parentElement?.insertBefore(button, sendButton)
     }
   } else if (platform === 'chatgpt') {
-    button.classList.add('promptpilot-trigger-btn--chatgpt')
+    button.classList.add('promptgod-trigger-btn--chatgpt')
     // Absolute-position the button inside the form so it stays fixed at the bottom
     // regardless of ChatGPT's internal DOM nesting or text area growth.
     const input = adapter.getInputElement()
@@ -207,13 +226,27 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   const platform = adapter.getPlatform()
   const context = adapter.getConversationContext()
+
+  // Re-enhance logic: if text matches last enhanced output, use stored original
+  // If user has edited the text, treat current text as new original
+  let effectivePrompt = promptText
+  if (storedOriginal !== null && lastEnhancedText !== null) {
+    if (promptText === lastEnhancedText) {
+      effectivePrompt = storedOriginal
+    } else {
+      storedOriginal = promptText
+    }
+  } else {
+    storedOriginal = promptText
+  }
+
   console.info(
-    { platform, promptText, promptLength: promptText.length, context },
+    { platform, promptLength: effectivePrompt.length, context },
     '[PromptGod] Enhance triggered'
   )
 
   // Cache original prompt for undo — must happen before any DOM modification
-  const originalPrompt = promptText
+  const originalPrompt = storedOriginal!
 
   // Remove any existing undo button from a previous enhancement
   removeUndoButton()
@@ -258,12 +291,26 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     return
   }
 
+  // Gather recent conversation context if toggle is on
+  let recentContext: string | undefined
+  try {
+    const settings = await chrome.storage.local.get(['includeConversationContext'])
+    const includeContext = settings.includeConversationContext !== false // default: on
+    if (includeContext && !context.isNewConversation) {
+      const scraped = adapter.getRecentMessages(500)
+      if (scraped) recentContext = scraped
+    }
+  } catch {
+    // storage access failed — proceed without context
+  }
+
   // Send ENHANCE message
   const message: EnhanceMessage = {
     type: 'ENHANCE',
-    rawPrompt: promptText,
+    rawPrompt: effectivePrompt,
     platform,
     context,
+    recentContext,
   }
   try {
     port.postMessage(message)
@@ -295,6 +342,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   let settled = false
   let acknowledged = false
   let undoShown = false
+  let pendingDiffLabel: string | null = null
 
   const ackTimeout = window.setTimeout(() => {
     if (settled) {
@@ -374,17 +422,32 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     const pending = accumulatedText.length - renderedIndex
     if (pending <= 0) {
       if (streamDone) {
+        // accumulatedText was already stripped of [DIFF:] in the DONE handler;
+        // pendingDiffLabel holds the extracted label.
+
+        // Detect [NO_CHANGE] pass-through
+        if (accumulatedText.startsWith('[NO_CHANGE]')) {
+          showToast({ message: 'Your prompt is already strong', variant: 'info' })
+          // Restore original — don't replace input, skip undo
+          try {
+            adapter.setPromptText(originalPrompt)
+          } catch { /* best-effort */ }
+          settle()
+          return
+        }
+
         // All text rendered and stream is done — final sync and settle
         try {
           adapter.setPromptText(accumulatedText)
-        } catch {
-          // best-effort
+        } catch (err) {
+          console.error({ cause: err }, '[PromptGod] Final text sync failed')
         }
+        lastEnhancedText = accumulatedText
         console.info(
-          { enhancedLength: accumulatedText.length },
+          { enhancedLength: accumulatedText.length, diffLabel: pendingDiffLabel },
           '[PromptGod] Enhancement complete'
         )
-        ensureUndoButton()
+        ensureUndoButton(pendingDiffLabel)
         settle()
         return
       }
@@ -411,12 +474,29 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       }
     }
 
+    // Find render ceiling: never render into a [DIFF: ...] tag region
+    let ceiling = accumulatedText.length
+    const diffStart = accumulatedText.indexOf('[DIFF:')
+    if (diffStart !== -1 && diffStart >= renderedIndex) {
+      // Also skip any preceding newline(s)
+      ceiling = diffStart
+      while (ceiling > renderedIndex && (accumulatedText[ceiling - 1] === '\n' || accumulatedText[ceiling - 1] === '\r')) {
+        ceiling--
+      }
+    }
+
+    if (renderedIndex >= ceiling) {
+      // We've reached the [DIFF:] region — wait for DONE to strip and finalize
+      renderFrameId = requestAnimationFrame(renderLoop)
+      return
+    }
+
     // Find next word boundary: advance past current word + trailing whitespace
     let end = renderedIndex
-    while (end < accumulatedText.length && accumulatedText[end] !== ' ' && accumulatedText[end] !== '\n') {
+    while (end < ceiling && accumulatedText[end] !== ' ' && accumulatedText[end] !== '\n') {
       end++
     }
-    while (end < accumulatedText.length && (accumulatedText[end] === ' ' || accumulatedText[end] === '\n')) {
+    while (end < ceiling && (accumulatedText[end] === ' ' || accumulatedText[end] === '\n')) {
       end++
     }
 
@@ -445,7 +525,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     renderFrameId = requestAnimationFrame(renderLoop)
   }
 
-  function ensureUndoButton(): void {
+  function ensureUndoButton(diffLabel?: string | null): void {
     if (undoShown) {
       return
     }
@@ -457,7 +537,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       } catch {
         // no-op
       }
-    })
+    }, diffLabel ?? undefined)
     undoShown = true
   }
 
@@ -472,6 +552,9 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     if (msg.type === 'START') {
       console.info('[PromptGod] Service worker acknowledged request')
     } else if (msg.type === 'TOKEN') {
+      // Remove "Enhancing..." status on first token
+      removeEnhancingStatus()
+
       accumulatedText += msg.text
 
       // Start the render loop on first token — clears field and starts typing
@@ -483,7 +566,14 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         window.clearTimeout(progressTimeout)
         progressTimeout = null
       }
-      // Signal the render loop to flush remaining text and settle
+      // Strip [DIFF: ...] tag immediately so the render loop never types it into the DOM
+      const { cleanText, diffLabel } = stripDiffTag(accumulatedText)
+      accumulatedText = cleanText
+      pendingDiffLabel = diffLabel
+      // Clamp renderedIndex in case the render loop already passed the new boundary
+      if (renderedIndex > accumulatedText.length) {
+        renderedIndex = accumulatedText.length
+      }
       streamDone = true
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptGod] Enhancement error')
@@ -531,25 +621,205 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   })
 }
 
+async function handlePreviewEnhance(adapter: PlatformAdapter): Promise<void> {
+  if (isEnhancing) return
+
+  const promptText = adapter.getPromptText()
+  if (shouldSkipEnhancement(promptText)) {
+    showToast({ message: 'Prompt too short to enhance', variant: 'info' })
+    return
+  }
+
+  const platform = adapter.getPlatform()
+  const context = adapter.getConversationContext()
+  setLoading(true)
+
+  if (!hasRuntimeContext()) {
+    showToast({ message: 'Extension was updated — please refresh the page', variant: 'warning' })
+    setLoading(false)
+    return
+  }
+
+  try { await chrome.runtime.sendMessage({ type: 'PING' }) } catch { /* wake-up */ }
+
+  let port: chrome.runtime.Port
+  try {
+    port = chrome.runtime.connect({ name: 'enhance' })
+  } catch {
+    showToast({ message: 'Could not reach extension service worker', variant: 'error' })
+    setLoading(false)
+    return
+  }
+
+  let recentContext: string | undefined
+  try {
+    const settings = await chrome.storage.local.get(['includeConversationContext'])
+    if (settings.includeConversationContext !== false && !context.isNewConversation) {
+      const scraped = adapter.getRecentMessages(500)
+      if (scraped) recentContext = scraped
+    }
+  } catch { /* proceed without context */ }
+
+  const message: EnhanceMessage = {
+    type: 'ENHANCE',
+    rawPrompt: promptText,
+    platform,
+    context,
+    recentContext,
+  }
+
+  try { port.postMessage(message) } catch {
+    setLoading(false)
+    return
+  }
+
+  let accumulated = ''
+
+  port.onMessage.addListener((msg: ServiceWorkerMessage) => {
+    if (msg.type === 'TOKEN') {
+      removeEnhancingStatus()
+      accumulated += msg.text
+    } else if (msg.type === 'DONE') {
+      setLoading(false)
+      const { cleanText } = stripDiffTag(accumulated)
+      if (cleanText.startsWith('[NO_CHANGE]')) {
+        showToast({ message: 'Your prompt is already strong', variant: 'info' })
+        return
+      }
+      showPreviewOverlay(adapter, cleanText)
+    } else if (msg.type === 'ERROR') {
+      setLoading(false)
+      showToast({ message: msg.message, variant: 'error' })
+    }
+  })
+
+  port.onDisconnect.addListener(() => {
+    setLoading(false)
+  })
+}
+
+function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): void {
+  // Remove existing overlay if any
+  document.querySelector('.promptgod-preview-overlay')?.remove()
+
+  const overlay = document.createElement('div')
+  overlay.className = 'promptgod-preview-overlay'
+
+  const content = document.createElement('div')
+  content.className = 'promptgod-preview-content'
+
+  const textEl = document.createElement('pre')
+  textEl.className = 'promptgod-preview-text'
+  textEl.textContent = enhancedText
+
+  const actions = document.createElement('div')
+  actions.className = 'promptgod-preview-actions'
+
+  const useBtn = document.createElement('button')
+  useBtn.textContent = 'Use this'
+  useBtn.className = 'promptgod-preview-btn promptgod-preview-btn--primary'
+  useBtn.addEventListener('click', () => {
+    adapter.setPromptText(enhancedText)
+    overlay.remove()
+  })
+
+  const dismissBtn = document.createElement('button')
+  dismissBtn.textContent = 'Dismiss'
+  dismissBtn.className = 'promptgod-preview-btn'
+  dismissBtn.addEventListener('click', () => {
+    overlay.remove()
+  })
+
+  actions.appendChild(useBtn)
+  actions.appendChild(dismissBtn)
+  content.appendChild(textEl)
+  content.appendChild(actions)
+  overlay.appendChild(content)
+  document.body.appendChild(overlay)
+}
+
+let enhancingStatusEl: HTMLElement | null = null
+
 function cleanupPort(): void {
   setLoading(false)
+  removeEnhancingStatus()
 }
 
 function setLoading(loading: boolean): void {
   isEnhancing = loading
   if (injectedButton) {
-    injectedButton.classList.toggle('promptpilot-trigger-btn--loading', loading)
+    injectedButton.classList.toggle('promptgod-trigger-btn--loading', loading)
     injectedButton.disabled = loading
+  }
+
+  if (loading) {
+    showEnhancingStatus()
+  } else {
+    removeEnhancingStatus()
   }
 }
 
-// Re-inject button when platform re-renders the composer (SPA navigation)
-export function observeComposer(adapter: PlatformAdapter): void {
-  const observer = new MutationObserver(() => {
-    if (!injectedButton || !document.body.contains(injectedButton)) {
-      injectedButton = null
-      injectTriggerButton(adapter)
+function showEnhancingStatus(): void {
+  removeEnhancingStatus()
+  const el = document.createElement('span')
+  el.className = 'promptgod-enhancing-status'
+  el.textContent = 'Enhancing...'
+  const btn = injectedButton
+  if (btn?.parentElement) {
+    btn.parentElement.style.position = btn.parentElement.style.position || 'relative'
+    btn.parentElement.appendChild(el)
+    enhancingStatusEl = el
+  }
+}
+
+function removeEnhancingStatus(): void {
+  if (enhancingStatusEl) {
+    enhancingStatusEl.remove()
+    enhancingStatusEl = null
+  }
+}
+
+export function showFirstRunTooltip(): void {
+  chrome.storage.local.get(['hasSeenTooltip'], (result) => {
+    if (result.hasSeenTooltip) return
+    if (!injectedButton) return
+
+    const tooltip = document.createElement('div')
+    tooltip.className = 'promptgod-tooltip'
+    tooltip.textContent = 'Click to enhance your prompt'
+
+    injectedButton.style.position = injectedButton.style.position || 'relative'
+    injectedButton.appendChild(tooltip)
+
+    requestAnimationFrame(() => {
+      tooltip.classList.add('promptgod-tooltip--visible')
+    })
+
+    const dismiss = () => {
+      tooltip.classList.remove('promptgod-tooltip--visible')
+      setTimeout(() => tooltip.remove(), 200)
+      chrome.storage.local.set({ hasSeenTooltip: true })
     }
+
+    injectedButton!.addEventListener('click', dismiss, { once: true })
+    setTimeout(dismiss, 5000)
+  })
+}
+
+// Re-inject button when platform re-renders the composer (SPA navigation)
+// Debounced at 200ms to avoid burst re-injection from rapid DOM mutations
+export function observeComposer(adapter: PlatformAdapter): void {
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const observer = new MutationObserver(() => {
+    if (debounceTimer) return
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null
+      if (!injectedButton || !document.body.contains(injectedButton)) {
+        injectedButton = null
+        injectTriggerButton(adapter)
+      }
+    }, 200)
   })
 
   observer.observe(document.body, {
@@ -558,10 +828,10 @@ export function observeComposer(adapter: PlatformAdapter): void {
   })
 }
 
-// Keyboard shortcut: Ctrl+Shift+E
+// Keyboard shortcut: Ctrl+Shift+G
 export function registerShortcut(adapter: PlatformAdapter): void {
   document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+    if (e.ctrlKey && e.shiftKey && e.key === 'G') {
       e.preventDefault()
       handleEnhanceClick(adapter)
     }

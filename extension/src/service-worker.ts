@@ -3,7 +3,7 @@
 // Uses chrome.runtime.connect (ports) for streaming, NOT sendMessage
 
 import type { ContentMessage, ServiceWorkerMessage } from './lib/types'
-import { buildMetaPrompt } from './lib/meta-prompt'
+import { buildMetaPromptWithIntensity } from './lib/meta-prompt'
 import {
   buildUserMessage,
   callAnthropicAPI,
@@ -17,7 +17,26 @@ const STREAM_STALL_TIMEOUT_MS = 60000
 const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 15000
 const OPENROUTER_FALLBACK_MODEL = 'nvidia/nemotron-3-nano-30b-a3b:free'
 
+// Retryable HTTP status codes (pre-first-token only)
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
+const RETRY_DELAY_MS = 1000
+
 console.info('[PromptGod] Service worker started')
+
+// --- Settings cache ---
+// Avoids hitting chrome.storage.local.get on every enhance request.
+// Invalidated via chrome.storage.onChanged listener.
+let cachedSettings: { apiKey?: string; provider?: string; model?: string; includeConversationContext?: boolean } | null = null
+
+async function getSettings(): Promise<{ apiKey?: string; provider?: string; model?: string; includeConversationContext?: boolean }> {
+  if (cachedSettings) return cachedSettings
+  cachedSettings = await chrome.storage.local.get(['apiKey', 'provider', 'model', 'includeConversationContext']) as typeof cachedSettings
+  return cachedSettings!
+}
+
+chrome.storage.onChanged.addListener(() => {
+  cachedSettings = null
+})
 
 // Ping listener — content script sends a PING via sendMessage to wake up the
 // service worker before opening a port. MV3 workers go idle and onConnect alone
@@ -38,16 +57,23 @@ chrome.runtime.onConnect.addListener((port) => {
 
   console.info('[PromptGod] Port connected')
 
+  // AbortController — cancel in-flight fetch when port disconnects
+  const abortController = new AbortController()
+  port.onDisconnect.addListener(() => {
+    abortController.abort()
+  })
+
   port.onMessage.addListener((msg: ContentMessage) => {
     if (msg.type === 'ENHANCE') {
-      handleEnhance(port, msg)
+      handleEnhance(port, msg, abortController.signal)
     }
   })
 })
 
 async function handleEnhance(
   port: chrome.runtime.Port,
-  msg: ContentMessage & { type: 'ENHANCE' }
+  msg: ContentMessage & { type: 'ENHANCE' },
+  signal: AbortSignal
 ): Promise<void> {
   console.info(
     { platform: msg.platform, promptLength: msg.rawPrompt.length, context: msg.context },
@@ -57,14 +83,7 @@ async function handleEnhance(
   try {
     sendMessage(port, { type: 'START' })
 
-    // Read settings from storage on each request — never cache
-    const { apiKey, provider, model } = await chrome.storage.local.get(
-      ['apiKey', 'provider', 'model']
-    ) as {
-      apiKey?: string
-      provider?: string
-      model?: string
-    }
+    const { apiKey, provider, model } = await getSettings()
 
     if (!apiKey) {
       sendMessage(port, {
@@ -77,13 +96,16 @@ async function handleEnhance(
     }
 
     // BYOK mode — direct API call
-    const systemPrompt = buildMetaPrompt(
+    const promptWordCount = msg.rawPrompt.trim().split(/\s+/).length
+    const systemPrompt = buildMetaPromptWithIntensity(
       msg.platform,
       msg.context.isNewConversation,
-      msg.context.conversationLength
+      msg.context.conversationLength,
+      promptWordCount,
+      msg.recentContext
     )
 
-    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context)
+    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, msg.recentContext)
 
     console.info(
       { platform: msg.platform, provider, model },
@@ -95,7 +117,7 @@ async function handleEnhance(
       const requestedModel = model ?? OPENROUTER_FALLBACK_MODEL
 
       try {
-        await streamOpenRouter(port, apiKey, systemPrompt, userMessage, requestedModel)
+        await streamOpenRouter(port, apiKey, systemPrompt, userMessage, requestedModel, signal)
       } catch (error) {
         const isFallbackCandidate =
           requestedModel !== OPENROUTER_FALLBACK_MODEL && shouldRetryOpenRouterWithFallback(error)
@@ -114,16 +136,23 @@ async function handleEnhance(
           apiKey,
           systemPrompt,
           userMessage,
-          OPENROUTER_FALLBACK_MODEL
+          OPENROUTER_FALLBACK_MODEL,
+          signal
         )
       }
     } else if (provider === 'anthropic') {
-      const response = await callAnthropicAPI(apiKey, systemPrompt, userMessage, model)
+      const response = await callWithRetry(
+        () => callAnthropicAPI(apiKey, systemPrompt, userMessage, model),
+        signal
+      )
       for await (const text of withStallTimeout(parseAnthropicStream(response), STREAM_STALL_TIMEOUT_MS)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
     } else if (provider === 'openai') {
-      const response = await callOpenAIAPI(apiKey, systemPrompt, userMessage, model)
+      const response = await callWithRetry(
+        () => callOpenAIAPI(apiKey, systemPrompt, userMessage, model),
+        signal
+      )
       for await (const text of withStallTimeout(parseOpenAIStream(response), STREAM_STALL_TIMEOUT_MS)) {
         sendMessage(port, { type: 'TOKEN', text })
       }
@@ -140,15 +169,87 @@ async function handleEnhance(
     sendMessage(port, { type: 'DONE' })
     port.disconnect()
 
+    // Increment usage counters
+    incrementCounter('totalEnhancements', msg.platform)
+
     console.info('[PromptGod] Enhancement complete')
   } catch (error) {
+    if (signal.aborted) {
+      console.info('[PromptGod] Enhancement aborted — port disconnected')
+      return
+    }
+
+    // Increment error counter
+    incrementCounter('errorCount')
+
     console.error('[PromptGod] Enhancement failed', error)
     sendMessage(port, {
       type: 'ERROR',
-      message: error instanceof Error ? error.message : 'Enhancement failed',
+      message: formatErrorMessage(error),
     })
     port.disconnect()
   }
+}
+
+async function incrementCounter(key: 'totalEnhancements' | 'errorCount', platform?: string): Promise<void> {
+  try {
+    const data = await chrome.storage.local.get([key, 'enhancementsByPlatform'])
+    const current = (data[key] as number) ?? 0
+    const updates: Record<string, unknown> = { [key]: current + 1 }
+
+    if (platform && key === 'totalEnhancements') {
+      const byPlatform = (data.enhancementsByPlatform as Record<string, number>) ?? {}
+      byPlatform[platform] = (byPlatform[platform] ?? 0) + 1
+      updates.enhancementsByPlatform = byPlatform
+    }
+
+    await chrome.storage.local.set(updates)
+  } catch {
+    // Non-critical — don't break the enhancement flow
+  }
+}
+
+function formatErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return 'Enhancement failed'
+
+  // Detect network-level blocks (Brave Shields, privacy extensions, etc.)
+  if (error instanceof TypeError && /failed to fetch|network/i.test(error.message)) {
+    return 'API request blocked — if you\'re using Brave or a privacy browser, allow requests from extensions in your shield/privacy settings'
+  }
+
+  return error.message
+}
+
+/** Single retry with 1s backoff for 429/500/503. No retry on 401/403/422. */
+async function callWithRetry(
+  callFn: () => Promise<Response>,
+  signal: AbortSignal
+): Promise<Response> {
+  try {
+    return await callFn()
+  } catch (error) {
+    if (signal.aborted) throw error
+
+    const status = extractHttpStatus(error)
+    if (status !== null && RETRYABLE_STATUS_CODES.has(status)) {
+      console.info({ status }, '[PromptGod] Retrying after transient error')
+      await delay(RETRY_DELAY_MS)
+      if (signal.aborted) throw error
+      return await callFn()
+    }
+
+    throw error
+  }
+}
+
+function extractHttpStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) return null
+  const match = error.message.match(/returned (\d{3})/)
+  return match ? parseInt(match[1], 10) : null
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function sendMessage(port: chrome.runtime.Port, msg: ServiceWorkerMessage): void {
@@ -164,9 +265,13 @@ async function streamOpenRouter(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string
+  model: string,
+  signal: AbortSignal
 ): Promise<void> {
-  const response = await callOpenRouterAPI(apiKey, systemPrompt, userMessage, model)
+  const response = await callWithRetry(
+    () => callOpenRouterAPI(apiKey, systemPrompt, userMessage, model),
+    signal
+  )
   const stream = parseOpenAIStream(response)
 
   try {

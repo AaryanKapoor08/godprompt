@@ -3,19 +3,19 @@
 import type { PlatformAdapter } from '../adapters/types'
 
 let undoButton: HTMLElement | null = null
-let autoDismissTimer: ReturnType<typeof setTimeout> | null = null
 let inputListener: (() => void) | null = null
 let sendObserver: MutationObserver | null = null
 
 /**
  * Show the undo button near the input field.
  * Clicking it restores the original prompt via adapter.setPromptText().
- * Auto-dismisses after 10 seconds, or when user edits/sends.
+ * Persistent until user edits or sends — no auto-dismiss timer.
  */
 export function showUndoButton(
   adapter: PlatformAdapter,
   originalPrompt: string,
-  onUndo?: () => void
+  onUndo?: () => void,
+  diffLabel?: string
 ): void {
   // Remove any existing undo button first
   removeUndoButton()
@@ -27,17 +27,23 @@ export function showUndoButton(
 
   // Create the undo button
   const button = document.createElement('button')
-  button.id = 'promptpilot-undo'
+  button.id = 'promptgod-undo'
   button.type = 'button'
-  button.className = 'promptpilot-undo-btn'
+  button.className = 'promptgod-undo-btn'
   button.title = 'Undo enhancement'
   button.setAttribute('aria-label', 'Undo enhancement')
+
+  const diffHtml = diffLabel
+    ? `<span class="promptgod-undo-diff">Added: ${diffLabel}</span>`
+    : ''
+
   button.innerHTML = `
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="1 4 1 10 7 10"/>
       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
     </svg>
     <span>Undo</span>
+    ${diffHtml}
   `
 
   // Click handler: restore original prompt
@@ -66,18 +72,13 @@ export function showUndoButton(
 
   // Animate in
   requestAnimationFrame(() => {
-    button.classList.add('promptpilot-undo-btn--visible')
+    button.classList.add('promptgod-undo-btn--visible')
   })
 
-  // Auto-dismiss after 10 seconds
-  autoDismissTimer = setTimeout(() => {
-    removeUndoButton()
-  }, 10_000)
+  // No auto-dismiss timer — persistent until user edits or sends
 
   // Dismiss when user manually edits the enhanced prompt
   inputListener = () => {
-    // Small delay to distinguish our setPromptText calls from user edits
-    // If the undo button triggered this, it will already be removed
     if (undoButton) {
       removeUndoButton()
     }
@@ -93,16 +94,11 @@ export function showUndoButton(
  */
 export function removeUndoButton(): void {
   if (undoButton) {
-    undoButton.classList.remove('promptpilot-undo-btn--visible')
+    undoButton.classList.remove('promptgod-undo-btn--visible')
     // Remove after fade-out transition
     const btn = undoButton
     setTimeout(() => btn.remove(), 200)
     undoButton = null
-  }
-
-  if (autoDismissTimer) {
-    clearTimeout(autoDismissTimer)
-    autoDismissTimer = null
   }
 
   if (inputListener) {

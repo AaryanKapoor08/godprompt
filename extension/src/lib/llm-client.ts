@@ -5,20 +5,12 @@
 import type { ConversationContext } from '../content/adapters/types'
 
 export type Provider = 'anthropic' | 'openai' | 'openrouter'
-const REWRITE_TEMPERATURE = 0.4
+const REWRITE_TEMPERATURE = 0.2
 const REQUEST_TIMEOUT_MS = {
   anthropic: 60000,
   openai: 60000,
   openrouter: 60000,
 } as const
-
-interface OpenRouterNonStreamResponse {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>
-    }
-  }>
-}
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
@@ -62,17 +54,22 @@ export function validateApiKey(key: string): { valid: boolean; provider: Provide
 export function buildUserMessage(
   rawPrompt: string,
   platform: string,
-  context: ConversationContext
+  context: ConversationContext,
+  recentContext?: string
 ): string {
   const contextLine = context.isNewConversation
     ? 'New conversation'
     : `Ongoing conversation, message #${context.conversationLength + 1}`
 
+  const recentSection = recentContext
+    ? `\nRecent conversation messages:\n"""\n${recentContext}\n"""\n`
+    : ''
+
   return `Rewrite the following prompt. Output ONLY the rewritten prompt, nothing else.
 
 Platform: ${platform}
 Context: ${contextLine}
-
+${recentSection}
 PROMPT TO REWRITE:
 """
 ${rawPrompt}
@@ -267,7 +264,7 @@ export async function callAnthropicAPI(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2048,
+      max_tokens: 768,
       temperature: REWRITE_TEMPERATURE,
       stream: true,
       system: systemPrompt,
@@ -302,6 +299,7 @@ export async function callOpenAIAPI(
     },
     body: JSON.stringify({
       model,
+      max_tokens: 768,
       temperature: REWRITE_TEMPERATURE,
       stream: true,
       messages: [
@@ -338,6 +336,7 @@ export async function callOpenRouterAPI(
     },
     body: JSON.stringify({
       model,
+      max_tokens: 768,
       temperature: REWRITE_TEMPERATURE,
       stream: true,
       messages: [
@@ -357,60 +356,3 @@ export async function callOpenRouterAPI(
   return response
 }
 
-// Make a non-streaming request to OpenRouter as a reliability fallback
-export async function callOpenRouterAPIOnce(
-  apiKey: string,
-  systemPrompt: string,
-  userMessage: string,
-  model: string = 'nvidia/nemotron-3-nano-30b-a3b:free'
-): Promise<string> {
-  const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://promptgod.dev',
-      'X-Title': 'PromptGod',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: REWRITE_TEMPERATURE,
-      stream: false,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-    }),
-  }, REQUEST_TIMEOUT_MS.openrouter)
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => 'Unknown error')
-    throw new Error(`[LLMClient] OpenRouter API (non-stream) returned ${response.status}: ${errorBody}`, {
-      cause: new Error(errorBody),
-    })
-  }
-
-  const parsed = await response.json() as OpenRouterNonStreamResponse
-  const content = parsed.choices?.[0]?.message?.content
-
-  if (typeof content === 'string') {
-    const trimmed = content.trim()
-    if (trimmed.length > 0) {
-      return trimmed
-    }
-  }
-
-  if (Array.isArray(content)) {
-    const text = content
-      .filter((item) => item?.type === 'text' && typeof item.text === 'string')
-      .map((item) => item.text?.trim() ?? '')
-      .filter((item) => item.length > 0)
-      .join('\n')
-
-    if (text.length > 0) {
-      return text
-    }
-  }
-
-  throw new Error('[LLMClient] OpenRouter non-stream response did not contain text output')
-}

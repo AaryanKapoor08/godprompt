@@ -2,7 +2,7 @@
 // Perplexity uses a textarea or contenteditable div for input
 
 import type { PlatformAdapter, ConversationContext } from './types'
-import { replaceText } from '../dom-utils'
+import { clearContentEditable, insertText, replaceText } from '../dom-utils'
 
 export class PerplexityAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -40,16 +40,7 @@ export class PerplexityAdapter implements PlatformAdapter {
 
     // Perplexity may use a textarea — handle both cases
     if (input instanceof HTMLTextAreaElement) {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(input, text)
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      } else {
-        input.value = text
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      }
+      this.setTextareaValue(input, text)
       return
     }
 
@@ -91,6 +82,60 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   getPlatform(): 'perplexity' {
     return 'perplexity'
+  }
+
+  /**
+   * Set textarea value bypassing React's controlled input.
+   * React tracks textarea values via an internal _valueTracker. If the tracker's
+   * cached value matches the new value, React silently ignores the input event
+   * and re-renders the old state. We reset the tracker so React sees the change.
+   */
+  private setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype, 'value'
+    )?.set
+    if (nativeSetter) {
+      nativeSetter.call(textarea, value)
+    } else {
+      textarea.value = value
+    }
+
+    // Reset React's internal value tracker so it recognizes this as a real change.
+    const tracker = (textarea as Record<string, unknown>)._valueTracker as
+      { setValue: (v: string) => void } | undefined
+    if (tracker) {
+      tracker.setValue(value === '' ? '__promptgod_clear__' : '')
+    }
+
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  clearInput(): void {
+    const input = this.getInputElement()
+    if (!input) return
+    if (input instanceof HTMLTextAreaElement) {
+      this.setTextareaValue(input, '')
+    } else {
+      clearContentEditable(input)
+    }
+  }
+
+  appendChunk(text: string): boolean {
+    const input = this.getInputElement()
+    if (!input) return false
+
+    if (input instanceof HTMLTextAreaElement) {
+      // Return false to force the render loop into full-replace mode.
+      // React controlled textareas fight incremental appends — React re-renders
+      // between frames and resets the value. Full-replace via setPromptText
+      // (which uses setTextareaValue with _valueTracker reset) is the only
+      // approach that sticks.
+      return false
+    }
+
+    // contenteditable path
+    input.focus()
+    return document.execCommand('insertText', false, text) || insertText(input, text)
   }
 
   getConversationContext(): ConversationContext {

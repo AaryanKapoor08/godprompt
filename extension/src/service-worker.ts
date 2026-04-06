@@ -12,10 +12,18 @@ import {
   parseAnthropicStream,
   parseOpenAIStream,
 } from './lib/llm-client'
+import {
+  OPENROUTER_FALLBACK_MODEL,
+  shouldRetryOpenRouterSameModel,
+  shouldRetryWithOpenRouterFallback,
+} from './lib/openrouter-retry'
 
 const STREAM_STALL_TIMEOUT_MS = 60000
-const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 15000
-const OPENROUTER_FALLBACK_MODEL = 'nvidia/nemotron-3-nano-30b-a3b:free'
+const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 25000
+
+type StreamProgress = {
+  sentAnyToken: boolean
+}
 
 // Retryable HTTP status codes (pre-first-token only)
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
@@ -115,12 +123,73 @@ async function handleEnhance(
     // Route to the correct provider, passing the selected model
     if (provider === 'openrouter') {
       const requestedModel = model ?? OPENROUTER_FALLBACK_MODEL
+      const primaryAttempt: StreamProgress = { sentAnyToken: false }
 
       try {
-        await streamOpenRouter(port, apiKey, systemPrompt, userMessage, requestedModel, signal)
+        await streamOpenRouter(
+          port,
+          apiKey,
+          systemPrompt,
+          userMessage,
+          requestedModel,
+          signal,
+          primaryAttempt
+        )
       } catch (error) {
-        const isFallbackCandidate =
-          requestedModel !== OPENROUTER_FALLBACK_MODEL && shouldRetryOpenRouterWithFallback(error)
+        // First, retry once on the same model when the stream fails before
+        // emitting any token (common on cold starts right after refresh).
+        if (shouldRetryOpenRouterSameModel(primaryAttempt.sentAnyToken, error)) {
+          console.info({ requestedModel }, '[PromptGod] Retrying OpenRouter request on same model')
+
+          const sameModelRetryAttempt: StreamProgress = { sentAnyToken: false }
+
+          try {
+            await streamOpenRouter(
+              port,
+              apiKey,
+              systemPrompt,
+              userMessage,
+              requestedModel,
+              signal,
+              sameModelRetryAttempt
+            )
+            // Same-model retry succeeded.
+            return
+          } catch (retryError) {
+            const canFallbackAfterRetry = shouldRetryWithOpenRouterFallback(
+              requestedModel,
+              sameModelRetryAttempt.sentAnyToken,
+              retryError
+            )
+
+            if (!canFallbackAfterRetry) {
+              throw retryError
+            }
+
+            console.info(
+              { requestedModel, fallbackModel: OPENROUTER_FALLBACK_MODEL },
+              '[PromptGod] Same-model retry failed, retrying OpenRouter with fallback model'
+            )
+
+            await streamOpenRouter(
+              port,
+              apiKey,
+              systemPrompt,
+              userMessage,
+              OPENROUTER_FALLBACK_MODEL,
+              signal,
+              { sentAnyToken: false }
+            )
+
+            return
+          }
+        }
+
+        const isFallbackCandidate = shouldRetryWithOpenRouterFallback(
+          requestedModel,
+          primaryAttempt.sentAnyToken,
+          error
+        )
 
         if (!isFallbackCandidate) {
           throw error
@@ -137,7 +206,8 @@ async function handleEnhance(
           systemPrompt,
           userMessage,
           OPENROUTER_FALLBACK_MODEL,
-          signal
+          signal,
+          { sentAnyToken: false }
         )
       }
     } else if (provider === 'anthropic') {
@@ -266,7 +336,8 @@ async function streamOpenRouter(
   systemPrompt: string,
   userMessage: string,
   model: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  progress: StreamProgress
 ): Promise<void> {
   const response = await callWithRetry(
     () => callOpenRouterAPI(apiKey, systemPrompt, userMessage, model),
@@ -280,6 +351,7 @@ async function streamOpenRouter(
       throw new Error('[ServiceWorker] OpenRouter stream ended before emitting tokens')
     }
 
+    progress.sentAnyToken = true
     sendMessage(port, { type: 'TOKEN', text: first.value })
 
     while (true) {
@@ -287,6 +359,7 @@ async function streamOpenRouter(
       if (next.done) {
         break
       }
+      progress.sentAnyToken = true
       sendMessage(port, { type: 'TOKEN', text: next.value })
     }
   } catch (error) {
@@ -302,19 +375,6 @@ async function streamOpenRouter(
 function isTimeoutLike(error: unknown): boolean {
   return error instanceof Error
     && (/timed out/i.test(error.message) || /stalled/i.test(error.message))
-}
-
-function shouldRetryOpenRouterWithFallback(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  // Invalid key/auth errors won't be fixed by changing model.
-  if (/401|unauthorized|invalid api key|authentication/i.test(error.message)) {
-    return false
-  }
-
-  return true
 }
 
 async function* withStallTimeout<T>(

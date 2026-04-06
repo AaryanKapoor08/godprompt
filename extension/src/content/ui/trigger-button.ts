@@ -3,6 +3,7 @@
 import type { PlatformAdapter } from '../adapters/types'
 import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
+import { mergeStreamChunk } from '../../lib/stream-merge'
 import { showToast } from './toast'
 import { showUndoButton, removeUndoButton } from './undo-button'
 
@@ -565,7 +566,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       // Remove "Enhancing..." status on first token
       removeEnhancingStatus()
 
-      accumulatedText += msg.text
+      accumulatedText = mergeStreamChunk(accumulatedText, msg.text)
 
       // Start the render loop on first token — clears field and starts typing
       if (renderFrameId === null && !settled) {
@@ -688,7 +689,7 @@ async function handlePreviewEnhance(adapter: PlatformAdapter): Promise<void> {
   port.onMessage.addListener((msg: ServiceWorkerMessage) => {
     if (msg.type === 'TOKEN') {
       removeEnhancingStatus()
-      accumulated += msg.text
+      accumulated = mergeStreamChunk(accumulated, msg.text)
     } else if (msg.type === 'DONE') {
       setLoading(false)
       const { cleanText } = stripDiffTag(accumulated)

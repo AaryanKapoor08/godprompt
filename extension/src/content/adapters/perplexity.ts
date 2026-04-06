@@ -113,6 +113,7 @@ export class PerplexityAdapter implements PlatformAdapter {
   clearInput(): void {
     const input = this.getInputElement()
     if (!input) return
+
     if (input instanceof HTMLTextAreaElement) {
       this.setTextareaValue(input, '')
     } else {

@@ -3,7 +3,6 @@
 import type { PlatformAdapter } from '../adapters/types'
 import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
-import { clearContentEditable } from '../dom-utils'
 import { showToast } from './toast'
 import { showUndoButton, removeUndoButton } from './undo-button'
 
@@ -459,10 +458,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     // Clear field on first render — user's prompt stays visible until tokens arrive
     if (!fieldCleared) {
       try {
-        const input = adapter.getInputElement()
-        if (!input) throw new Error('Input element not found')
-        clearContentEditable(input)
-        input.focus()
+        adapter.clearInput()
+        adapter.getInputElement()?.focus()
         fieldCleared = true
       } catch (error) {
         console.error({ cause: error }, '[PromptGod] Failed to clear input field')
@@ -482,6 +479,17 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       ceiling = diffStart
       while (ceiling > renderedIndex && (accumulatedText[ceiling - 1] === '\n' || accumulatedText[ceiling - 1] === '\r')) {
         ceiling--
+      }
+    } else if (!streamDone) {
+      // Guard against partial [DIFF: arriving across token boundaries.
+      // If the tail of the buffer looks like the start of a DIFF tag, hold back.
+      const DIFF_MARKER = '\n[DIFF:'
+      const tail = accumulatedText.slice(Math.max(0, accumulatedText.length - DIFF_MARKER.length))
+      for (let len = 1; len <= tail.length; len++) {
+        if (DIFF_MARKER.startsWith(tail.slice(tail.length - len))) {
+          ceiling = accumulatedText.length - len
+          break
+        }
       }
     }
 
@@ -507,10 +515,12 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     }
 
     try {
-      const input = adapter.getInputElement()
-      if (!input) throw new Error('Input element not found')
-      // Lightweight insert — cursor is already at end from previous insert.
-      document.execCommand('insertText', false, slice)
+      const ok = adapter.appendChunk(slice)
+      if (!ok) {
+        // Fallback for platforms where chunk append doesn't work (shouldn't happen
+        // now, but safety net) — set the full text rendered so far
+        adapter.setPromptText(accumulatedText.slice(0, end))
+      }
       renderedIndex = end
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Failed to update input field')

@@ -26,7 +26,20 @@
       "Bash(wc:*)",
       "Bash(python -c \"from PIL import Image; print\\(''PIL available''\\)\")",
       "Bash(npx pnpm:*)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "WebSearch",
+      "WebFetch(domain:developer.chrome.com)",
+      "WebFetch(domain:www.extensionradar.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:aaryankapoor08.github.io)",
+      "Bash(curl:*)",
+      "Bash(gh api:*)",
+      "Bash(where gh.exe)",
+      "Bash(cmd.exe /c \"where gh\")",
+      "Bash(git pull:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

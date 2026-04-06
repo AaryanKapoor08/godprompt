@@ -2,7 +2,7 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 16 — Post-Launch Optimization (in progress — code complete, manual testing pending)**
+**Current Phase: 16.6 — Adapter Consistency Refactor (not started — v2 deployed, resuming here next)**
 
 
 
@@ -366,7 +366,7 @@ Update this file as you complete each phase.
 - [ ] Commit: pending
 - Notes: Implemented in `extension/src/content/ui/trigger-button.ts` with token-boundary spacing reconciliation that preserves raw stream accumulation and keeps progressive character-slice rendering. Added focused tests in `extension/test/unit/trigger-boundary-spacing.test.ts` covering merged-word prevention and punctuation/URL/decimal safety. Validation: `pnpm test` => 55/55 passing, `pnpm build` => pass. Manual live-site verification remains pending.
 
-### PHASE 15.15 — Deployment: Chrome Web Store Compliance & Resubmission [in progress]
+### PHASE 15.15 — Deployment: Chrome Web Store Compliance & Resubmission [complete]
 
 - [x] Removed unused `activeTab` permission from `extension/manifest.json` (violation: Purple Potassium)
 - [x] Removed unused `activeTab` permission from `extension/dist/manifest.json`
@@ -382,14 +382,14 @@ Update this file as you complete each phase.
 - [x] Developer Dashboard: checked "Authentication Information" checkbox
 - [x] Developer Dashboard: checked "Website Content" checkbox
 - [x] Developer Dashboard: checked all 3 Limited Use certification boxes
-- [ ] Re-zip `dist/` folder with updated manifest (activeTab removed)
-- [ ] Upload new zip to Chrome Web Store Developer Dashboard
-- [ ] Resubmit extension for review
+- [x] Re-zip `dist/` folder with updated manifest (activeTab removed)
+- [x] Upload new zip to Chrome Web Store Developer Dashboard
+- [x] Resubmit extension for review
 - [ ] Extension approved and published
 - [ ] Published extension tested end-to-end on all 4 platforms
 - Notes: Initial submission rejected for requesting but not using `activeTab` permission (violation ref: Purple Potassium). Full compliance audit performed — manifest, privacy policy, and dashboard disclosures all aligned.
 
-### PHASE 16 — Post-Launch Optimization [in progress — code complete, manual testing pending]
+### PHASE 16 — Post-Launch Optimization [in progress — v2 deployed through 16.5, 16.6+ deferred]
 
 #### 16.1 — Quick Wins
 - [x] `max_tokens: 768` present in all three provider call functions
@@ -461,7 +461,9 @@ Update this file as you complete each phase.
 - [ ] Manual test: custom model, preview mode, stale-selector warning
 - [ ] Commit: `feat(resilience): fallback hardening, custom models, preview mode`
 
-- Notes: All code written in single session (2026-04-04). Deferred from Phase 16: i18n (separate future phase), Firefox MV3 support (separate future phase). Tracked in Phase 21. No commits yet — pending manual testing. Temperature set to 0.2 — needs quality gate testing with 6 prompt types before finalizing.
+- Notes: All code written in single session (2026-04-04). Deferred from Phase 16: i18n (separate future phase), Firefox MV3 support (separate future phase). Tracked in Phase 21. Temperature set to 0.2 — needs quality gate testing with 6 prompt types before finalizing.
+
+**v2 Deployment (2026-04-06):** Chrome Web Store zip `PromptGod-v2.zip` built and uploaded. Version bumped to 2.0.0. Includes all work through Phase 16.5 (OpenRouter retry logic, stream-merge dedup, adapter streaming methods). Does NOT include Phase 16.6 (adapter input strategy refactor) or later — those are deferred to future sessions. 59 unit tests passing at time of build. Some Phase 16 manual testing checkboxes remain unchecked — code is deployed but not all UX flows have been manually verified on every platform.
 
 #### 16.6 — Adapter Consistency Refactor (Input Strategy)
 - [ ] `ContentEditableInput` class created in `src/content/input-strategies/contenteditable.ts`

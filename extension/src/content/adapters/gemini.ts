@@ -2,7 +2,7 @@
 // Gemini uses a rich text contenteditable div with its own input handling
 
 import type { PlatformAdapter, ConversationContext } from './types'
-import { replaceText } from '../dom-utils'
+import { clearContentEditable, insertText, replaceText } from '../dom-utils'
 
 export class GeminiAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -41,6 +41,18 @@ export class GeminiAdapter implements PlatformAdapter {
     if (!success) {
       throw new Error('[GeminiAdapter] Failed to insert text into input element')
     }
+
+    // Notify the rich-textarea web component wrapper so Gemini syncs internal state
+    this.notifyRichTextarea(input)
+  }
+
+  /** Dispatch input event on the rich-textarea wrapper so Gemini's web component syncs. */
+  private notifyRichTextarea(inner: HTMLElement): void {
+    const wrapper = inner.closest('rich-textarea')
+    if (wrapper) {
+      wrapper.dispatchEvent(new Event('input', { bubbles: true }))
+      wrapper.dispatchEvent(new Event('change', { bubbles: true }))
+    }
   }
 
   getSendButton(): HTMLElement | null {
@@ -68,6 +80,22 @@ export class GeminiAdapter implements PlatformAdapter {
     console.info('[GeminiAdapter] sendButton:', this.getSendButton())
     console.info('[GeminiAdapter] all contenteditable:', document.querySelectorAll('[contenteditable]'))
     console.info('[GeminiAdapter] all buttons:', document.querySelectorAll('button'))
+  }
+
+  clearInput(): void {
+    const input = this.getInputElement()
+    if (!input) return
+    clearContentEditable(input)
+    this.notifyRichTextarea(input)
+  }
+
+  appendChunk(text: string): boolean {
+    const input = this.getInputElement()
+    if (!input) return false
+    input.focus()
+    const ok = document.execCommand('insertText', false, text) || insertText(input, text)
+    if (ok) this.notifyRichTextarea(input)
+    return ok
   }
 
   getConversationContext(): ConversationContext {

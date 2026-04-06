@@ -17,4 +17,9 @@ export interface PlatformAdapter {
   getPlatform(): Platform
   getConversationContext(): ConversationContext
   getRecentMessages(maxTokens: number): string
+
+  // Streaming support — used by the render loop for word-by-word output.
+  // Each adapter implements these for its specific input type (contenteditable vs textarea).
+  clearInput(): void
+  appendChunk(text: string): boolean
 }

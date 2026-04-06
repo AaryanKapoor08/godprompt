@@ -1,5 +1,5 @@
 import type { PlatformAdapter, ConversationContext } from './types'
-import { replaceText } from '../dom-utils'
+import { clearContentEditable, insertText, replaceText } from '../dom-utils'
 
 export class ChatGPTAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -64,6 +64,19 @@ export class ChatGPTAdapter implements PlatformAdapter {
       isNewConversation: conversationLength === 0,
       conversationLength,
     }
+  }
+
+  clearInput(): void {
+    const input = this.getInputElement()
+    if (!input) return
+    clearContentEditable(input)
+  }
+
+  appendChunk(text: string): boolean {
+    const input = this.getInputElement()
+    if (!input) return false
+    input.focus()
+    return document.execCommand('insertText', false, text) || insertText(input, text)
   }
 
   getRecentMessages(maxTokens: number): string {

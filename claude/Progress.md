@@ -463,6 +463,23 @@ Update this file as you complete each phase.
 
 - Notes: All code written in single session (2026-04-04). Deferred from Phase 16: i18n (separate future phase), Firefox MV3 support (separate future phase). Tracked in Phase 21. No commits yet — pending manual testing. Temperature set to 0.2 — needs quality gate testing with 6 prompt types before finalizing.
 
+#### 16.6 — Adapter Consistency Refactor (Input Strategy)
+- [ ] `ContentEditableInput` class created in `src/content/input-strategies/contenteditable.ts`
+- [ ] `TextAreaInput` class created in `src/content/input-strategies/textarea.ts`
+- [ ] ChatGPT adapter delegates to `ContentEditableInput` — manual test passes
+- [ ] Claude adapter delegates to `ContentEditableInput` — manual test passes
+- [ ] Gemini adapter delegates to `ContentEditableInput` with `onMutate` — manual test passes (text syncs, send button enables)
+- [ ] Perplexity adapter resolves strategy dynamically (textarea vs contenteditable) — manual test passes (homepage + follow-up)
+- [ ] No DIFF tag visible in input field on any platform
+- [ ] Enhanced text persists (no disappearing text on any platform)
+- [ ] Undo restores original prompt on all 4 platforms
+- [ ] Strategy-level unit tests pass
+- [ ] `pnpm test` passes, `pnpm build` passes
+- [ ] One commit per adapter migration (4) + strategy files (1) + tests (1)
+- [ ] Commit: `refactor(adapters): extract input strategies for cross-platform consistency`
+
+- Notes: Motivated by Phase 16 bug fixes — DIFF tag leak, Perplexity textarea streaming broken, Gemini rich-textarea desync. Root cause: each adapter independently reimplements text ops. Migration order: ChatGPT → Claude → Gemini → Perplexity, each commit independently revertable via git.
+
 ### PHASE 17 — Context Menu: Foundation + Injection [optional — not started]
 
 - [ ] `contextMenus`, `scripting`, and `activeTab` permissions added to `manifest.json` (activeTab justified: required for `executeScript` on arbitrary pages via context menu)

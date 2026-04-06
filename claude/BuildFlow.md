@@ -1070,6 +1070,56 @@ Expected behavior:
 
 ---
 
+### PHASE 16.6 — Adapter Consistency Refactor (Input Strategy)
+
+**Goal:** Extract duplicated DOM text-manipulation logic from all four adapters into two shared strategies (`ContentEditableInput`, `TextAreaInput`). Every adapter delegates its `clearInput()`, `appendChunk()`, and `setPromptText()` to the appropriate strategy. This eliminates the class of bugs where one adapter's text handling diverges from another and makes future adapters (Gmail, Outlook, etc.) trivial to add.
+
+**Context / why:** Phase 16 bug fixes (DIFF tag leak, Perplexity textarea, Gemini rich-textarea desync) revealed that each adapter independently reimplements the same text ops. ChatGPT and Claude work by accident (both ProseMirror contenteditable). Perplexity and Gemini broke because their input types weren't handled. Shared strategies fix this at the root.
+
+**Architecture:**
+- `ContentEditableInput` — `clear(el)`, `append(el, text)`, `replace(el, text)`, `getText(el)`. Accepts optional `onMutate(el)` callback, called after every DOM change (used by Gemini for web-component sync).
+- `TextAreaInput` — same interface, uses native value setter + `input` event dispatch.
+- Each adapter resolves which strategy to use based on `getInputElement()` type at call time (no caching — Perplexity can switch between textarea and contenteditable on SPA navigation).
+- Adapter interface stays unchanged. Strategies are internal implementation details.
+- Render loop is untouched — it already calls `adapter.clearInput()` / `adapter.appendChunk()`.
+
+**Migration order (one adapter per commit, each independently revertable):**
+1. Create `src/content/input-strategies/contenteditable.ts` and `textarea.ts`
+2. Migrate ChatGPT adapter → manual test on chatgpt.com
+3. Migrate Claude adapter → manual test on claude.ai
+4. Migrate Gemini adapter (with `onMutate` for rich-textarea) → manual test on gemini.google.com
+5. Migrate Perplexity adapter (dynamic strategy selection) → manual test on perplexity.ai
+6. Add strategy-level unit tests (TextAreaInput fully testable; ContentEditableInput logic-only tests with execCommand mocked)
+
+**Tasks:**
+- Create `ContentEditableInput` class in `src/content/input-strategies/contenteditable.ts` with `clear`, `append`, `replace`, `getText` methods and optional `onMutate` callback
+- Create `TextAreaInput` class in `src/content/input-strategies/textarea.ts` with the same interface, using native value setter
+- Refactor `ChatGPTAdapter` to delegate `clearInput()`, `appendChunk()`, `setPromptText()` to `ContentEditableInput`
+- Refactor `ClaudeAdapter` to delegate to `ContentEditableInput`
+- Refactor `GeminiAdapter` to delegate to `ContentEditableInput` with `onMutate` callback dispatching events on `rich-textarea` wrapper
+- Refactor `PerplexityAdapter` to resolve strategy dynamically — `ContentEditableInput` for contenteditable, `TextAreaInput` for textarea
+- Add unit tests for `TextAreaInput` (full coverage) and `ContentEditableInput` (logic paths with execCommand mocked)
+- Remove duplicated DOM logic from `dom-utils.ts` that is now handled by strategies (keep `replaceText` etc. as thin wrappers if other code still imports them)
+
+**Checkpoint:**
+- [ ] `ContentEditableInput` and `TextAreaInput` classes exist with matching interfaces
+- [ ] ChatGPT adapter delegates to `ContentEditableInput` — manual test: enhance, undo, re-enhance all work
+- [ ] Claude adapter delegates to `ContentEditableInput` — manual test: enhance, undo, re-enhance all work
+- [ ] Gemini adapter delegates to `ContentEditableInput` with `onMutate` — manual test: text syncs with rich-textarea, send button enables
+- [ ] Perplexity adapter resolves strategy dynamically — manual test: homepage (textarea) + follow-up (contenteditable) both work
+- [ ] No DIFF tag visible in the input field on any platform
+- [ ] Enhanced text persists after enhancement (no disappearing text on any platform)
+- [ ] Undo restores original prompt on all 4 platforms
+- [ ] Strategy-level unit tests pass
+- [ ] `pnpm test` passes (all existing tests + new strategy tests)
+- [ ] `pnpm build` passes
+- [ ] Commit per adapter migration (4 commits) + 1 commit for strategy files + 1 for tests
+- [ ] Final commit: `refactor(adapters): extract input strategies for cross-platform consistency`
+
+**Proof:** All 4 platforms tested manually after each migration commit. No regressions in enhance → stream → undo flow.
+
+---
+
 **Deferred — NOT in Phase 16:**
 - i18n (internationalization) → separate future phase when user base justifies localization
 - Firefox MV3 support → separate future phase requiring manifest + API abstraction layer

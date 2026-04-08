@@ -1,7 +1,7 @@
 # PromptPilot — Project Specification v2
 ## A Chrome extension that makes AI prompts smarter in under 3 seconds
 
----
+--- 
 
 ## Product overview
 

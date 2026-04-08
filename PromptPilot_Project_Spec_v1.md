@@ -14,7 +14,7 @@ Total time from button click to completed rewrite: under 3 seconds.
 ## v1 scope — what to build
 
 ### In scope
-- Chrome extension (Manifest V3)
+- Chrome extension (Manifest V3)     
 - Content scripts for ChatGPT, Claude.ai, and Gemini
 - Trigger button injected near each platform's send button
 - Service worker that routes requests (backend vs BYOK)

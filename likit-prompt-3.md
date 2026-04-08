@@ -54,7 +54,7 @@ Do NOT create the feature commit — only the docs/tracker update. The feature c
 
 ---
 
-### File 3: `.claude/commands/phase-explain.md`
+### File 3: `.claude/commands/phase-explain.md` 
 
 ```
 Read claude/Progress.md, claude/BuildFlow.md, claude/Claude_guide.md, and claude/ProjectSummary.md.

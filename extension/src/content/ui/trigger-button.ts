@@ -4,11 +4,13 @@ import type { PlatformAdapter } from '../adapters/types'
 import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
 import { mergeStreamChunk } from '../../lib/stream-merge'
+import { normalizeText } from '../../lib/text-utils'
 import { showToast } from './toast'
 import { showUndoButton, removeUndoButton } from './undo-button'
 
 let isEnhancing = false
 let injectedButton: HTMLButtonElement | null = null
+const ENHANCEMENT_PROGRESS_TIMEOUT_MS = 90000
 
 // Track original prompt across re-enhance clicks
 let storedOriginal: string | null = null
@@ -226,6 +228,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   const platform = adapter.getPlatform()
   const context = adapter.getConversationContext()
+  const shouldProgressivelyRender = platform !== 'perplexity'
 
   // Re-enhance logic: if text matches last enhanced output, use stored original
   // If user has edited the text, treat current text as new original
@@ -341,8 +344,10 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
   let streamDone = false
   let settled = false
   let acknowledged = false
+  let receivedToken = false
   let undoShown = false
   let pendingDiffLabel: string | null = null
+  let finalOutputCommitted = false
 
   const ackTimeout = window.setTimeout(() => {
     if (settled) {
@@ -374,7 +379,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     } catch {
       // no-op
     }
-  }, 45000)
+  }, ENHANCEMENT_PROGRESS_TIMEOUT_MS)
 
   function resetProgressTimeout(): void {
     if (progressTimeout !== null) {
@@ -394,7 +399,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       } catch {
         // no-op
       }
-    }, 45000)
+    }, ENHANCEMENT_PROGRESS_TIMEOUT_MS)
   }
 
   function settle(): void {
@@ -414,6 +419,37 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     cleanupPort()
   }
 
+  function commitFinalOutput(): void {
+    if (finalOutputCommitted) {
+      return
+    }
+    finalOutputCommitted = true
+
+    const normalizedText = normalizeText(accumulatedText)
+    if (normalizedText.startsWith('[NO_CHANGE]')) {
+      showToast({ message: 'Your prompt is already strong', variant: 'info' })
+      try {
+        adapter.setPromptText(originalPrompt)
+      } catch {
+        // best-effort restore
+      }
+      return
+    }
+
+    try {
+      adapter.setPromptText(normalizedText)
+      lastEnhancedText = accumulatedText
+      console.info(
+        { enhancedLength: accumulatedText.length, diffLabel: pendingDiffLabel },
+        '[PromptGod] Enhancement complete'
+      )
+      ensureUndoButton(pendingDiffLabel)
+    } catch (error) {
+      console.error({ cause: error }, '[PromptGod] Final text sync failed')
+      showToast({ message: 'Could not write the enhanced prompt into the page', variant: 'error' })
+    }
+  }
+
   /** Rendering loop — drips one word per frame from accumulatedText into the DOM.
    *  At ~60fps this gives smooth word-by-word typing, ~150 words in ~2.5s. */
   function renderLoop(): void {
@@ -424,30 +460,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       if (streamDone) {
         // accumulatedText was already stripped of [DIFF:] in the DONE handler;
         // pendingDiffLabel holds the extracted label.
-
-        // Detect [NO_CHANGE] pass-through
-        if (accumulatedText.startsWith('[NO_CHANGE]')) {
-          showToast({ message: 'Your prompt is already strong', variant: 'info' })
-          // Restore original — don't replace input, skip undo
-          try {
-            adapter.setPromptText(originalPrompt)
-          } catch { /* best-effort */ }
-          settle()
-          return
-        }
-
-        // All text rendered and stream is done — final sync and settle
-        try {
-          adapter.setPromptText(accumulatedText)
-        } catch (err) {
-          console.error({ cause: err }, '[PromptGod] Final text sync failed')
-        }
-        lastEnhancedText = accumulatedText
-        console.info(
-          { enhancedLength: accumulatedText.length, diffLabel: pendingDiffLabel },
-          '[PromptGod] Enhancement complete'
-        )
-        ensureUndoButton(pendingDiffLabel)
+        commitFinalOutput()
         settle()
         return
       }
@@ -563,13 +576,15 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     if (msg.type === 'START') {
       console.info('[PromptGod] Service worker acknowledged request')
     } else if (msg.type === 'TOKEN') {
+      receivedToken = true
       // Remove "Enhancing..." status on first token
       removeEnhancingStatus()
 
       accumulatedText = mergeStreamChunk(accumulatedText, msg.text)
 
-      // Start the render loop on first token — clears field and starts typing
-      if (renderFrameId === null && !settled) {
+      // Perplexity's composer duplicates content when we rewrite it during the stream.
+      // Buffer tokens there and only commit once at the end.
+      if (shouldProgressivelyRender && renderFrameId === null && !settled) {
         renderFrameId = requestAnimationFrame(renderLoop)
       }
     } else if (msg.type === 'DONE') {
@@ -586,6 +601,9 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         renderedIndex = accumulatedText.length
       }
       streamDone = true
+      if (!shouldProgressivelyRender && accumulatedText.length > 0) {
+        commitFinalOutput()
+      }
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptGod] Enhancement error')
       showToast({ message: msg.message, variant: 'error' })
@@ -597,6 +615,18 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       }
       if (accumulatedText.length > 0) {
         ensureUndoButton()
+      }
+      settle()
+    } else if (msg.type === 'SETTLEMENT') {
+      if (msg.status === 'DONE' && !receivedToken) {
+        showToast({ message: 'Model returned no rewrite text. Try Gemini 2.5 Flash or another model.', variant: 'warning' })
+      } else if (msg.status === 'DONE' && accumulatedText.length > 0) {
+        // One-shot providers like Gemini can send TOKEN/DONE/SETTLEMENT before the next
+        // animation frame, so commit the buffered text before cleanup.
+        commitFinalOutput()
+      }
+      if (msg.status === 'ERROR' && msg.message) {
+        showToast({ message: msg.message, variant: 'error' })
       }
       settle()
     }
@@ -618,6 +648,11 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         console.error({ cause: error }, '[PromptGod] Port disconnected with error')
         showToast({ message: 'Connection to service worker lost', variant: 'error' })
       }
+    } else if (!receivedToken && accumulatedText.length === 0) {
+      showToast({
+        message: 'The selected model finished without returning rewrite text. Try Gemini 2.5 Flash or a different Gemma model.',
+        variant: 'warning',
+      })
     }
     // Flush any pending text so partial result is visible
     if (accumulatedText.length > 0 && renderedIndex < accumulatedText.length) {
@@ -685,22 +720,34 @@ async function handlePreviewEnhance(adapter: PlatformAdapter): Promise<void> {
   }
 
   let accumulated = ''
+  let receivedToken = false
 
   port.onMessage.addListener((msg: ServiceWorkerMessage) => {
     if (msg.type === 'TOKEN') {
+      receivedToken = true
       removeEnhancingStatus()
       accumulated = mergeStreamChunk(accumulated, msg.text)
     } else if (msg.type === 'DONE') {
       setLoading(false)
+      if (!receivedToken) {
+        showToast({ message: 'Model returned no rewrite text. Try Gemini 2.5 Flash or another model.', variant: 'warning' })
+        return
+      }
       const { cleanText } = stripDiffTag(accumulated)
-      if (cleanText.startsWith('[NO_CHANGE]')) {
+      const normalizedText = normalizeText(cleanText)
+      if (normalizedText.startsWith('[NO_CHANGE]')) {
         showToast({ message: 'Your prompt is already strong', variant: 'info' })
         return
       }
-      showPreviewOverlay(adapter, cleanText)
+      showPreviewOverlay(adapter, normalizedText)
     } else if (msg.type === 'ERROR') {
       setLoading(false)
       showToast({ message: msg.message, variant: 'error' })
+    } else if (msg.type === 'SETTLEMENT') {
+      setLoading(false)
+      if (msg.status === 'ERROR' && msg.message) {
+        showToast({ message: msg.message, variant: 'error' })
+      }
     }
   })
 

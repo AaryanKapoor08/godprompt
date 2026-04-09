@@ -33,8 +33,14 @@ export interface ErrorMessage {
   code?: string
 }
 
+export interface SettlementMessage {
+  type: 'SETTLEMENT'
+  status: 'DONE' | 'ERROR'
+  message?: string
+}
+
 // Union of all messages the service worker can send back
-export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage
+export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage | SettlementMessage
 
 // Union of all messages the content script can send
 export type ContentMessage = EnhanceMessage

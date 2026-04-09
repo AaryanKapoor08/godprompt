@@ -6,14 +6,14 @@ import {
 } from '../../src/lib/openrouter-retry'
 
 describe('shouldRetryWithOpenRouterFallback', () => {
-  it('does not retry when requested model is already fallback model', () => {
+  it('allows moving to the next fallback model when the current one fails before tokens', () => {
     const shouldRetry = shouldRetryWithOpenRouterFallback(
       OPENROUTER_FALLBACK_MODEL,
       false,
       new Error('timeout')
     )
 
-    expect(shouldRetry).toBe(false)
+    expect(shouldRetry).toBe(true)
   })
 
   it('does not retry after any token was already emitted', () => {

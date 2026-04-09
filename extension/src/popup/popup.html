@@ -18,15 +18,25 @@
   <!-- API Key Settings -->
   <div id="byok-section" class="section">
     <label for="api-key">API Key</label>
-    <input type="password" id="api-key" placeholder="sk-or-... / sk-ant-... / sk-..." autocomplete="off" spellcheck="false">
+    <input type="password" id="api-key" placeholder="Paste any provider key here" autocomplete="off" spellcheck="false">
     <div id="key-status" class="status"></div>
+
+    <div class="model-label-row">
+      <label for="provider-select" class="label--model">Provider</label>
+    </div>
+    <select id="provider-select" class="model-select">
+      <option value="openrouter">OpenRouter</option>
+      <option value="openai">OpenAI</option>
+      <option value="anthropic">Anthropic</option>
+      <option value="google">Google</option>
+    </select>
 
     <div class="model-label-row">
       <label for="model-select" class="label--model">Model</label>
       <span id="model-hint" class="model-hint"></span>
     </div>
     <select id="model-select" class="model-select">
-      <option value="">Enter an API key first</option>
+      <option value="">Loading models...</option>
     </select>
     <span id="cost-hint" class="cost-hint"></span>
 
@@ -35,6 +45,11 @@
       <input type="text" id="custom-model" placeholder="org/model-name" autocomplete="off" spellcheck="false">
       <div id="custom-model-status" class="status"></div>
     </div>
+
+    <div class="actions">
+      <button id="save-settings" class="btn btn--primary" type="button">Save Settings</button>
+    </div>
+    <div id="save-status" class="status"></div>
   </div>
 
   <!-- Context Toggle -->

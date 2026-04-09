@@ -1,4 +1,4 @@
-export const OPENROUTER_FALLBACK_MODEL = 'nvidia/nemotron-3-nano-30b-a3b:free'
+export const OPENROUTER_FALLBACK_MODEL = 'openai/gpt-oss-20b:free'
 
 function isAuthLikeError(message: string): boolean {
   return /401|unauthorized|invalid api key|authentication/i.test(message)
@@ -11,7 +11,7 @@ function getReturnedStatus(message: string): number | null {
 }
 
 function isTransientOpenRouterError(message: string): boolean {
-  return /timed out|stalled|ended before emitting tokens|failed to fetch|network|overloaded|temporarily unavailable|rate limit|429|5\d\d/i.test(message)
+  return /timed out|stalled|ended before emitting tokens|failed to fetch|network|overloaded|temporarily unavailable|rate limit|429|5\d\d|insufficient credits|no tokens/i.test(message)
 }
 
 function shouldRetryOpenRouterWithFallback(error: unknown): boolean {
@@ -24,9 +24,10 @@ function shouldRetryOpenRouterWithFallback(error: unknown): boolean {
     return false
   }
 
-  // Non-rate-limit 4xx is usually a hard request issue.
+  // Most 4xx are hard request issues, but 400/404 may be model-routing/model-id issues
+  // that can be fixed by switching to a fallback model.
   const status = getReturnedStatus(error.message)
-  if (status !== null && status >= 400 && status < 500 && status !== 429) {
+  if (status !== null && status >= 400 && status < 500 && status !== 429 && status !== 400 && status !== 404) {
     return false
   }
 
@@ -54,14 +55,10 @@ export function shouldRetryOpenRouterSameModel(
 }
 
 export function shouldRetryWithOpenRouterFallback(
-  requestedModel: string,
+  _requestedModel: string,
   sentAnyToken: boolean,
   error: unknown
 ): boolean {
-  if (requestedModel === OPENROUTER_FALLBACK_MODEL) {
-    return false
-  }
-
   // Retrying after partial output would duplicate text in the composer.
   if (sentAnyToken) {
     return false

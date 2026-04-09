@@ -2,7 +2,7 @@
 // Perplexity uses a textarea or contenteditable div for input
 
 import type { PlatformAdapter, ConversationContext } from './types'
-import { clearContentEditable, insertText, replaceText } from '../dom-utils'
+import { clearContentEditable, replaceText } from '../dom-utils'
 
 export class PerplexityAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -11,14 +11,7 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   getInputElement(): HTMLElement | null {
-    // Perplexity uses a textarea or contenteditable div
-    return (
-      document.querySelector<HTMLElement>('textarea[placeholder*="Ask"]') ??
-      document.querySelector<HTMLElement>('textarea[aria-label*="Ask"]') ??
-      document.querySelector<HTMLElement>('[contenteditable="true"][aria-label*="Ask"]') ??
-      document.querySelector<HTMLElement>('[contenteditable="true"][data-lexical-editor]') ??
-      document.querySelector<HTMLElement>('div[contenteditable="true"]')
-    )
+    return this.getInputElements()[0] ?? null
   }
 
   getPromptText(): string {
@@ -33,20 +26,26 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   setPromptText(text: string): void {
-    const input = this.getInputElement()
-    if (!input) {
+    const inputs = this.getInputElements()
+    if (inputs.length === 0) {
       throw new Error('[PerplexityAdapter] Input element not found during text replacement')
     }
 
-    // Perplexity may use a textarea — handle both cases
-    if (input instanceof HTMLTextAreaElement) {
-      this.setTextareaValue(input, text)
-      return
+    let updated = false
+
+    for (const input of inputs) {
+      input.focus()
+
+      if (input instanceof HTMLTextAreaElement) {
+        this.setTextareaValue(input, text)
+        updated = true
+        continue
+      }
+
+      updated = this.replaceContentEditableValue(input, text) || updated
     }
 
-    // contenteditable — use shared replaceText
-    const success = replaceText(input, text)
-    if (!success) {
+    if (!updated) {
       throw new Error('[PerplexityAdapter] Failed to insert text into input element')
     }
   }
@@ -111,32 +110,113 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   clearInput(): void {
-    const input = this.getInputElement()
-    if (!input) return
+    const inputs = this.getInputElements()
+    if (inputs.length === 0) return
 
-    if (input instanceof HTMLTextAreaElement) {
-      this.setTextareaValue(input, '')
-    } else {
-      clearContentEditable(input)
+    for (const input of inputs) {
+      if (input instanceof HTMLTextAreaElement) {
+        this.setTextareaValue(input, '')
+      } else {
+        this.replaceContentEditableValue(input, '')
+      }
     }
   }
 
   appendChunk(text: string): boolean {
-    const input = this.getInputElement()
-    if (!input) return false
+    void text
+    // Perplexity's editors frequently duplicate or preserve stale content when
+    // text is appended incrementally. Force the render loop into full-replace mode.
+    return false
+  }
 
-    if (input instanceof HTMLTextAreaElement) {
-      // Return false to force the render loop into full-replace mode.
-      // React controlled textareas fight incremental appends — React re-renders
-      // between frames and resets the value. Full-replace via setPromptText
-      // (which uses setTextareaValue with _valueTracker reset) is the only
-      // approach that sticks.
+  private replaceContentEditableValue(element: HTMLElement, text: string): boolean {
+    try {
+      if (replaceText(element, text)) {
+        return true
+      }
+
+      clearContentEditable(element)
+      element.replaceChildren()
+      element.textContent = text
+      this.moveCursorToEnd(element)
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+      element.dispatchEvent(new Event('change', { bubbles: true }))
+      return true
+    } catch (error) {
+      console.error({ cause: error }, '[PromptGod] Failed to replace Perplexity contenteditable value')
       return false
     }
+  }
 
-    // contenteditable path
-    input.focus()
-    return document.execCommand('insertText', false, text) || insertText(input, text)
+  private getInputElements(): HTMLElement[] {
+    const selectors = [
+      'textarea[placeholder*="Ask"]',
+      'textarea[aria-label*="Ask"]',
+      '[contenteditable="true"][aria-label*="Ask"]',
+      '[contenteditable="true"][data-lexical-editor]',
+      'div[contenteditable="true"]',
+    ]
+
+    const seen = new Set<HTMLElement>()
+    const inputs: HTMLElement[] = []
+
+    for (const selector of selectors) {
+      const matches = Array.from(document.querySelectorAll<HTMLElement>(selector))
+      for (const match of matches) {
+        if (seen.has(match)) continue
+        seen.add(match)
+        inputs.push(match)
+      }
+    }
+
+    return inputs.sort((a, b) => this.getInputPriority(b) - this.getInputPriority(a))
+  }
+
+  private moveCursorToEnd(element: HTMLElement): void {
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  private getInputPriority(element: HTMLElement): number {
+    let score = 0
+
+    const rect = element.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      score += 100
+    }
+
+    const style = window.getComputedStyle(element)
+    if (style.display !== 'none' && style.visibility !== 'hidden') {
+      score += 50
+    }
+
+    if (element instanceof HTMLTextAreaElement) {
+      score += 20
+    }
+
+    if (element.matches('[data-lexical-editor]')) {
+      score += 40
+    }
+
+    if (element.getAttribute('contenteditable') === 'true') {
+      score += 30
+    }
+
+    if (element.contains(document.activeElement) || document.activeElement === element) {
+      score += 200
+    }
+
+    if ((element.textContent ?? '').trim().length > 0) {
+      score += 25
+    }
+
+    return score
   }
 
   getConversationContext(): ConversationContext {

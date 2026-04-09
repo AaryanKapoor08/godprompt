@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildMetaPrompt } from '../../src/lib/meta-prompt'
+import { buildGemmaMetaPromptWithIntensity, buildMetaPrompt } from '../../src/lib/meta-prompt'
 
 describe('buildMetaPrompt', () => {
   it('interpolates platform correctly', () => {
@@ -82,5 +82,13 @@ describe('buildMetaPrompt', () => {
     expect(rulesIndex).toBeGreaterThan(techniqueIndex)
     expect(examplesIndex).toBeGreaterThan(rulesIndex)
     expect(criticalIndex).toBeGreaterThan(examplesIndex)
+  })
+
+  it('builds a compact Gemma prompt without chain-of-thought instructions', () => {
+    const result = buildGemmaMetaPromptWithIntensity('chatgpt', false, 4, 4)
+    expect(result).toContain('You rewrite prompts for other AI assistants.')
+    expect(result).toContain('Rewrite intensity: LIGHT')
+    expect(result).not.toContain('PROCESS (internal, do not output reasoning):')
+    expect(result).not.toContain('EXAMPLES — every addition prevents the AI from guessing.')
   })
 })

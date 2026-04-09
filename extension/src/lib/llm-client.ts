@@ -3,14 +3,437 @@
 // All LLM calls go through the service worker, never from content scripts
 
 import type { ConversationContext } from '../content/adapters/types'
+import { detectProviderFromApiKey, type Provider } from './provider-policy'
 
-export type Provider = 'anthropic' | 'openai' | 'openrouter'
+export type ProviderAlias = Provider
 const REWRITE_TEMPERATURE = 0.2
 const REQUEST_TIMEOUT_MS = {
   anthropic: 60000,
   openai: 60000,
+  google: 60000,
   openrouter: 60000,
 } as const
+
+const GOOGLE_TOTAL_REQUEST_BUDGET_MS = 85000
+
+type GoogleModel = {
+  name?: string
+  supportedGenerationMethods?: string[]
+  outputTokenLimit?: number
+}
+
+type GoogleGenerateResponse = {
+  candidates?: Array<{
+    finishReason?: string
+    content?: {
+      parts?: Array<{ text?: string }>
+    }
+  }>
+  promptFeedback?: {
+    blockReason?: string
+    blockReasonMessage?: string
+  }
+}
+
+type OpenAICompatibleResponse = {
+  choices?: Array<{
+    text?: string
+    message?: {
+      content?: string | Array<{ text?: string; type?: string }>
+    }
+  }>
+}
+
+const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash'
+const GOOGLE_FALLBACK_MODEL = 'gemini-2.5-flash-lite'
+const GOOGLE_MAX_ATTEMPTS_PER_MODEL = 2
+const GOOGLE_RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
+const GOOGLE_BLOCKING_FINISH_REASONS = new Set([
+  'SAFETY',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'RECITATION',
+])
+
+const GOOGLE_MODEL_ALIASES: Record<string, string> = {
+  'gemma-4': 'gemma-3-27b-it',
+  'gemma-4-it': 'gemma-3-27b-it',
+  'gemma-4-31b': 'gemma-3-27b-it',
+  'gemma-4-31b-it': 'gemma-3-27b-it',
+  'gemma-4-26b-a4b': 'gemma-3-27b-it',
+  'gemma-4-26b-a4b-it': 'gemma-3-27b-it',
+}
+
+function normalizeGoogleModelName(model: string): string {
+  const trimmed = model.trim()
+  if (!trimmed) return GOOGLE_DEFAULT_MODEL
+  const raw = trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed
+  const alias = GOOGLE_MODEL_ALIASES[raw.toLowerCase()]
+  return alias ?? raw
+}
+
+function buildGoogleModelChain(model: string): string[] {
+  const normalized = normalizeGoogleModelName(model)
+  const chain = [normalized, GOOGLE_DEFAULT_MODEL, GOOGLE_FALLBACK_MODEL]
+
+  return chain.filter((candidate, index) => candidate.length > 0 && chain.indexOf(candidate) === index)
+}
+
+function isGoogleGemmaModel(model: string): boolean {
+  return normalizeGoogleModelName(model).toLowerCase().startsWith('gemma-')
+}
+
+function supportsGoogleThinkingConfig(model: string): boolean {
+  return normalizeGoogleModelName(model).toLowerCase().startsWith('gemini-2.5-flash')
+}
+
+function buildGoogleGenerationConfig(model: string, maxTokens: number): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    temperature: REWRITE_TEMPERATURE,
+    maxOutputTokens: maxTokens,
+  }
+
+  // Prompt rewrites need low latency and deterministic output, not extra reasoning tokens.
+  if (supportsGoogleThinkingConfig(model)) {
+    config.thinkingConfig = { thinkingBudget: 0 }
+  }
+
+  return config
+}
+
+function buildGoogleRequestBody(
+  model: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number
+): Record<string, unknown> {
+  const normalizedModel = normalizeGoogleModelName(model)
+  const body: Record<string, unknown> = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{
+          text: isGoogleGemmaModel(normalizedModel)
+            ? `Instruction:\n${systemPrompt}\n\nTask:\n${userMessage}`
+            : userMessage,
+        }],
+      },
+    ],
+    generationConfig: buildGoogleGenerationConfig(normalizedModel, maxTokens),
+  }
+
+  if (!isGoogleGemmaModel(normalizedModel)) {
+    body.systemInstruction = {
+      parts: [{ text: systemPrompt }],
+    }
+  }
+
+  return body
+}
+
+function sanitizeGemmaResponse(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (lines.length === 0) {
+    return trimmed
+  }
+
+  const diffTag = [...lines].reverse().find((line) => /^\[DIFF:\s*[^\]]+\]$/i.test(line)) ?? null
+
+  let promptLine = [...lines].reverse().find((line) => {
+    if (/^\[DIFF:/i.test(line)) return false
+    if (/^(Prompt|Final Prompt)\s*:/i.test(line)) return false
+    if (/^[*-]\s+/.test(line)) return false
+    if (/^(User Prompt|Platform|Context|Rewrite Intensity|Domain|Intent|Specificity|Output format|Avoid filler|Draft|Refining|Applying)\b/i.test(line)) {
+      return false
+    }
+    return true
+  }) ?? null
+
+  if (!promptLine) {
+    const labeledPrompt = [...lines].reverse().find((line) => /^(Prompt|Final Prompt)\s*:/i.test(line))
+    if (labeledPrompt) {
+      promptLine = labeledPrompt.replace(/^(Prompt|Final Prompt)\s*:\s*/i, '').trim()
+    }
+  }
+
+  if (!promptLine) {
+    return trimmed
+  }
+
+  return diffTag ? `${promptLine}\n${diffTag}` : promptLine
+}
+
+function extractGoogleText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+
+  const candidates = (payload as GoogleGenerateResponse).candidates
+  if (!Array.isArray(candidates) || candidates.length === 0) return ''
+
+  const segments: string[] = []
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts
+    if (!Array.isArray(parts)) continue
+
+    for (const part of parts) {
+      if (typeof part?.text === 'string') {
+        segments.push(part.text)
+      }
+    }
+  }
+
+  return segments.join('').trim()
+}
+
+function extractGoogleNoTextReason(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+
+  const response = payload as GoogleGenerateResponse
+  const promptFeedback = response.promptFeedback
+  if (promptFeedback?.blockReason) {
+    const message = promptFeedback.blockReasonMessage?.trim()
+    if (message) {
+      return `blocked (${promptFeedback.blockReason}): ${message}`
+    }
+    return `blocked (${promptFeedback.blockReason})`
+  }
+
+  if (Array.isArray(response.candidates) && response.candidates.length > 0) {
+    const reasons = response.candidates
+      .map((candidate) => candidate.finishReason)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+    if (reasons.length > 0 && reasons.some((reason) => reason.toUpperCase() !== 'STOP')) {
+      return `finish reason: ${reasons.join(', ')}`
+    }
+  }
+
+  return null
+}
+
+function isBlockedReason(reason: string | null): boolean {
+  return typeof reason === 'string' && reason.startsWith('blocked')
+}
+
+function isBlockingOutputIssue(issue: string): boolean {
+  return issue.startsWith('blocked') || issue.startsWith('finish reason:')
+}
+
+function extractGoogleFinishReasons(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+
+  const response = payload as GoogleGenerateResponse
+  if (!Array.isArray(response.candidates)) return []
+
+  return response.candidates
+    .map((candidate) => candidate.finishReason)
+    .filter((reason): reason is string => typeof reason === 'string' && reason.length > 0)
+}
+
+function countWords(text: string): number {
+  const trimmed = text.trim()
+  if (!trimmed) return 0
+  return trimmed.split(/\s+/).length
+}
+
+function extractOpenAICompatibleText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+
+  const choices = (payload as OpenAICompatibleResponse).choices
+  if (!Array.isArray(choices) || choices.length === 0) return ''
+
+  const firstChoice = choices[0]
+  if (typeof firstChoice?.text === 'string' && firstChoice.text.trim().length > 0) {
+    return firstChoice.text.trim()
+  }
+
+  const content = firstChoice?.message?.content
+  if (typeof content === 'string') {
+    return content.trim()
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part?.text === 'string' ? part.text : '')
+      .join('')
+      .trim()
+  }
+
+  return ''
+}
+
+function extractGoogleOutputIssue(payload: unknown, text: string): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const response = payload as GoogleGenerateResponse
+  const promptFeedback = response.promptFeedback
+  if (promptFeedback?.blockReason) {
+    const message = promptFeedback.blockReasonMessage?.trim()
+    if (message) {
+      return `blocked (${promptFeedback.blockReason}): ${message}`
+    }
+    return `blocked (${promptFeedback.blockReason})`
+  }
+
+  const reasons = extractGoogleFinishReasons(response)
+  const hasBlockingReason = reasons.some((reason) => GOOGLE_BLOCKING_FINISH_REASONS.has(reason.toUpperCase()))
+  if (hasBlockingReason) {
+    return `finish reason: ${reasons.join(', ')}`
+  }
+
+  // A one-word output for a rewrite request is almost always a truncated/failed generation.
+  const words = countWords(text)
+  if (words <= 1 && !text.startsWith('[NO_CHANGE]')) {
+    if (reasons.length > 0) {
+      return `truncated output (${reasons.join(', ')})`
+    }
+    return 'truncated output'
+  }
+
+  return null
+}
+
+export async function listGoogleModels(apiKey: string): Promise<string[]> {
+  const response = await fetchWithTimeout(
+    'https://generativelanguage.googleapis.com/v1beta/models',
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+    },
+    REQUEST_TIMEOUT_MS.google
+  )
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    throw new Error(`[LLMClient] Google API returned ${response.status}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+
+  const data = await response.json() as { models?: GoogleModel[] }
+  const models = data.models ?? []
+
+  return models
+    .filter((model) => {
+      const methods = model.supportedGenerationMethods ?? []
+      const supportsGeneration = methods.includes('generateContent') || methods.includes('streamGenerateContent')
+      return supportsGeneration && typeof model.name === 'string' && model.name.startsWith('models/')
+    })
+    .map((model) => normalizeGoogleModelName(model.name!))
+    .filter((name) => name.length > 0)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+export async function callGoogleAPI(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string = GOOGLE_DEFAULT_MODEL,
+  maxTokens: number = 512
+): Promise<string> {
+  const deadline = Date.now() + GOOGLE_TOTAL_REQUEST_BUDGET_MS
+  const modelsToTry = buildGoogleModelChain(model)
+
+  let lastError: Error | null = null
+
+  for (const modelToTry of modelsToTry) {
+    for (let attempt = 1; attempt <= GOOGLE_MAX_ATTEMPTS_PER_MODEL; attempt++) {
+      const remainingBudgetMs = deadline - Date.now()
+      if (remainingBudgetMs <= 0) {
+        throw new Error('[LLMClient] Google API overall request budget exceeded')
+      }
+
+      const attemptTimeoutMs = Math.min(REQUEST_TIMEOUT_MS.google, remainingBudgetMs)
+
+      const response = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelToTry)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(buildGoogleRequestBody(modelToTry, systemPrompt, userMessage, maxTokens)),
+        },
+        attemptTimeoutMs
+      )
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unknown error')
+        const error = new Error(`[LLMClient] Google API returned ${response.status}: ${errorBody}`, {
+          cause: new Error(errorBody),
+        })
+
+        // Retry once on default Flash when the selected model isn't available.
+        if (response.status === 404 && modelToTry !== GOOGLE_DEFAULT_MODEL) {
+          lastError = error
+          break
+        }
+
+        if (GOOGLE_RETRYABLE_STATUS_CODES.has(response.status)) {
+          lastError = error
+          if (attempt < GOOGLE_MAX_ATTEMPTS_PER_MODEL) {
+            continue
+          }
+          break
+        }
+
+        throw error
+      }
+
+      const payload = await response.json()
+      const rawText = extractGoogleText(payload)
+      const text = isGoogleGemmaModel(modelToTry) ? sanitizeGemmaResponse(rawText) : rawText
+
+      if (!text) {
+        const reason = extractGoogleNoTextReason(payload)
+        const error = new Error(
+          reason
+            ? `[LLMClient] Google API returned no text output (${reason})`
+            : '[LLMClient] Google API returned no text output'
+        )
+
+        lastError = error
+        if (isBlockedReason(reason)) {
+          throw error
+        }
+        if (attempt < GOOGLE_MAX_ATTEMPTS_PER_MODEL) {
+          continue
+        }
+        break
+      }
+
+      const outputIssue = extractGoogleOutputIssue(payload, text)
+      if (outputIssue) {
+        const error = new Error(`[LLMClient] Google API returned unusable output (${outputIssue})`)
+        lastError = error
+        if (attempt < GOOGLE_MAX_ATTEMPTS_PER_MODEL) {
+          continue
+        }
+        if (isBlockingOutputIssue(outputIssue)) {
+          throw error
+        }
+        break
+      }
+
+      return text
+    }
+  }
+
+  throw lastError ?? new Error('[LLMClient] Google API request failed')
+}
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
@@ -35,20 +458,8 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 
 export function validateApiKey(key: string): { valid: boolean; provider: Provider | null } {
   const trimmed = key.trim()
-
-  if (trimmed.startsWith('sk-ant-')) {
-    return { valid: true, provider: 'anthropic' }
-  }
-
-  if (trimmed.startsWith('sk-or-')) {
-    return { valid: true, provider: 'openrouter' }
-  }
-
-  if (trimmed.startsWith('sk-')) {
-    return { valid: true, provider: 'openai' }
-  }
-
-  return { valid: false, provider: null }
+  const provider = detectProviderFromApiKey(trimmed)
+  return { valid: provider !== null, provider }
 }
 
 export function buildUserMessage(
@@ -164,10 +575,40 @@ export async function* parseOpenAIStream(
         throw new Error(`[LLMClient] OpenAI-compatible stream error: ${parsed.error.message}`)
       }
 
-      // OpenAI SSE format: choices[0].delta.content
-      const content = parsed.choices?.[0]?.delta?.content
-      if (content) {
-        return { kind: 'token', value: content }
+      const choice = parsed?.choices?.[0]
+      const deltaContent = choice?.delta?.content
+
+      // OpenAI chat stream (string)
+      if (typeof deltaContent === 'string' && deltaContent.length > 0) {
+        return { kind: 'token', value: deltaContent }
+      }
+
+      // Some providers send content as structured parts.
+      if (Array.isArray(deltaContent)) {
+        const text = deltaContent
+          .map((part: unknown) => {
+            if (typeof part === 'string') return part
+            if (part && typeof part === 'object' && 'text' in part) {
+              const maybeText = (part as { text?: unknown }).text
+              return typeof maybeText === 'string' ? maybeText : ''
+            }
+            return ''
+          })
+          .join('')
+
+        if (text.length > 0) {
+          return { kind: 'token', value: text }
+        }
+      }
+
+      // Completion-style chunk fallback.
+      if (typeof choice?.text === 'string' && choice.text.length > 0) {
+        return { kind: 'token', value: choice.text }
+      }
+
+      // Some providers emit message content near the end of a stream.
+      if (typeof choice?.message?.content === 'string' && choice.message.content.length > 0) {
+        return { kind: 'token', value: choice.message.content }
       }
 
       return { kind: 'parsed-noop' }
@@ -251,7 +692,7 @@ export async function callAnthropicAPI(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string = 'claude-haiku-4-5-20251001'
+  model: string = 'claude-3-5-haiku-20241022'
 ): Promise<Response> {
   const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -324,7 +765,8 @@ export async function callOpenRouterAPI(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string = 'nvidia/nemotron-3-nano-30b-a3b:free'
+  model: string = 'openai/gpt-oss-20b:free',
+  maxTokens: number = 512
 ): Promise<Response> {
   const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -336,7 +778,7 @@ export async function callOpenRouterAPI(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 768,
+      max_tokens: maxTokens,
       temperature: REWRITE_TEMPERATURE,
       stream: true,
       messages: [
@@ -348,11 +790,58 @@ export async function callOpenRouterAPI(
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'Unknown error')
-    throw new Error(`[LLMClient] OpenRouter API returned ${response.status}: ${errorBody}`, {
+    const retryAfter = response.headers.get('retry-after')
+    const retryAfterPart = retryAfter ? ` (retry-after ${retryAfter})` : ''
+    throw new Error(`[LLMClient] OpenRouter API returned ${response.status}${retryAfterPart}: ${errorBody}`, {
       cause: new Error(errorBody),
     })
   }
 
   return response
+}
+
+export async function callOpenRouterCompletionAPI(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string = 'openai/gpt-oss-20b:free',
+  maxTokens: number = 512
+): Promise<string> {
+  const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://promptgod.dev',
+      'X-Title': 'PromptGod',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      temperature: REWRITE_TEMPERATURE,
+      stream: false,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  }, REQUEST_TIMEOUT_MS.openrouter)
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    const retryAfter = response.headers.get('retry-after')
+    const retryAfterPart = retryAfter ? ` (retry-after ${retryAfter})` : ''
+    throw new Error(`[LLMClient] OpenRouter API returned ${response.status}${retryAfterPart}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+
+  const payload = await response.json().catch(() => null)
+  const text = extractOpenAICompatibleText(payload)
+  if (!text) {
+    throw new Error('[LLMClient] OpenRouter completion returned no text output')
+  }
+
+  return text
 }
 

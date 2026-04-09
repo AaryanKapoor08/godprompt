@@ -226,3 +226,45 @@ export function buildMetaPromptWithIntensity(
     .replace('{{rewriteIntensity}}', intensity)
     .replace('{{recentContext}}', contextSection)
 }
+
+export function buildGemmaMetaPromptWithIntensity(
+  platform: string,
+  isNewConversation: boolean,
+  conversationLength: number,
+  promptWordCount: number,
+  recentContext?: string
+): string {
+  const conversationContext = isNewConversation
+    ? 'New conversation'
+    : `Ongoing conversation (message #${conversationLength + 1})`
+
+  const intensity = !isNewConversation && promptWordCount < 15
+    ? 'LIGHT'
+    : 'FULL'
+
+  const recentSection = recentContext
+    ? `Recent conversation context:\n${recentContext}\n`
+    : ''
+
+  return `You rewrite prompts for other AI assistants.
+
+Platform: ${platform}
+Conversation: ${conversationContext}
+Rewrite intensity: ${intensity}
+${recentSection}
+Return exactly:
+1. The rewritten prompt only
+2. On a new line, one tag in this exact format: [DIFF: item, item]
+
+Rules:
+- Do not explain your reasoning
+- Do not show analysis, drafts, bullets, or markdown
+- Do not answer the prompt
+- Keep the user's intent and voice
+- Add only the missing context that materially improves the answer
+- If the prompt is already strong, return [NO_CHANGE] followed by the original prompt
+- For broad learning prompts, prefer a practical roadmap, clear structure, and project-based steps
+- For short follow-up prompts in an ongoing conversation, apply light edits only
+- Never invent concrete personal facts
+- The output must be immediately sendable`
+}

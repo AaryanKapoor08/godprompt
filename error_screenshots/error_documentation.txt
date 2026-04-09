@@ -1,0 +1,14 @@
+1 sometimes the button keeps spinning even after enhancing 
+2 claude haiku 3.5 does not work 
+3 the model resets to nemotron after every use and every error 
+4 sometimes there is a indentation error , the words are connected together 
+5 sometimes the prompt wont enhance the button keeps spinning 
+6 i tried to enter my google api key but it does not work , says invalid format , we have to make it so that every key works 
+7 gemma free model sometimes work sometimes does not 
+8 there has to be a save button in the ui , so that once the model is selected and saved , it cannot change unless the user changes it , because right now it keeps going back to nemotron after every use 
+9 we somehow have to make the user aware about the free models and the paid models in openrouter , our list consists of alot of models but most of them are paid 
+10 chatgpt 4o mini works flawlessly , so we type in the ui , instead of haiku recommended , we say o4 mini recommended 
+11 every api key must be usable, right now any other key apart from open router says invalid format 
+12 Perplexity is completely fucked up , check out the screenshot , it repeats the enhanced prompt twice and even the original prompt is not overwritten . 
+13 we cannot give those json errors to the user , we need to polish into well written errors with solutions 
+14 no model apart from 04mini works , we need gemma to work because its free forever , if i use anything apart from gpt , the error says open router stream ended before emitting tokens 

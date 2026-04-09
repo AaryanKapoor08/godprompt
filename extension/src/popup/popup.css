@@ -149,11 +149,12 @@ label {
 .model-hint {
   font-size: 11px;
   color: var(--pp-fg-subtle);
-  white-space: nowrap;
-  line-height: 1;
+  line-height: 1.3;
+  text-align: right;
 }
 
 input[type="password"],
+.custom-model-section input[type="text"],
 .model-select {
   width: 100%;
   padding: 8px 12px;
@@ -174,11 +175,13 @@ input[type="password"]::placeholder {
 }
 
 input[type="password"]:hover,
+.custom-model-section input[type="text"]:hover,
 .model-select:hover {
   border-color: var(--pp-border-hover);
 }
 
 input[type="password"]:focus,
+.custom-model-section input[type="text"]:focus,
 .model-select:focus {
   border-color: var(--pp-primary);
   box-shadow: 0 0 0 3px var(--pp-ring);
@@ -224,6 +227,10 @@ input[type="password"].input--invalid {
   color: var(--pp-error);
 }
 
+.status--warning {
+  color: var(--pp-warning);
+}
+
 /* === Custom Model === */
 .custom-model-section {
   margin-top: 10px;
@@ -233,24 +240,32 @@ input[type="password"].input--invalid {
   margin-top: 0;
 }
 
-.custom-model-section input[type="text"] {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--pp-border);
-  border-radius: var(--pp-radius-sm);
-  font-size: 13px;
-  font-family: inherit;
-  box-sizing: border-box;
-  outline: none;
-  background: var(--pp-bg-input);
-  color: var(--pp-fg);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: var(--pp-shadow-sm);
+.actions {
+  margin-top: 12px;
 }
 
-.custom-model-section input[type="text"]:focus {
-  border-color: var(--pp-primary);
-  box-shadow: 0 0 0 3px var(--pp-ring);
+.btn {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--pp-radius-sm);
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn--primary {
+  background: var(--pp-primary);
+  color: var(--pp-primary-fg);
+}
+
+.btn--primary:hover {
+  background: var(--pp-primary-hover);
 }
 
 /* === Cost Hint === */

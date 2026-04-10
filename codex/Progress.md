@@ -1,256 +1,146 @@
 # PromptGod — Codex Progress
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
-This file is a Codex handoff log for the current workspace. It is intentionally shorter than `claude/Progress.md` and focused on what changed in the latest working session so the next Codex window can resume quickly.
-
----
-
-## Current Focus
-
-Google / Gemini / Gemma reliability hardening for the Chrome extension.
-
-Primary outcome of this session:
-- `gemini-2.5-flash` now works end-to-end in the extension.
-- Gemma support was added and then hardened after Gemma-specific failures.
-- Silent spinner-only failures on the Google path were reduced and surfaced better.
+This file is the compact Codex handoff for the current workspace. It is focused on today's prompt-enhancer fixes so the next session can resume from the right baseline quickly.
 
 ---
 
-## What Was Done Today
+## Session Summary
 
-### 1. Researched Google support and free-tier viability
-
-Confirmed from official Google docs on 2026-04-09:
-- Gemini API can be used from environments that support HTTP requests, including this BYOK extension architecture.
-- `gemini-2.5-flash` and `gemini-2.5-flash-lite` are on the free tier.
-- Gemma is available through the Gemini API.
-- Current hosted Gemma docs list:
-  - `gemma-4-31b-it`
-  - `gemma-4-26b-a4b-it`
-- Gemini pricing page shows Gemma 4 as free-tier.
-
-Important conclusion:
-- BYOK with a user-supplied Google API key is viable.
-- A shared embedded key would still be a bad idea; the extension should keep BYOK.
-
----
-
-### 2. Fixed the Google request path for Gemini models
+### 1. Repaired the core rewrite boundary
 
 Updated:
 - `extension/src/lib/llm-client.ts`
-- `extension/src/popup/popup.ts`
-- `extension/src/lib/provider-policy.ts`
+- `extension/test/unit/build-user-message.test.ts`
 
-Key fixes:
-- Google requests now use `x-goog-api-key` header consistently.
-- `listGoogleModels()` uses header auth.
-- `callGoogleAPI()` retries transient Google failures (`429`, `500`, `503`).
-- Google model fallback chain now prefers:
-  1. requested model
-  2. `gemini-2.5-flash`
-  3. `gemini-2.5-flash-lite`
-- For `gemini-2.5-flash`, rewrite requests disable thinking via `thinkingBudget: 0` to reduce latency and overthinking.
-- Popup provider detection now reuses shared `validateApiKey()` logic instead of drifting from backend logic.
-- Google provider defaults were updated from stale 1.5-era entries to current 2.5-era entries.
+What changed:
+- restored the stronger user-message wrapper so the model treats the provided prompt as source text to rewrite, not instructions to execute
+- explicitly told the model not to answer the prompt or perform its steps
+- preserved the delimiter-based wrapping used by the enhancement flow
 
-Why this mattered:
-- The previous Google path was more brittle and too slow for rewrite use.
-- The popup and backend had inconsistent provider detection behavior.
+Why this matters:
+- this was the original fix for the "answering instead of enhancing" failure mode
+- it remains the main guardrail for all providers
 
 ---
 
-### 3. Fixed the Gemini “spinner then nothing” bug
-
-Updated:
-- `extension/src/content/ui/trigger-button.ts`
-
-Root cause:
-- Google’s one-shot response path could send `TOKEN`, `DONE`, and `SETTLEMENT` so quickly that the content script settled before the animation-frame render loop committed the final text into the page.
-
-Fix:
-- Added a final-output commit path before settlement.
-- This ensures fast one-shot providers still write the final enhanced prompt into the input field.
-
-Result:
-- User confirmed `gemini-2.5-flash` works after this fix.
-
----
-
-### 4. Added Gemma 4 models to the extension
-
-Updated:
-- `extension/src/popup/popup.ts`
-- `extension/src/lib/provider-policy.ts`
-- `extension/src/lib/llm-client.ts`
-
-Added visible Google model options:
-- `gemma-4-31b-it`
-- `gemma-4-26b-a4b-it`
-
-Also added:
-- model alias normalization for `gemma-4` variants
-- saved-model preservation in the popup so Google-exposed model IDs do not get reset just because they are not hardcoded yet
-
----
-
-### 5. Fixed the Gemma request-shape problem
-
-Updated:
-- `extension/src/lib/llm-client.ts`
-- `extension/src/service-worker.ts`
-- `extension/src/content/ui/trigger-button.ts`
-
-Observed problem:
-- After Gemma was added, the button could spin and then stop with no useful visible result.
-
-Likely root cause:
-- Gemma-on-Gemini behaved differently from Gemini 2.5 Flash when given a separate `systemInstruction`.
-- Service-worker port shutdown was also tight enough to risk swallowing final messages on fast paths.
-
-Fixes:
-- Added Gemma-specific Google request body builder:
-  - for Gemma models, do not send `systemInstruction`
-  - instead fold the instruction into the user content
-- Delayed `port.disconnect()` slightly in the service worker via `disconnectPortSoon()`
-- Added a visible warning if a model finishes without returning rewrite text
-
-Why this mattered:
-- Google’s hosted Gemma docs show simple content-based requests.
-- Flash tolerated the bigger instruction structure better than Gemma.
-
----
-
-### 6. Fixed Gemma output leaking internal analysis
+### 2. Restored workflow-preservation rules for staged prompts
 
 Updated:
 - `extension/src/lib/meta-prompt.ts`
-- `extension/src/lib/llm-client.ts`
-- `extension/src/service-worker.ts`
-
-Observed problem from real user output:
-- Gemma sometimes returned scratchpad-like text such as:
-  - prompt analysis
-  - domain/intent notes
-  - draft notes
-  - then the final rewritten prompt
-
-Root cause:
-- Gemma was being asked to follow a long, example-heavy rewrite policy originally tuned for stronger system-role models.
-- Because Gemma no longer received a true separate system role, it was more likely to expose the internal reasoning structure.
-
-Fixes:
-- Added a compact Gemma-specific meta prompt:
-  - no long examples
-  - no “internal process” section
-  - direct output contract only
-- Added Gemma response sanitization:
-  - if Gemma leaks analysis, keep the final prompt
-  - keep `[DIFF: ...]` if present
-  - strip the scratchpad-style prefix
-
-Expected result:
-- Gemma should now behave much closer to Flash for rewrite tasks.
-- It may still be slower than Flash simply because it is a heavier model.
-
----
-
-## Files Changed This Session
-
-- `extension/src/lib/llm-client.ts`
-- `extension/src/popup/popup.ts`
-- `extension/src/lib/provider-policy.ts`
-- `extension/src/content/ui/trigger-button.ts`
-- `extension/src/service-worker.ts`
-- `extension/src/lib/meta-prompt.ts`
-- `extension/test/unit/google-api.test.ts`
-- `extension/test/unit/validate-api-key-comprehensive.test.ts`
 - `extension/test/unit/meta-prompt.test.ts`
 
-Also added:
+What changed:
+- re-added a rewrite boundary section to the main meta prompt
+- told the model to preserve staged workflows instead of collapsing them into immediate answers
+- added rules for prompts that mention provided files, slides, code, or documents
+- restored the assignment-prep example and the matching bad counterexample
+
+Why this matters:
+- prompts like "analyze these files now, solve the assignment later" should stay as prompts
+- the enhancer should not pretend it already saw the source material
+
+---
+
+### 3. Kept Gemma stable and focused fixes on Gemini 2.5 Flash
+
+Updated:
+- `extension/src/lib/meta-prompt.ts`
+- `extension/src/lib/llm-client.ts`
+- `extension/test/unit/google-api.test.ts`
+- `extension/test/unit/meta-prompt.test.ts`
+
+What changed:
+- left the compact Gemma path intact
+- changed the main platform guidance to prefer clear plain text instead of numbered or XML-style formatting hints
+- added explicit rules against inventing XML, HTML-like tags, or unnecessary heavy structure
+- added a Flash-side cleanup pass for generic wrappers such as:
+  - `<user_query>`
+  - `<instruction>`
+  - `<list>`
+  - `<item>`
+- flattened those wrappers into normal plain text before the prompt is injected into the chat box
+
+Why this matters:
+- Gemma was already behaving correctly and should not be disturbed
+- the over-formatting issue was happening on the `gemini-2.5-flash` path
+
+---
+
+### 4. Added regression coverage for today's failure modes
+
+Updated:
+- `extension/test/unit/build-user-message.test.ts`
+- `extension/test/unit/google-api.test.ts`
+- `extension/test/unit/meta-prompt.test.ts`
+
+Coverage added:
+- user-message wrapper keeps rewrite-only framing
+- main meta prompt preserves staged workflows
+- plain-text platform guidance is used instead of markup-heavy hints
+- Gemini Flash wrapper-tag leakage is sanitized
+- Gemini Flash instruction/list/item markup is flattened into plain text
+
+---
+
+## Files Changed Today
+
 - `codex/Progress.md`
+- `extension/src/lib/llm-client.ts`
+- `extension/src/lib/meta-prompt.ts`
+- `extension/test/unit/build-user-message.test.ts`
+- `extension/test/unit/google-api.test.ts`
+- `extension/test/unit/meta-prompt.test.ts`
 
 ---
 
-## Verification Performed
-
-Verified during this session:
-- targeted Google/Gemma tests passed
-- targeted meta-prompt tests passed
-- production build passed
-
-Latest successful checks run:
-
-```powershell
-cd extension
-npm test -- --run test/unit/google-api.test.ts test/unit/provider-policy.test.ts test/unit/validate-api-key-comprehensive.test.ts test/unit/meta-prompt.test.ts
-npm run build
-```
-
-At the end of the session:
-- tests passed
-- build passed
-- user confirmed `gemini-2.5-flash` works
-
----
-
-## Current Status
+## Current Behavior
 
 ### Working
 
-- Google API key detection in popup
-- Gemini 2.5 Flash rewrite flow
-- Gemini 2.5 Flash Lite fallback flow
-- final-text commit for fast Google responses
-- Gemma 4 models exposed in popup
-- Gemma-specific prompt path and response cleanup implemented
+- enhancer is guarded against answering the user prompt instead of rewriting it
+- staged prompts are preserved as staged prompts
+- prompts that reference files/slides/materials stay framed around those inputs
+- Gemma compact-path behavior is preserved
+- Gemini 2.5 Flash output is normalized back toward plain text when it leaks wrapper tags or XML-like structure
 
-### Needs Final Manual Validation
+### Current Safe Baseline
 
-- Re-test `gemma-4-31b-it` after reload with the latest changes
-- Re-test `gemma-4-26b-a4b-it`
-- Compare quality / latency vs `gemini-2.5-flash`
+- if a future fix is needed, start from the current Flash path
+- avoid touching the Gemma compact prompt unless Gemma regresses
+- avoid restoring markup-heavy platform hints
 
-Important:
-- The final Gemma hardening code was implemented and verified by tests/build, but the user has not yet confirmed the post-fix Gemma behavior in the browser.
+---
+
+## Verification Status
+
+Verified today:
+
+```powershell
+cd extension
+pnpm test
+pnpm build
+```
+
+Latest result:
+- `pnpm test`: 120/120 tests passed
+- `pnpm build`: passed
+
+Branch status before creating today's commits:
+- local branch: `main`
+- `git rev-list --left-right --count origin/main...main` returned `0 0`
 
 ---
 
 ## Recommended Next Step
 
-Reload the unpacked extension and refresh the target AI tab, then test:
+Run a live manual check in the extension UI with:
+1. one normal conversational prompt on `gemini-2.5-flash`
+2. one staged file-analysis / assignment-prep prompt on `gemini-2.5-flash`
+3. one Gemma prompt to confirm Gemma stayed stable
 
-1. `gemma-4-31b-it`
-2. `gemma-4-26b-a4b-it`
-3. `gemini-2.5-flash` as control
-
-Use the same short prompt for comparison:
-
-```text
-how to learn java
-```
-
-Check for:
-- whether the prompt is rewritten at all
-- whether analysis leakage is gone
-- whether response time is acceptable
-- whether `[DIFF:]` is stripped from the DOM as expected
-
----
-
-## If Gemma Still Fails Next Session
-
-If the user reports another Gemma failure, ask for the exact visible result and then inspect:
-
-1. The toast or lack of toast
-2. The final inserted text
-3. Service worker console logs on the Google path
-
-Most likely next debug branches:
-- Gemma still returns low-quality text, but not silent failure
-- Gemma returns text that sanitization does not fully clean
-- Gemini page DOM replacement differs for long one-shot outputs
+If Flash still over-structures prompts, adjust only the main meta prompt or the Flash sanitizer. Do not change the Gemma compact path unless Gemma itself regresses.
 
 ---
 
@@ -260,19 +150,14 @@ From repo root:
 
 ```powershell
 cd extension
-npm test -- --run test/unit/google-api.test.ts test/unit/provider-policy.test.ts test/unit/validate-api-key-comprehensive.test.ts test/unit/meta-prompt.test.ts
-npm run build
+pnpm test
+pnpm build
 ```
 
-If you need a quick diff review first:
+For git state:
 
 ```powershell
-git diff -- extension/src/lib/llm-client.ts extension/src/service-worker.ts extension/src/content/ui/trigger-button.ts extension/src/lib/meta-prompt.ts extension/src/popup/popup.ts
+git status --short
+git rev-list --left-right --count origin/main...main
+git log --oneline -5
 ```
-
----
-
-## Notes
-
-- The repo already has a much larger long-term tracker in `claude/Progress.md`.
-- This file is intended as a short Codex session handoff, not a replacement for the full project tracker.

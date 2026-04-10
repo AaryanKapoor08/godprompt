@@ -172,4 +172,38 @@ describe('Google API client helpers', () => {
 
     expect(text).toBe('Give me a focused roadmap to learn Java.\n[DIFF: roadmap structure, practical focus]')
   })
+
+  it('sanitizes Gemini Flash wrapper tags down to the rewritten prompt', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          parts: [{
+            text: '<user_query>\nExplain the in-depth process that occurs after a user submits a prompt to ChatGPT, specifically detailing where and how LangChain integrates into this workflow. Focus on the interaction points and the value LangChain adds.\n</user_query>',
+          }],
+        },
+      }],
+    }), { status: 200 }))
+
+    const text = await callGoogleAPI('AIzaTestKey', 'system prompt', 'user prompt', 'gemini-2.5-flash')
+
+    expect(text).toBe('Explain the in-depth process that occurs after a user submits a prompt to ChatGPT, specifically detailing where and how LangChain integrates into this workflow. Focus on the interaction points and the value LangChain adds.')
+  })
+
+  it('flattens generic instruction markup from Gemini Flash into plain text', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          parts: [{
+            text: '<instruction>\nExplain where LangChain fits into the flow after a user submits a prompt to ChatGPT.\n\nFocus on the following aspects:\n<list>\n<item>The initial processing of the prompt by ChatGPT.</item>\n<item>The typical points of intervention for LangChain within a larger application architecture.</item>\n</list>\n</instruction>',
+          }],
+        },
+      }],
+    }), { status: 200 }))
+
+    const text = await callGoogleAPI('AIzaTestKey', 'system prompt', 'user prompt', 'gemini-2.5-flash')
+
+    expect(text).toBe('Explain where LangChain fits into the flow after a user submits a prompt to ChatGPT.\n\nFocus on the following aspects:\n- The initial processing of the prompt by ChatGPT.\n- The typical points of intervention for LangChain within a larger application architecture.')
+  })
 })

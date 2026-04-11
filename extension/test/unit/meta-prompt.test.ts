@@ -49,6 +49,8 @@ describe('buildMetaPrompt', () => {
     expect(result).toContain('If the prompt mentions provided files, slides, code, or documents')
     expect(result).toContain('Prefer natural plain-text phrasing unless the user explicitly asks for a specific format')
     expect(result).toContain('NEVER wrap the rewritten prompt in XML, HTML-like tags, or custom markup')
+    expect(result).toContain('NEVER add assistant-style preambles such as "Here\'s the plan"')
+    expect(result).toContain('For study, lecture, PDF, slides, or exam-prep prompts')
   })
 
   it('adds rewrite-boundary guidance for file-analysis and assignment-prep prompts', () => {
@@ -60,6 +62,16 @@ describe('buildMetaPrompt', () => {
     expect(result).toContain('Analyze the provided C files to identify my coding style')
     expect(result).toContain('Do not solve a new assignment yet.')
     expect(result).toContain('This executes the request instead of rewriting it.')
+  })
+
+  it('guards study PDF and lecture slide prompts against assistant-style plans', () => {
+    const result = buildMetaPrompt('chatgpt', true, 0)
+
+    expect(result).toContain('Study from provided material:')
+    expect(result).toContain('Use 34_BST_merged.pdf and the accompanying lecture slides as the source material.')
+    expect(result).toContain('do not turn the rewrite into a numbered meta-plan')
+    expect(result).toContain('After: "Here\'s the plan:')
+    expect(result).toContain('This is an assistant-style plan, not a clean rewritten prompt.')
   })
 
   it('includes examples section with required bad rewrite anti-patterns', () => {

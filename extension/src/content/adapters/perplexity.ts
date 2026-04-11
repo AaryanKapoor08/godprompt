@@ -127,11 +127,6 @@ export class PerplexityAdapter implements PlatformAdapter {
         return true
       }
 
-      if (this.replaceSelectionWithText(element, text)) {
-        this.scheduleContentStabilization(element, text)
-        return true
-      }
-
       return false
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Failed to replace Perplexity contenteditable value')
@@ -142,26 +137,10 @@ export class PerplexityAdapter implements PlatformAdapter {
   private forceContentEditableValue(element: HTMLElement, text: string): boolean {
     element.focus()
     this.selectEditorContents(element)
-    this.dispatchReplacementEvent(element, 'beforeinput', text)
     element.replaceChildren()
     element.appendChild(document.createTextNode(text))
     this.moveCursorToEnd(element)
-    this.dispatchReplacementEvent(element, 'input', text)
-    element.dispatchEvent(new Event('change', { bubbles: true }))
-    return this.contentMatches(element, text)
-  }
-
-  private replaceSelectionWithText(element: HTMLElement, text: string): boolean {
-    element.focus()
-    this.selectEditorContents(element)
-
-    const replaced = document.execCommand('insertText', false, text)
-    if (!replaced) {
-      return false
-    }
-
-    this.dispatchReplacementEvent(element, 'input', text)
-    element.dispatchEvent(new Event('change', { bubbles: true }))
+    this.notifyEditorChanged(element)
     return this.contentMatches(element, text)
   }
 
@@ -188,14 +167,12 @@ export class PerplexityAdapter implements PlatformAdapter {
     selection.addRange(range)
   }
 
-  private dispatchReplacementEvent(element: HTMLElement, type: 'beforeinput' | 'input', text: string): void {
-    element.dispatchEvent(new InputEvent(type, {
-      inputType: 'insertReplacementText',
-      data: text,
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }))
+  private notifyEditorChanged(element: HTMLElement): void {
+    // Do not include replacement text in synthetic events here. Perplexity's
+    // controlled editor can interpret data-carrying InputEvents as additional
+    // insertions, duplicating the prompt.
+    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true, composed: true }))
   }
 
   private contentMatches(element: HTMLElement, text: string): boolean {

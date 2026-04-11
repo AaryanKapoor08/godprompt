@@ -26,26 +26,18 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   setPromptText(text: string): void {
-    const inputs = this.getInputElements()
-    if (inputs.length === 0) {
+    const input = this.getInputElement()
+    if (!input) {
       throw new Error('[PerplexityAdapter] Input element not found during text replacement')
     }
 
-    let updated = false
-
-    for (const input of inputs) {
-      input.focus()
-
-      if (input instanceof HTMLTextAreaElement) {
-        this.setTextareaValue(input, text)
-        updated = true
-        continue
-      }
-
-      updated = this.replaceContentEditableValue(input, text) || updated
+    input.focus()
+    if (input instanceof HTMLTextAreaElement) {
+      this.setTextareaValue(input, text)
+      return
     }
 
-    if (!updated) {
+    if (!this.replaceContentEditableValue(input, text)) {
       throw new Error('[PerplexityAdapter] Failed to insert text into input element')
     }
   }
@@ -131,21 +123,39 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   private replaceContentEditableValue(element: HTMLElement, text: string): boolean {
     try {
-      if (replaceText(element, text)) {
+      if (replaceText(element, text) && this.contentMatches(element, text)) {
         return true
       }
 
-      clearContentEditable(element)
-      element.replaceChildren()
-      element.textContent = text
-      this.moveCursorToEnd(element)
-      element.dispatchEvent(new Event('input', { bubbles: true }))
-      element.dispatchEvent(new Event('change', { bubbles: true }))
-      return true
+      return this.forceContentEditableValue(element, text)
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Failed to replace Perplexity contenteditable value')
       return false
     }
+  }
+
+  private forceContentEditableValue(element: HTMLElement, text: string): boolean {
+    clearContentEditable(element)
+    element.replaceChildren()
+    element.textContent = text
+    this.moveCursorToEnd(element)
+    element.dispatchEvent(new InputEvent('input', {
+      inputType: 'insertReplacementText',
+      data: text,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    return this.contentMatches(element, text)
+  }
+
+  private contentMatches(element: HTMLElement, text: string): boolean {
+    return this.normalizeEditorText(element.textContent ?? '') === this.normalizeEditorText(text)
+  }
+
+  private normalizeEditorText(text: string): string {
+    return text.replace(/\u00a0/g, ' ').trim()
   }
 
   private getInputElements(): HTMLElement[] {

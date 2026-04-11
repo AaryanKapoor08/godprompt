@@ -333,8 +333,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     return
   }
 
-  // Progressive rendering: tokens feed into a buffer, a rendering loop
-  // drips one word per frame — smooth real-time typing.
+  // Progressive rendering: tokens feed into a buffer, and the render loop
+  // drains one word per frame for smooth real-time typing.
   // Field is NOT cleared until the first token arrives, so the user's
   // original prompt stays visible during the API wait.
   let accumulatedText = ''
@@ -419,6 +419,12 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     cleanupPort()
   }
 
+  function scheduleRenderLoop(): void {
+    if (renderFrameId === null && !settled) {
+      renderFrameId = requestAnimationFrame(renderLoop)
+    }
+  }
+
   function commitFinalOutput(): void {
     if (finalOutputCommitted) {
       return
@@ -437,8 +443,10 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     }
 
     try {
-      adapter.setPromptText(normalizedText)
-      lastEnhancedText = accumulatedText
+      if (normalizeText(adapter.getPromptText()) !== normalizedText) {
+        adapter.setPromptText(normalizedText)
+      }
+      lastEnhancedText = adapter.getPromptText() || normalizedText
       console.info(
         { enhancedLength: accumulatedText.length, diffLabel: pendingDiffLabel },
         '[PromptGod] Enhancement complete'
@@ -450,9 +458,9 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     }
   }
 
-  /** Rendering loop — drips one word per frame from accumulatedText into the DOM.
-   *  At ~60fps this gives smooth word-by-word typing, ~150 words in ~2.5s. */
+  /** Rendering loop — drips one word per frame from accumulatedText into the DOM. */
   function renderLoop(): void {
+    renderFrameId = null
     if (settled) return
 
     const pending = accumulatedText.length - renderedIndex
@@ -464,8 +472,6 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
         settle()
         return
       }
-      // Buffer empty, wait for more tokens
-      renderFrameId = requestAnimationFrame(renderLoop)
       return
     }
 
@@ -509,22 +515,22 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
     if (renderedIndex >= ceiling) {
       // We've reached the [DIFF:] region — wait for DONE to strip and finalize
-      renderFrameId = requestAnimationFrame(renderLoop)
+      scheduleRenderLoop()
       return
     }
 
-    // Find next word boundary: advance past current word + trailing whitespace
+    // Find next word boundary: advance past current word + trailing whitespace.
     let end = renderedIndex
-    while (end < ceiling && accumulatedText[end] !== ' ' && accumulatedText[end] !== '\n') {
+    while (end < ceiling && !isRenderBoundary(accumulatedText[end])) {
       end++
     }
-    while (end < ceiling && (accumulatedText[end] === ' ' || accumulatedText[end] === '\n')) {
+    while (end < ceiling && isRenderBoundary(accumulatedText[end])) {
       end++
     }
 
     const slice = accumulatedText.slice(renderedIndex, end)
     if (slice.length === 0) {
-      renderFrameId = requestAnimationFrame(renderLoop)
+      scheduleRenderLoop()
       return
     }
 
@@ -546,7 +552,11 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     }
 
     ensureUndoButton()
-    renderFrameId = requestAnimationFrame(renderLoop)
+    scheduleRenderLoop()
+  }
+
+  function isRenderBoundary(char: string | undefined): boolean {
+    return char === ' ' || char === '\n' || char === '\r' || char === '\t'
   }
 
   function ensureUndoButton(diffLabel?: string | null): void {
@@ -584,8 +594,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
       // Perplexity's composer duplicates content when we rewrite it during the stream.
       // Buffer tokens there and only commit once at the end.
-      if (shouldProgressivelyRender && renderFrameId === null && !settled) {
-        renderFrameId = requestAnimationFrame(renderLoop)
+      if (shouldProgressivelyRender) {
+        scheduleRenderLoop()
       }
     } else if (msg.type === 'DONE') {
       if (progressTimeout !== null) {
@@ -603,6 +613,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       streamDone = true
       if (!shouldProgressivelyRender && accumulatedText.length > 0) {
         commitFinalOutput()
+      } else if (shouldProgressivelyRender && accumulatedText.length > 0) {
+        scheduleRenderLoop()
       }
     } else if (msg.type === 'ERROR') {
       console.error({ message: msg.message, code: msg.code }, '[PromptGod] Enhancement error')
@@ -618,23 +630,54 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       }
       settle()
     } else if (msg.type === 'SETTLEMENT') {
-      if (msg.status === 'DONE' && !receivedToken) {
-        showToast({ message: 'Model returned no rewrite text. Try Gemini 2.5 Flash or another model.', variant: 'warning' })
-      } else if (msg.status === 'DONE' && accumulatedText.length > 0) {
-        // One-shot providers like Gemini can send TOKEN/DONE/SETTLEMENT before the next
-        // animation frame, so commit the buffered text before cleanup.
-        commitFinalOutput()
+      if (progressTimeout !== null) {
+        window.clearTimeout(progressTimeout)
+        progressTimeout = null
       }
+
+      if (msg.status === 'DONE') {
+        streamDone = true
+
+        if (!receivedToken) {
+          showToast({ message: 'Model returned no rewrite text. Try Gemini 2.5 Flash or another model.', variant: 'warning' })
+          settle()
+        } else if (shouldProgressivelyRender && accumulatedText.length > 0) {
+          scheduleRenderLoop()
+        } else if (accumulatedText.length > 0) {
+          commitFinalOutput()
+          settle()
+        } else {
+          settle()
+        }
+      }
+
       if (msg.status === 'ERROR' && msg.message) {
         showToast({ message: msg.message, variant: 'error' })
+        settle()
       }
-      settle()
     }
   })
 
   // Handle unexpected disconnection
   port.onDisconnect.addListener(() => {
     if (settled) {
+      return
+    }
+
+    if (streamDone) {
+      if (shouldProgressivelyRender && accumulatedText.length > renderedIndex) {
+        scheduleRenderLoop()
+        return
+      }
+      if (!receivedToken && accumulatedText.length === 0) {
+        showToast({
+          message: 'The selected model finished without returning rewrite text. Try Gemini 2.5 Flash or a different Gemma model.',
+          variant: 'warning',
+        })
+      } else if (accumulatedText.length > 0) {
+        commitFinalOutput()
+      }
+      settle()
       return
     }
 

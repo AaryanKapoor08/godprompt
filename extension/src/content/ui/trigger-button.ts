@@ -454,7 +454,11 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       ensureUndoButton(pendingDiffLabel)
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Final text sync failed')
-      showToast({ message: 'Could not write the enhanced prompt into the page', variant: 'error' })
+      if (adapter.getPlatform() === 'perplexity') {
+        void handlePerplexityWriteFallback(adapter, normalizedText)
+      } else {
+        showToast({ message: 'Could not write the enhanced prompt into the page', variant: 'error' })
+      }
     }
   }
 
@@ -820,8 +824,32 @@ function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): voi
   useBtn.textContent = 'Use this'
   useBtn.className = 'promptgod-preview-btn promptgod-preview-btn--primary'
   useBtn.addEventListener('click', () => {
-    adapter.setPromptText(enhancedText)
-    overlay.remove()
+    try {
+      adapter.setPromptText(enhancedText)
+      overlay.remove()
+    } catch (error) {
+      console.error({ cause: error }, '[PromptGod] Preview insertion failed')
+      void copyTextToClipboard(enhancedText).then((copied) => {
+        showToast({
+          message: copied
+            ? 'Could not write into this page. Enhanced prompt copied — paste it manually.'
+            : 'Could not write into this page. Select the preview text and copy it manually.',
+          variant: copied ? 'warning' : 'error',
+        })
+      })
+    }
+  })
+
+  const copyBtn = document.createElement('button')
+  copyBtn.textContent = 'Copy'
+  copyBtn.className = 'promptgod-preview-btn'
+  copyBtn.addEventListener('click', () => {
+    void copyTextToClipboard(enhancedText).then((copied) => {
+      showToast({
+        message: copied ? 'Enhanced prompt copied' : 'Could not copy automatically',
+        variant: copied ? 'info' : 'error',
+      })
+    })
   })
 
   const dismissBtn = document.createElement('button')
@@ -832,11 +860,52 @@ function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): voi
   })
 
   actions.appendChild(useBtn)
+  actions.appendChild(copyBtn)
   actions.appendChild(dismissBtn)
   content.appendChild(textEl)
   content.appendChild(actions)
   overlay.appendChild(content)
   document.body.appendChild(overlay)
+}
+
+async function handlePerplexityWriteFallback(adapter: PlatformAdapter, enhancedText: string): Promise<void> {
+  const copied = await copyTextToClipboard(enhancedText)
+  showPreviewOverlay(adapter, enhancedText)
+  showToast({
+    message: copied
+      ? 'Perplexity blocked direct insertion. Enhanced prompt copied — paste it manually.'
+      : 'Perplexity blocked direct insertion. Use the preview to copy the enhanced prompt.',
+    variant: copied ? 'warning' : 'error',
+  })
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall through to the textarea copy fallback.
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    textarea.remove()
+  }
 }
 
 let enhancingStatusEl: HTMLElement | null = null

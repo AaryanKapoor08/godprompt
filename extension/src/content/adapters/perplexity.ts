@@ -122,8 +122,12 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   private replaceContentEditableValue(element: HTMLElement, text: string): boolean {
     try {
-      if (this.forceContentEditableValue(element, text)) {
+      if (this.replaceViaNativeEditing(element, text)) {
         this.scheduleContentStabilization(element, text)
+        return true
+      }
+
+      if (this.forceContentEditableValue(element, text, true)) {
         return true
       }
 
@@ -134,27 +138,82 @@ export class PerplexityAdapter implements PlatformAdapter {
     }
   }
 
-  private forceContentEditableValue(element: HTMLElement, text: string): boolean {
+  private replaceViaNativeEditing(element: HTMLElement, text: string): boolean {
     element.focus()
     this.selectEditorContents(element)
-    element.replaceChildren()
-    element.appendChild(document.createTextNode(text))
-    this.moveCursorToEnd(element)
-    this.notifyEditorChanged(element)
+    document.execCommand('delete', false)
+
+    if (!this.contentMatches(element, '')) {
+      return false
+    }
+
+    const inserted = document.execCommand('insertText', false, text)
+    if (!inserted) {
+      return false
+    }
+
+    element.dispatchEvent(new Event('change', { bubbles: true, composed: true }))
     return this.contentMatches(element, text)
   }
 
+  private forceContentEditableValue(element: HTMLElement, text: string, scheduleStabilization: boolean): boolean {
+    element.focus()
+    this.selectEditorContents(element)
+    element.replaceChildren()
+    const nodes = this.createContentNodes(text)
+    for (const node of nodes) {
+      element.appendChild(node)
+    }
+    this.moveCursorToEnd(element)
+    const wroteExpectedText = this.contentMatches(element, text)
+
+    if (wroteExpectedText && scheduleStabilization) {
+      this.scheduleContentStabilization(element, text)
+    }
+
+    return wroteExpectedText
+  }
+
+  private createContentNodes(text: string): Node[] {
+    const lines = text.split('\n')
+    const nodes: Node[] = []
+
+    for (const line of lines) {
+      const paragraph = document.createElement('p')
+      paragraph.dir = 'ltr'
+
+      if (line.length === 0) {
+        paragraph.appendChild(document.createElement('br'))
+      } else {
+        const span = document.createElement('span')
+        span.setAttribute('data-lexical-text', 'true')
+        span.textContent = line
+        paragraph.appendChild(span)
+      }
+
+      nodes.push(paragraph)
+    }
+
+    return nodes
+  }
+
   private scheduleContentStabilization(element: HTMLElement, text: string): void {
-    const stabilize = () => {
-      if (!document.contains(element) || this.contentMatches(element, text)) {
+    const stabilize = (notify: boolean) => {
+      if (!document.contains(element)) {
         return
       }
 
-      this.forceContentEditableValue(element, text)
+      if (notify) {
+        this.notifyEditorChanged(element)
+      }
+
+      if (!this.contentMatches(element, text)) {
+        this.forceContentEditableValue(element, text, false)
+      }
     }
 
-    requestAnimationFrame(stabilize)
-    window.setTimeout(stabilize, 100)
+    requestAnimationFrame(() => stabilize(true))
+    window.setTimeout(() => stabilize(false), 100)
   }
 
   private selectEditorContents(element: HTMLElement): void {

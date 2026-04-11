@@ -2,7 +2,6 @@
 // Perplexity uses a textarea or contenteditable div for input
 
 import type { PlatformAdapter, ConversationContext } from './types'
-import { clearContentEditable, replaceText } from '../dom-utils'
 
 export class PerplexityAdapter implements PlatformAdapter {
   matches(): boolean {
@@ -123,11 +122,17 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   private replaceContentEditableValue(element: HTMLElement, text: string): boolean {
     try {
-      if (replaceText(element, text) && this.contentMatches(element, text)) {
+      if (this.forceContentEditableValue(element, text)) {
+        this.scheduleContentStabilization(element, text)
         return true
       }
 
-      return this.forceContentEditableValue(element, text)
+      if (this.replaceSelectionWithText(element, text)) {
+        this.scheduleContentStabilization(element, text)
+        return true
+      }
+
+      return false
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Failed to replace Perplexity contenteditable value')
       return false
@@ -135,19 +140,62 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   private forceContentEditableValue(element: HTMLElement, text: string): boolean {
-    clearContentEditable(element)
+    element.focus()
+    this.selectEditorContents(element)
+    this.dispatchReplacementEvent(element, 'beforeinput', text)
     element.replaceChildren()
-    element.textContent = text
+    element.appendChild(document.createTextNode(text))
     this.moveCursorToEnd(element)
-    element.dispatchEvent(new InputEvent('input', {
+    this.dispatchReplacementEvent(element, 'input', text)
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    return this.contentMatches(element, text)
+  }
+
+  private replaceSelectionWithText(element: HTMLElement, text: string): boolean {
+    element.focus()
+    this.selectEditorContents(element)
+
+    const replaced = document.execCommand('insertText', false, text)
+    if (!replaced) {
+      return false
+    }
+
+    this.dispatchReplacementEvent(element, 'input', text)
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    return this.contentMatches(element, text)
+  }
+
+  private scheduleContentStabilization(element: HTMLElement, text: string): void {
+    const stabilize = () => {
+      if (!document.contains(element) || this.contentMatches(element, text)) {
+        return
+      }
+
+      this.forceContentEditableValue(element, text)
+    }
+
+    requestAnimationFrame(stabilize)
+    window.setTimeout(stabilize, 100)
+  }
+
+  private selectEditorContents(element: HTMLElement): void {
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  private dispatchReplacementEvent(element: HTMLElement, type: 'beforeinput' | 'input', text: string): void {
+    element.dispatchEvent(new InputEvent(type, {
       inputType: 'insertReplacementText',
       data: text,
       bubbles: true,
       cancelable: true,
       composed: true,
     }))
-    element.dispatchEvent(new Event('change', { bubbles: true }))
-    return this.contentMatches(element, text)
   }
 
   private contentMatches(element: HTMLElement, text: string): boolean {

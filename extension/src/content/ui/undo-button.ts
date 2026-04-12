@@ -4,6 +4,7 @@ import type { PlatformAdapter } from '../adapters/types'
 
 let undoButton: HTMLElement | null = null
 let inputListener: (() => void) | null = null
+let inputListenerElement: HTMLElement | null = null
 let sendObserver: MutationObserver | null = null
 
 /**
@@ -58,14 +59,21 @@ export function showUndoButton(
     removeUndoButton()
   })
 
-  // Position near the input field — insert after the composer area
-  const composer = inputElement.closest('form') ?? inputElement.parentElement?.parentElement
-  if (composer) {
-    composer.style.position = composer.style.position || 'relative'
-    composer.appendChild(button)
-  } else {
-    // Fallback: append to body as fixed-position element
+  // Position near the input field — insert after the composer area.
+  // Perplexity and Gemini clip children outside parts of their composers, so
+  // keep undo fixed to the viewport there instead of nesting it in editor DOM.
+  if (adapter.getPlatform() === 'perplexity' || adapter.getPlatform() === 'gemini') {
+    positionFixedUndoButton(button, inputElement, adapter.getSendButton(), adapter.getPlatform())
     document.body.appendChild(button)
+  } else {
+    const composer = inputElement.closest('form') ?? inputElement.parentElement?.parentElement
+    if (composer) {
+      composer.style.position = composer.style.position || 'relative'
+      composer.appendChild(button)
+    } else {
+      // Fallback: append to body as fixed-position element
+      document.body.appendChild(button)
+    }
   }
 
   undoButton = button
@@ -84,6 +92,7 @@ export function showUndoButton(
     }
   }
   inputElement.addEventListener('keydown', inputListener)
+  inputListenerElement = inputElement
 
   // Dismiss when user sends the message (observe send button click or DOM change)
   observeSendAction(adapter)
@@ -102,16 +111,54 @@ export function removeUndoButton(): void {
   }
 
   if (inputListener) {
-    // Clean up keydown listener — find the input element to remove it from
-    const input = document.querySelector<HTMLElement>('div#prompt-textarea')
-    input?.removeEventListener('keydown', inputListener)
+    inputListenerElement?.removeEventListener('keydown', inputListener)
     inputListener = null
+    inputListenerElement = null
   }
 
   if (sendObserver) {
     sendObserver.disconnect()
     sendObserver = null
   }
+}
+
+function positionFixedUndoButton(
+  button: HTMLElement,
+  inputElement: HTMLElement,
+  sendButton: HTMLElement | null,
+  platform: ReturnType<PlatformAdapter['getPlatform']>
+): void {
+  const composer = getSharedVisibleAncestor(inputElement, sendButton) ?? inputElement
+  const rect = composer.getBoundingClientRect()
+  const right = Math.max(12, window.innerWidth - rect.right + 8)
+  const top = Math.max(12, rect.bottom + 8)
+  const maxTop = Math.max(12, window.innerHeight - 44)
+
+  button.style.position = 'fixed'
+  button.style.top = `${Math.min(top, maxTop)}px`
+  button.style.right = `${right}px`
+  button.style.bottom = 'auto'
+}
+
+function getSharedVisibleAncestor(inputElement: HTMLElement, sendButton: HTMLElement | null): HTMLElement | null {
+  if (!sendButton) {
+    return inputElement.closest<HTMLElement>('form') ?? inputElement.parentElement
+  }
+
+  let current: HTMLElement | null = inputElement
+  while (current && current !== document.body) {
+    if (current.contains(sendButton) && isVisibleBox(current)) {
+      return current
+    }
+    current = current.parentElement
+  }
+
+  return inputElement.closest<HTMLElement>('form') ?? inputElement.parentElement
+}
+
+function isVisibleBox(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
 }
 
 /**

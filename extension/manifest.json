@@ -31,6 +31,14 @@
       ],
       "js": ["src/content/index.ts"],
       "css": ["src/content/styles.css"]
+    },
+    {
+      "matches": [
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*"
+      ],
+      "js": ["src/content/perplexity-main.ts"],
+      "world": "MAIN"
     }
   ],
   "action": {

@@ -3,13 +3,43 @@
 
 import type { PlatformAdapter, ConversationContext } from './types'
 
+const SET_TEXT_EVENT = 'promptgod:perplexity:set-text'
+const WRITE_RESULT_ATTR = 'data-promptgod-write-result'
+const WRITE_REQUEST_ATTR = 'data-promptgod-write-request'
+
 export class PerplexityAdapter implements PlatformAdapter {
+  private lastFocusedInput: HTMLElement | null = null
+
+  constructor() {
+    document.addEventListener('focusin', (event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+
+      const input = this.findEditableAncestor(target)
+      if (input && this.isInputCandidate(input)) {
+        this.lastFocusedInput = input
+      }
+    }, true)
+  }
+
   matches(): boolean {
     return window.location.hostname === 'www.perplexity.ai' ||
       window.location.hostname === 'perplexity.ai'
   }
 
   getInputElement(): HTMLElement | null {
+    if (this.lastFocusedInput && this.isInputCandidate(this.lastFocusedInput)) {
+      return this.lastFocusedInput
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      const activeInput = this.findEditableAncestor(document.activeElement)
+      if (activeInput && this.isInputCandidate(activeInput)) {
+        this.lastFocusedInput = activeInput
+        return activeInput
+      }
+    }
+
     return this.getInputElements()[0] ?? null
   }
 
@@ -101,15 +131,13 @@ export class PerplexityAdapter implements PlatformAdapter {
   }
 
   clearInput(): void {
-    const inputs = this.getInputElements()
-    if (inputs.length === 0) return
+    const input = this.getInputElement()
+    if (!input) return
 
-    for (const input of inputs) {
-      if (input instanceof HTMLTextAreaElement) {
-        this.setTextareaValue(input, '')
-      } else {
-        this.replaceContentEditableValue(input, '')
-      }
+    if (input instanceof HTMLTextAreaElement) {
+      this.setTextareaValue(input, '')
+    } else {
+      this.replaceContentEditableValue(input, '')
     }
   }
 
@@ -122,31 +150,47 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   private replaceContentEditableValue(element: HTMLElement, text: string): boolean {
     try {
-      if (this.replaceViaNativeEditing(element, text)) {
-        this.scheduleContentStabilization(element, text)
+      if (this.replaceViaMainWorldLexicalBridge(element, text)) {
         return true
       }
 
-      if (this.forceContentEditableValue(element, text, true)) {
+      if (this.replaceViaNativeInsertion(element, text)) {
         return true
       }
 
-      return false
+      return !this.isLexicalEditor(element) && this.forcePlainContentEditableValue(element, text)
     } catch (error) {
       console.error({ cause: error }, '[PromptGod] Failed to replace Perplexity contenteditable value')
       return false
     }
   }
 
-  private replaceViaNativeEditing(element: HTMLElement, text: string): boolean {
-    element.focus()
-    this.selectEditorContents(element)
-    document.execCommand('delete', false)
-
-    if (!this.contentMatches(element, '')) {
+  private replaceViaMainWorldLexicalBridge(element: HTMLElement, text: string): boolean {
+    if (!this.isLexicalEditor(element)) {
       return false
     }
 
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    element.removeAttribute(WRITE_REQUEST_ATTR)
+    element.removeAttribute(WRITE_RESULT_ATTR)
+
+    element.dispatchEvent(new CustomEvent(SET_TEXT_EVENT, {
+      bubbles: true,
+      composed: true,
+      detail: JSON.stringify({ requestId, text }),
+    }))
+
+    return element.getAttribute(WRITE_REQUEST_ATTR) === requestId &&
+      element.getAttribute(WRITE_RESULT_ATTR) === 'ok'
+  }
+
+  private replaceViaNativeInsertion(element: HTMLElement, text: string): boolean {
+    element.focus()
+    this.selectEditorContents(element)
+
+    // One native edit transaction lets Perplexity/Lexical replace the selected
+    // text in its own state. Splitting this into delete + insert can leave stale
+    // editor state behind and produce duplicate or reverted prompts.
     const inserted = document.execCommand('insertText', false, text)
     if (!inserted) {
       return false
@@ -156,64 +200,14 @@ export class PerplexityAdapter implements PlatformAdapter {
     return this.contentMatches(element, text)
   }
 
-  private forceContentEditableValue(element: HTMLElement, text: string, scheduleStabilization: boolean): boolean {
+  private forcePlainContentEditableValue(element: HTMLElement, text: string): boolean {
     element.focus()
     this.selectEditorContents(element)
     element.replaceChildren()
-    const nodes = this.createContentNodes(text)
-    for (const node of nodes) {
-      element.appendChild(node)
-    }
+    element.textContent = text
     this.moveCursorToEnd(element)
-    const wroteExpectedText = this.contentMatches(element, text)
-
-    if (wroteExpectedText && scheduleStabilization) {
-      this.scheduleContentStabilization(element, text)
-    }
-
-    return wroteExpectedText
-  }
-
-  private createContentNodes(text: string): Node[] {
-    const lines = text.split('\n')
-    const nodes: Node[] = []
-
-    for (const line of lines) {
-      const paragraph = document.createElement('p')
-      paragraph.dir = 'ltr'
-
-      if (line.length === 0) {
-        paragraph.appendChild(document.createElement('br'))
-      } else {
-        const span = document.createElement('span')
-        span.setAttribute('data-lexical-text', 'true')
-        span.textContent = line
-        paragraph.appendChild(span)
-      }
-
-      nodes.push(paragraph)
-    }
-
-    return nodes
-  }
-
-  private scheduleContentStabilization(element: HTMLElement, text: string): void {
-    const stabilize = (notify: boolean) => {
-      if (!document.contains(element)) {
-        return
-      }
-
-      if (notify) {
-        this.notifyEditorChanged(element)
-      }
-
-      if (!this.contentMatches(element, text)) {
-        this.forceContentEditableValue(element, text, false)
-      }
-    }
-
-    requestAnimationFrame(() => stabilize(true))
-    window.setTimeout(() => stabilize(false), 100)
+    this.notifyEditorChanged(element)
+    return this.contentMatches(element, text)
   }
 
   private selectEditorContents(element: HTMLElement): void {
@@ -244,10 +238,12 @@ export class PerplexityAdapter implements PlatformAdapter {
 
   private getInputElements(): HTMLElement[] {
     const selectors = [
-      'textarea[placeholder*="Ask"]',
-      'textarea[aria-label*="Ask"]',
-      '[contenteditable="true"][aria-label*="Ask"]',
       '[contenteditable="true"][data-lexical-editor]',
+      '[contenteditable="true"][role="textbox"]',
+      '[contenteditable="true"][aria-label*="Ask" i]',
+      '[contenteditable="true"][aria-label*="Search" i]',
+      'textarea[placeholder*="Ask" i]',
+      'textarea[aria-label*="Ask" i]',
       'div[contenteditable="true"]',
     ]
 
@@ -258,12 +254,49 @@ export class PerplexityAdapter implements PlatformAdapter {
       const matches = Array.from(document.querySelectorAll<HTMLElement>(selector))
       for (const match of matches) {
         if (seen.has(match)) continue
+        if (!this.isInputCandidate(match)) continue
         seen.add(match)
         inputs.push(match)
       }
     }
 
     return inputs.sort((a, b) => this.getInputPriority(b) - this.getInputPriority(a))
+  }
+
+  private findEditableAncestor(element: HTMLElement): HTMLElement | null {
+    return element.closest<HTMLElement>('textarea, [contenteditable="true"]')
+  }
+
+  private isInputCandidate(element: HTMLElement): boolean {
+    if (element instanceof HTMLTextAreaElement && (element.disabled || element.readOnly)) {
+      return false
+    }
+
+    if (!(element instanceof HTMLTextAreaElement) && element.getAttribute('contenteditable') !== 'true') {
+      return false
+    }
+
+    if (element.closest('[hidden], [aria-hidden="true"]')) {
+      return false
+    }
+
+    return this.isVisible(element) || element === this.lastFocusedInput || element.contains(document.activeElement)
+  }
+
+  private isVisible(element: HTMLElement): boolean {
+    const rect = element.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return false
+
+    const style = window.getComputedStyle(element)
+    return style.display !== 'none' && style.visibility !== 'hidden'
+  }
+
+  private isLexicalEditor(element: HTMLElement): boolean {
+    return element.matches('[data-lexical-editor]') || Boolean(element.querySelector('[data-lexical-text]'))
+  }
+
+  private getElementText(element: HTMLElement): string {
+    return element instanceof HTMLTextAreaElement ? element.value : element.textContent ?? ''
   }
 
   private moveCursorToEnd(element: HTMLElement): void {
@@ -280,14 +313,16 @@ export class PerplexityAdapter implements PlatformAdapter {
   private getInputPriority(element: HTMLElement): number {
     let score = 0
 
-    const rect = element.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) {
-      score += 100
+    if (element === this.lastFocusedInput) {
+      score += 500
     }
 
-    const style = window.getComputedStyle(element)
-    if (style.display !== 'none' && style.visibility !== 'hidden') {
-      score += 50
+    if (element.contains(document.activeElement) || document.activeElement === element) {
+      score += 300
+    }
+
+    if (this.isVisible(element)) {
+      score += 150
     }
 
     if (element instanceof HTMLTextAreaElement) {
@@ -295,6 +330,19 @@ export class PerplexityAdapter implements PlatformAdapter {
     }
 
     if (element.matches('[data-lexical-editor]')) {
+      score += 80
+    }
+
+    if (element.getAttribute('role') === 'textbox') {
+      score += 60
+    }
+
+    const accessibleText = `${element.getAttribute('aria-label') ?? ''} ${element.getAttribute('placeholder') ?? ''}`
+    if (/\b(ask|search|follow[-\s]?up)\b/i.test(accessibleText)) {
+      score += 70
+    }
+
+    if (element.closest('form, [class*="composer"], [class*="input"]')) {
       score += 40
     }
 
@@ -302,12 +350,8 @@ export class PerplexityAdapter implements PlatformAdapter {
       score += 30
     }
 
-    if (element.contains(document.activeElement) || document.activeElement === element) {
-      score += 200
-    }
-
-    if ((element.textContent ?? '').trim().length > 0) {
-      score += 25
+    if (this.getElementText(element).trim().length > 0) {
+      score += 10
     }
 
     return score

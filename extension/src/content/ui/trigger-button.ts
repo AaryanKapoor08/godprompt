@@ -869,14 +869,9 @@ function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): voi
 }
 
 async function handlePerplexityWriteFallback(adapter: PlatformAdapter, enhancedText: string): Promise<void> {
-  const copied = await copyTextToClipboard(enhancedText)
-  showPreviewOverlay(adapter, enhancedText)
-  showToast({
-    message: copied
-      ? 'Perplexity blocked direct insertion. Enhanced prompt copied — paste it manually.'
-      : 'Perplexity blocked direct insertion. Use the preview to copy the enhanced prompt.',
-    variant: copied ? 'warning' : 'error',
-  })
+  void adapter
+  void enhancedText
+  showToast({ message: 'Could not write the enhanced prompt into Perplexity', variant: 'error' })
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {

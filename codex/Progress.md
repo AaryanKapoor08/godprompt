@@ -1,222 +1,270 @@
 # PromptGod — Codex Progress
 
-Last updated: 2026-04-11
+Last updated: 2026-04-13
 
-This file is the compact Codex handoff for the current workspace. It is focused on prompt-enhancer fixes and the current Perplexity insertion issue so the next session can resume from the right baseline quickly.
+This is the compact handoff for the current workspace. The local `main` branch and `origin/main` are aligned, and the current working code has been pushed to GitHub.
+
+Current status: no active unresolved issues are pending.
+
+---
+
+## Current Baseline
+
+Branch:
+- `main`
+
+Remote state:
+- `origin/main...main`: `0 0`
+- latest pushed commit: `9d774e4` — `feat(context): add highlighted text enhancer`
+
+Latest pushed commits:
+- `1ad9e82` — `fix(content): harden editable text fallback`
+- `9d774e4` — `feat(context): add highlighted text enhancer`
+- `1cd26a8` — `fix(perplexity): write composer through lexical bridge`
+- `7117723` — `fix(ui): keep undo visible on hosted composers`
+
+Verification after the latest changes:
+
+```powershell
+cd extension
+npm run build
+npm test
+```
+
+Latest result:
+- `npm run build`: passed
+- `npm test`: 143/143 tests passed
+
+Note:
+- Vite/CRX prints a warning that `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR. This is expected and not a failure.
+- Git prints a local permission warning for `C:\Users\Jaska/.config/git/ignore`. This did not affect status, commits, or pushes.
 
 ---
 
 ## Session Summary
 
-### 1. Repaired the core rewrite boundary
+### 1. Highlighted-text enhancer implemented
 
-Updated:
-- `extension/src/lib/llm-client.ts`
-- `extension/test/unit/build-user-message.test.ts`
+Status: implemented and pushed.
 
-What changed:
-- restored the stronger user-message wrapper so the model treats the provided prompt as source text to rewrite, not instructions to execute
-- explicitly told the model not to answer the prompt or perform its steps
-- preserved the delimiter-based wrapping used by the enhancement flow
+Files added/updated:
+- `extension/manifest.json`
+- `extension/src/service-worker.ts`
+- `extension/src/content/context-menu-handler.ts`
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/src/lib/types.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
 
-Why this matters:
-- this was the original fix for the "answering instead of enhancing" failure mode
-- it remains the main guardrail for all providers
+Commit:
+- `9d774e4` — `feat(context): add highlighted text enhancer`
 
----
+Current highlighted-text behavior:
+- user selects text on a normal webpage and right-clicks `Enhance with PromptGod`
+- the handler is injected only after the explicit context-menu click
+- selected text is sent through the existing BYOK provider/model settings
+- the result appears in an on-page popup with `Copy`, `Dismiss`, and `Escape` close
+- no page text is mutated in v1
+- no `<all_urls>` host permission was added
+- highlighted-text prompt logic lives separately in `context-enhance-prompt.ts`
+- normal composer prompt behavior remains separate and unchanged
 
-### 2. Restored workflow-preservation rules for staged prompts
+Highlighted-text output rules:
+- rewrite the selected text itself
+- if the selection is an email/message fragment, return polished message text
+- if the selection is a rough AI prompt, return a polished prompt
+- never ask clarifying questions
+- never output placeholders
+- never echo `Original text:` / source blocks
 
-Updated:
-- `extension/src/lib/meta-prompt.ts`
-- `extension/test/unit/meta-prompt.test.ts`
-
-What changed:
-- re-added a rewrite boundary section to the main meta prompt
-- told the model to preserve staged workflows instead of collapsing them into immediate answers
-- added rules for prompts that mention provided files, slides, code, or documents
-- restored the assignment-prep example and the matching bad counterexample
-
-Why this matters:
-- prompts like "analyze these files now, solve the assignment later" should stay as prompts
-- the enhancer should not pretend it already saw the source material
-
----
-
-### 3. Kept Gemma stable and focused fixes on Gemini 2.5 Flash
-
-Updated:
-- `extension/src/lib/meta-prompt.ts`
-- `extension/src/lib/llm-client.ts`
-- `extension/test/unit/google-api.test.ts`
-- `extension/test/unit/meta-prompt.test.ts`
-
-What changed:
-- left the compact Gemma path intact
-- changed the main platform guidance to prefer clear plain text instead of numbered or XML-style formatting hints
-- added explicit rules against inventing XML, HTML-like tags, or unnecessary heavy structure
-- added a Flash-side cleanup pass for generic wrappers such as:
-  - `<user_query>`
-  - `<instruction>`
-  - `<list>`
-  - `<item>`
-- flattened those wrappers into normal plain text before the prompt is injected into the chat box
-
-Why this matters:
-- Gemma was already behaving correctly and should not be disturbed
-- the over-formatting issue was happening on the `gemini-2.5-flash` path
-
----
-
-### 4. Added regression coverage for today's failure modes
-
-Updated:
-- `extension/test/unit/build-user-message.test.ts`
-- `extension/test/unit/google-api.test.ts`
-- `extension/test/unit/meta-prompt.test.ts`
-
-Coverage added:
-- user-message wrapper keeps rewrite-only framing
-- main meta prompt preserves staged workflows
-- plain-text platform guidance is used instead of markup-heavy hints
-- Gemini Flash wrapper-tag leakage is sanitized
-- Gemini Flash instruction/list/item markup is flattened into plain text
-
----
-
-### 5. Improved non-Perplexity prompt output and stream injection
-
-Updated:
-- `extension/src/content/ui/trigger-button.ts`
-- `extension/src/lib/meta-prompt.ts`
-- `extension/test/unit/meta-prompt.test.ts`
-
-What changed:
-- kept completed stream rendering smooth by draining buffered text after `DONE` / `SETTLEMENT`
-- avoided a final full replacement when the editor already contains the normalized enhanced text
-- added a study/PDF/slides/exam-prep prompt rule so rewrites stay as natural sendable prompts instead of assistant-style "Here's the plan" responses
-- added regression coverage for the `34_BST_merged.pdf` + lecture slides study-prompt pattern
-
-Confirmed good user-facing output:
-- input about `34_BST_merged.pdf`, lecture slides, exam prep, beginner level, divide into parts, then start Part 1
-- output became a clean natural prompt:
-  - "Use 34_BST_merged.pdf and the accompanying lecture slides as the source material. Teach me the full content for my exam from the basics..."
-
-Commits pushed:
-- `bed04f0` — `fix(content): smooth completed stream injection`
-- `77f1abd` — `fix(meta-prompt): keep study material rewrites natural`
-
----
-
-### 6. Ongoing issue: Perplexity editor insertion remains unstable
-
-Status: unresolved / flagged for future work.
-
-Observed behavior:
-- Perplexity sometimes preserves the original prompt after enhancement
-- later attempts caused repeated insertion of the same enhanced prompt
-- latest screenshot shows PromptGod reports enhancement complete in the console, but Perplexity's visible editor still contains the original prompt
-- Perplexity DevTools also shows page-level Cloudflare/CORS failures loading Perplexity scripts, which may mean the Perplexity runtime/editor is not fully hydrated in that tab
-
-Files touched during attempted Perplexity fixes:
-- `extension/src/content/adapters/perplexity.ts`
-- `extension/src/content/ui/trigger-button.ts`
-
-Perplexity-related commits pushed:
-- `29a5660` — `fix(perplexity): replace prompt without preserving stale text`
-- `d77d3c7` — `fix(perplexity): force contenteditable replacement`
-- `f64e40b` — `fix(perplexity): avoid duplicate insert events`
-- `133c8d0` — `fix(perplexity): prefer native editor replacement`
-- `953e8ab` — `fix(perplexity): fall back to preview and copy`
-
-Current recommendation:
-- treat Perplexity as an ongoing issue, not a solved platform
-- do not keep layering blind replacement strategies
-- next debugging should instrument the selected editor node and replacement path:
-  - selector used
-  - element tag/attributes
-  - whether it is `textarea`, plain `contenteditable`, or Lexical
-  - before/after text length
-  - whether manual select/delete/paste works on the same tab
-- keep all non-Perplexity paths untouched while debugging this
-- if Perplexity page runtime is broken by its own Cloudflare/CORS issue, prefer preview/copy fallback over direct insertion
-
----
-
-## Files Changed Today
-
-- `codex/Progress.md`
-- `extension/src/content/ui/trigger-button.ts`
-- `extension/src/content/adapters/perplexity.ts`
-- `extension/src/lib/llm-client.ts`
-- `extension/src/lib/meta-prompt.ts`
-- `extension/test/unit/build-user-message.test.ts`
-- `extension/test/unit/google-api.test.ts`
-- `extension/test/unit/meta-prompt.test.ts`
-
----
-
-## Current Behavior
-
-### Working
-
-- enhancer is guarded against answering the user prompt instead of rewriting it
-- staged prompts are preserved as staged prompts
-- prompts that reference files/slides/materials stay framed around those inputs
-- study/PDF/slides/exam-prep prompts now stay as natural sendable prompts instead of assistant-style numbered plans
-- Gemma compact-path behavior is preserved
-- Gemini 2.5 Flash output is normalized back toward plain text when it leaks wrapper tags or XML-like structure
-- non-Perplexity stream completion drains buffered text instead of instantly pasting over the editor
-
-### Current Safe Baseline
-
-- if a future fix is needed, start from the current Flash path
-- avoid touching the Gemma compact prompt unless Gemma regresses
-- avoid restoring markup-heavy platform hints
-- avoid touching ChatGPT/Claude/Gemini injection while investigating Perplexity
-
-### Ongoing / Not Safe To Call Fixed
-
-- Perplexity direct insertion is not reliable yet
-- latest user report: enhancement completes, but the visible Perplexity editor still contains the original prompt
-- keep Perplexity flagged until a live manual test proves replacement works on a fresh Perplexity tab with the unpacked extension reloaded
-
----
-
-## Verification Status
-
-Verified:
-
-```powershell
-cd extension
-npm test
-npm run build
-```
-
-Latest result:
-- `npm test`: 121/121 tests passed
+Verification:
 - `npm run build`: passed
-
-Branch status:
-- local branch: `main`
-- latest pushed commit at time of this update: `953e8ab`
+- `npm test`: 143/143 tests passed
 
 ---
 
-## Recommended Next Step
+### 2. Contenteditable fallback hardened
 
-For non-Perplexity:
-1. run one normal prompt on ChatGPT
-2. run one staged file-analysis / assignment-prep prompt
-3. run the `34_BST_merged.pdf` study-prompt case
-4. run one Gemma prompt to confirm Gemma stayed stable
+Status: fixed and pushed.
 
-For Perplexity:
-1. reload the unpacked extension
-2. open a fresh Perplexity tab
-3. confirm manual select/delete/paste works in the composer
-4. inspect and log the selected editor node before trying another code change
-5. if the page still shows Perplexity's own Cloudflare/CORS script failures, treat direct insertion as blocked and rely on preview/copy fallback
+Files updated:
+- `extension/src/content/dom-utils.ts`
+- `extension/test/unit/dom-utils.test.ts`
+
+Commit:
+- `1ad9e82` — `fix(content): harden editable text fallback`
+
+Current behavior:
+- contenteditable clearing falls back to DOM mutation when `execCommand('delete')` is unavailable or fails
+- synthetic input-event insertion falls back to DOM selection insertion when editors ignore the event
+- tests cover ignored synthetic input events and failed delete/insert commands
+
+---
+
+### 3. Prompt rewrite guardrails remain stable
+
+Previously updated:
+- `extension/src/lib/llm-client.ts`
+- `extension/test/unit/build-user-message.test.ts`
+- `extension/src/lib/meta-prompt.ts`
+- `extension/test/unit/meta-prompt.test.ts`
+
+Current behavior:
+- the enhancer treats the user prompt as source text to rewrite, not instructions to execute
+- staged workflows remain staged prompts instead of being converted into final answers
+- prompts that reference files, slides, PDFs, code, or documents stay framed around those inputs
+- study/exam-prep prompts stay natural and sendable
+- Gemini Flash output cleanup still removes leaked wrapper/XML-like tags
+- Gemma compact-path behavior remains preserved
+
+No current action needed here.
+
+---
+
+### 4. Perplexity insertion issue resolved
+
+Status: fixed and pushed.
+
+Files updated:
+- `extension/manifest.json`
+- `extension/src/content/adapters/perplexity.ts`
+- `extension/src/content/perplexity-main.ts`
+- `extension/src/content/ui/trigger-button.ts`
+
+Commit:
+- `1cd26a8` — `fix(perplexity): write composer through lexical bridge`
+
+Root cause:
+- Perplexity uses a Lexical-style editor.
+- Earlier fixes mutated visible `contenteditable` DOM and judged success from immediate `textContent`.
+- Lexical keeps the real prompt in editor state, so Perplexity could reconcile the DOM back to stale/original text.
+- Normal extension content scripts run in an isolated world, so they cannot reliably access the page-side Lexical editor instance.
+
+What changed:
+- added `extension/src/content/perplexity-main.ts` as a Perplexity-only `MAIN` world content script
+- registered the main-world bridge only for `perplexity.ai` / `www.perplexity.ai`
+- the Perplexity adapter now dispatches a bridge event to set the Lexical editor state directly
+- native DOM insertion remains only as a fallback
+- removed the Perplexity preview/copy fallback popup path that previously showed unwanted UI
+
+Current Perplexity behavior:
+- direct prompt replacement works through the Lexical bridge
+- no preview overlay appears
+- no manual copy/paste fallback is used as the normal path
+- Perplexity undo button appears and works
+
+Old broken Perplexity commits still exist in git history, but they are superseded by `1cd26a8` on current `main`.
+
+---
+
+### 5. Undo button visibility fixed
+
+Status: fixed and pushed.
+
+File updated:
+- `extension/src/content/ui/undo-button.ts`
+
+Commit:
+- `7117723` — `fix(ui): keep undo visible on hosted composers`
+
+Root cause:
+- Perplexity and Gemini can clip children appended inside their composer/editor DOM.
+- The undo button was being appended into those hosted composer wrappers with absolute positioning, so it could exist but be visually hidden.
+
+What changed:
+- Perplexity and Gemini now use viewport-fixed undo placement instead of nesting the undo button inside clipped editor DOM
+- Gemini placement was adjusted to match the ChatGPT-style below-composer alignment
+- Perplexity’s working undo placement was preserved
+- ChatGPT and Claude undo placement behavior remains unchanged
+- undo keydown listener cleanup now removes the listener from the actual input element, not only ChatGPT’s selector
+
+Current undo behavior:
+- ChatGPT: existing placement behavior
+- Claude: existing placement behavior
+- Gemini: visible below/right of composer like ChatGPT
+- Perplexity: visible and working with the fixed placement
+
+No current action needed here.
+
+---
+
+## Current Working Behavior
+
+Working:
+- ChatGPT prompt enhancement
+- Claude prompt enhancement
+- Gemini prompt enhancement
+- Perplexity prompt enhancement
+- highlighted text enhancement via right-click context menu
+- Perplexity direct insertion through the Lexical bridge
+- undo button visibility on Perplexity and Gemini
+- no Perplexity preview/copy popup fallback
+- rewrite-only guardrail against answering the prompt
+- staged workflow preservation
+- file/PDF/slides/exam-prep prompt preservation
+- Gemini Flash wrapper-tag cleanup
+- smooth non-Perplexity stream completion
+- highlighted-text rewrites do not ask clarifying questions or use placeholders
+
+No active issues:
+- no current Perplexity issue pending
+- no current undo placement issue pending
+- no currently known blocking regression pending
+
+---
+
+## Files Changed In Latest Work
+
+Perplexity insertion:
+- `extension/manifest.json`
+- `extension/src/content/adapters/perplexity.ts`
+- `extension/src/content/perplexity-main.ts`
+- `extension/src/content/ui/trigger-button.ts`
+
+Undo visibility:
+- `extension/src/content/ui/undo-button.ts`
+
+Progress handoff:
+- `codex/Progress.md`
+
+Highlighted-text enhancement:
+- `extension/manifest.json`
+- `extension/src/service-worker.ts`
+- `extension/src/content/context-menu-handler.ts`
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/src/lib/types.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
+
+Contenteditable fallback:
+- `extension/src/content/dom-utils.ts`
+- `extension/test/unit/dom-utils.test.ts`
+
+---
+
+## Recommended Manual Smoke Check
+
+After reloading the unpacked extension:
+
+1. Perplexity:
+   - open a fresh Perplexity tab
+   - type a prompt
+   - run PromptGod
+   - confirm the visible composer is replaced with the enhanced prompt
+   - confirm no preview/copy popup appears
+   - confirm undo appears and restores the original prompt
+
+2. Gemini:
+   - type a prompt
+   - run PromptGod
+   - confirm the enhanced prompt appears
+   - confirm undo appears below/right of the composer in the ChatGPT-style placement
+   - confirm undo restores the original prompt
+
+3. Quick regression:
+   - run one normal ChatGPT prompt
+   - run one normal Claude prompt
+   - run the `34_BST_merged.pdf` + lecture slides study prompt if those files are available in the target chat
 
 ---
 
@@ -226,14 +274,15 @@ From repo root:
 
 ```powershell
 cd extension
-npm test
 npm run build
+npm test
 ```
 
 For git state:
 
 ```powershell
 git status --short
+git fetch origin main
 git rev-list --left-right --count origin/main...main
 git log --oneline -10
 ```

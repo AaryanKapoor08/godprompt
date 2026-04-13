@@ -11,6 +11,12 @@ export interface EnhanceMessage {
   recentContext?: string
 }
 
+export interface ContextEnhanceMessage {
+  type: 'CONTEXT_ENHANCE'
+  requestId: string
+  selectedText: string
+}
+
 // Service worker → Content script
 export interface StartMessage {
   type: 'START'
@@ -33,6 +39,12 @@ export interface ErrorMessage {
   code?: string
 }
 
+export interface ResultMessage {
+  type: 'RESULT'
+  requestId?: string
+  text: string
+}
+
 export interface SettlementMessage {
   type: 'SETTLEMENT'
   status: 'DONE' | 'ERROR'
@@ -40,7 +52,7 @@ export interface SettlementMessage {
 }
 
 // Union of all messages the service worker can send back
-export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage | SettlementMessage
+export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage | ResultMessage | SettlementMessage
 
 // Union of all messages the content script can send
-export type ContentMessage = EnhanceMessage
+export type ContentMessage = EnhanceMessage | ContextEnhanceMessage

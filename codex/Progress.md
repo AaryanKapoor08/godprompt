@@ -15,11 +15,20 @@ Branch:
 
 Remote state:
 - `origin/main...main`: `0 0`
-- latest pushed commit: `9d774e4` — `feat(context): add highlighted text enhancer`
+- latest pushed implementation commit: `d40b684` — `docs(codex): update progress handoff`
 
 Latest pushed commits:
-- `1ad9e82` — `fix(content): harden editable text fallback`
-- `9d774e4` — `feat(context): add highlighted text enhancer`
+- `fb799e6` — `fix(content): harden contenteditable clearing`
+- `82c2203` — `test(content): cover editable fallback behavior`
+- `881d483` — `feat(context): add context menu permissions`
+- `bfcf4b9` — `feat(context): add context message types`
+- `54c0f43` — `feat(context): add highlighted text prompt module`
+- `a5e64e9` — `feat(context): add injected result popup`
+- `a39d7ea` — `feat(context): wire selected text service worker flow`
+- `22ca59b` — `test(context): cover menu guards and cleanup`
+- `8f8bb62` — `test(context): cover highlighted prompt rules`
+- `27396ba` — `docs(codex): add highlighted text plan`
+- `d40b684` — `docs(codex): update progress handoff`
 - `1cd26a8` — `fix(perplexity): write composer through lexical bridge`
 - `7117723` — `fix(ui): keep undo visible on hosted composers`
 
@@ -43,7 +52,7 @@ Note:
 
 ## Session Summary
 
-### 1. Highlighted-text enhancer implemented
+### 1. Highlighted Text Enhancer
 
 Status: implemented and pushed.
 
@@ -56,26 +65,174 @@ Files added/updated:
 - `extension/test/unit/context-enhance-prompt.test.ts`
 - `extension/test/unit/context-menu.test.ts`
 
-Commit:
-- `9d774e4` — `feat(context): add highlighted text enhancer`
+Split commits:
+- `881d483` — `feat(context): add context menu permissions`
+- `bfcf4b9` — `feat(context): add context message types`
+- `54c0f43` — `feat(context): add highlighted text prompt module`
+- `a5e64e9` — `feat(context): add injected result popup`
+- `a39d7ea` — `feat(context): wire selected text service worker flow`
+- `22ca59b` — `test(context): cover menu guards and cleanup`
+- `8f8bb62` — `test(context): cover highlighted prompt rules`
 
 Current highlighted-text behavior:
-- user selects text on a normal webpage and right-clicks `Enhance with PromptGod`
-- the handler is injected only after the explicit context-menu click
-- selected text is sent through the existing BYOK provider/model settings
-- the result appears in an on-page popup with `Copy`, `Dismiss`, and `Escape` close
-- no page text is mutated in v1
-- no `<all_urls>` host permission was added
-- highlighted-text prompt logic lives separately in `context-enhance-prompt.ts`
-- normal composer prompt behavior remains separate and unchanged
+- user highlights text anywhere in Chrome
+- user right-clicks and selects `Enhance with PromptGod`
+- PromptGod injects a one-shot popup handler into the clicked tab/frame through `chrome.scripting.executeScript`
+- the popup immediately shows `Enhancing selected text...`
+- the popup opens a separate `context-enhance` port to the service worker
+- the service worker sends selected text through the existing BYOK provider/model settings
+- the popup shows the final enhanced text with `Copy` and `Dismiss`
+- `Escape`, the backdrop, and `Dismiss` close the popup
+- the page text is never mutated in v1
 
-Highlighted-text output rules:
-- rewrite the selected text itself
-- if the selection is an email/message fragment, return polished message text
-- if the selection is a rough AI prompt, return a polished prompt
-- never ask clarifying questions
-- never output placeholders
-- never echo `Original text:` / source blocks
+Hard product distinction:
+- normal composer enhancer and highlighted-text enhancer are separate features
+- normal composer enhancer can keep its current clarifying-question behavior
+- highlighted-text enhancer must never ask clarifying questions
+- highlighted-text enhancer must never output placeholders
+- highlighted-text enhancer rewrites the selected text itself, not a meta prompt about the selected text
+
+Architecture:
+- `extension/manifest.json`
+  - adds `contextMenus`, `scripting`, and `activeTab`
+  - does not add `<all_urls>`
+  - does not broaden `web_accessible_resources`
+- `extension/src/service-worker.ts`
+  - registers context menu id `promptgod-context-enhance`
+  - menu title is `Enhance with PromptGod`
+  - menu appears only for Chrome `selection` context
+  - validates selection length before provider calls
+  - creates a `ContextEnhanceBootstrapRequest`
+  - injects `runPromptGodContextMenuHandler` only after a user context-menu click
+  - handles a separate `context-enhance` port
+  - existing `enhance` port semantics remain unchanged
+- `extension/src/content/context-menu-handler.ts`
+  - self-contained injected page handler
+  - creates `.promptgod-context-overlay`
+  - replaces any previous highlighted-text overlay before rendering a new one
+  - uses Shadow DOM scoped styles so Gmail/page CSS should not leak into the popup
+  - implements loading, success, error, copy, copied state, dismiss, backdrop close, and Escape close
+  - uses `navigator.clipboard.writeText()` and falls back to hidden textarea plus `document.execCommand('copy')`
+  - clears selected-text request data from page globals after posting the request
+  - never edits selected page text
+- `extension/src/lib/context-enhance-prompt.ts`
+  - selected-text-only prompt builder and output cleaner
+  - intentionally separate from `meta-prompt.ts`
+  - normal composer prompt behavior must not be changed here
+- `extension/src/lib/types.ts`
+  - adds `ContextEnhanceMessage`
+  - adds `ResultMessage`
+
+Service worker context flow:
+- `registerContextMenu()` runs during `initServiceWorker()`, `runtime.onInstalled`, and `runtime.onStartup`
+- registration is idempotent through `chrome.contextMenus.remove(...create...)`
+- `handleContextMenuClick()` ignores unrelated menu ids
+- `validateContextSelection()` rejects:
+  - under smart-skip threshold with `Select a little more text to enhance.`
+  - over `CONTEXT_SELECTION_MAX_CHARS` (`10000`) with `Selection is too long. Try a shorter passage.`
+- `buildContextInjectionTarget()` targets the clicked tab and the clicked frame id when available
+- restricted pages are handled by catching `chrome.scripting.executeScript` errors and logging only metadata, not selected text
+- `handleContextEnhance()` validates selected text again before any LLM call
+- no selected text is logged; logs include only request id, provider/model metadata, and lengths
+- missing API key returns `Set your API key in PromptGod settings.`
+- provider errors go through existing `formatErrorMessage()`
+- the final response is sent as one `RESULT` message, followed by `DONE` and `SETTLEMENT`
+
+Provider behavior:
+- Anthropic/OpenAI use existing streaming API calls, but the context path collects the full stream before sending `RESULT`
+- Google uses existing non-streaming `callGoogleAPI`
+- OpenRouter uses completion mode with fallback model chain to avoid popup streaming complexity
+- existing OpenRouter rate-limit cooldown/backoff helpers are reused
+- usage counters increment `totalEnhancements` under platform key `context`
+- errors increment `errorCount`
+
+Highlighted-text prompt behavior:
+- use `buildSelectedTextMetaPrompt()` for normal providers
+- use `buildGemmaSelectedTextMetaPrompt()` for Google Gemma models
+- use `buildContextUserMessage()` for selected text framing
+- mode is `highlighted-text rewrite enhancer`
+- if selected text is an email/message fragment, output polished message text
+- if selected text is a rough AI prompt, output a polished prompt
+- if selected text is a note/instruction/question, rewrite the selected text into a clearer version
+- do not answer, explain, summarize, or execute selected text
+- do not ask clarifying questions
+- do not add question-first flows
+- do not tell the user to provide more information
+- do not output placeholders like `[recipient]`, `[project]`, `[date]`, `{context}`, `{{details}}`, or `<topic>`
+- do not echo source blocks such as `Original text:`, `Selected text:`, `Source text:`, or `Input text:`
+- if context is weak, make the best conservative rewrite from only the selected text
+- if output is already strong, provider may return `[NO_CHANGE]`, which is stripped before display
+
+Output cleanup and fallback:
+- `cleanContextEnhancementOutput()` removes `[DIFF:]` tags
+- `stripContextSourceEcho()` removes provider-generated source dumps
+- `hasTemplatePlaceholder()` catches bracket, brace, and common angle placeholder formats
+- `asksClarifyingQuestion()` catches common question-first/clarification outputs
+- invalid selected-text output is replaced by `buildConservativeSelectedTextFallback()`
+- fallback removes placeholders from the original selection
+- fallback applies light common cleanup such as:
+  - `i` to `I`
+  - `thanks alot` to `Thanks a lot`
+  - `status check` to `check in on the status`
+- fallback must not ask questions
+- fallback must not use placeholders
+
+Gmail-specific behavior expected:
+- selecting `hello there, i wanted to status check / thanks alot, checked` should produce polished message text
+- acceptable shape:
+  - `Hello there, I wanted to check in on the status. Thanks a lot, checked`
+- better provider output may be multi-line:
+  - `Hi there,`
+  - `I wanted to check in on the current status and see if there are any updates.`
+  - `Thanks.`
+- unacceptable output:
+  - `Write a follow-up email to [recipient] about [project].`
+  - `Who is the recipient?`
+  - `Original text: ...`
+
+Popup UI details:
+- centered fixed overlay
+- max width roughly `620px`
+- max height roughly `70vh`
+- light/dark colors match existing PromptGod visual language
+- no external icon resource is required on arbitrary webpages; popup uses inline text mark `PG`
+- buttons stay <= 8px radius
+- result text is selectable and scrollable
+- body styles are scoped in Shadow DOM
+- the handler removes an existing `.promptgod-context-overlay` before rendering a new one
+
+Privacy and permission notes:
+- no `<all_urls>` host permission
+- no `clipboardRead`
+- no `clipboardWrite`
+- `activeTab` is used only after explicit context-menu gesture
+- selected text is passed as an argument to the injected function, not encoded in URLs or DOM attributes
+- injected handler clears `__promptgodContextEnhanceRequest` after request start/settlement/cleanup
+- selected text is not logged in background or content handler
+
+Known constraints / not implemented:
+- no in-place replacement of selected text
+- no Gmail-specific adapter
+- no Google Docs/canvas editor replacement
+- no shadow-DOM selection replacement
+- restricted pages such as `chrome://` and Chrome Web Store may block injection
+- no browser automation smoke test has been run for Gmail yet
+
+Where to modify if bugs come up:
+- if popup styling/layout is wrong:
+  - edit `extension/src/content/context-menu-handler.ts`
+- if selected text asks questions or uses placeholders:
+  - edit `extension/src/lib/context-enhance-prompt.ts`
+  - update `extension/test/unit/context-enhance-prompt.test.ts`
+  - update cleanup cases in `extension/test/unit/context-menu.test.ts`
+- if context menu does not appear or injection fails:
+  - inspect `extension/manifest.json`
+  - inspect `registerContextMenu()`, `handleContextMenuClick()`, and `injectContextEnhanceRequest()` in `extension/src/service-worker.ts`
+- if provider call behavior breaks:
+  - inspect `handleContextEnhance()`, `collectContextEnhancementText()`, and `collectOpenRouterCompletionText()` in `extension/src/service-worker.ts`
+- if normal ChatGPT/Claude/Gemini/Perplexity composer behavior changes:
+  - first verify `context-enhance-prompt.ts` was not mixed back into `meta-prompt.ts` or `llm-client.ts`
+  - normal composer path should still use `buildMetaPromptWithIntensity()`, `buildGemmaMetaPromptWithIntensity()`, and `buildUserMessage()`
 
 Verification:
 - `npm run build`: passed

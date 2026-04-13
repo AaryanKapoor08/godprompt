@@ -21,6 +21,13 @@ import {
 } from './lib/openrouter-retry'
 import { RequestSupervisor } from './background/supervisor'
 import { translateError } from './lib/error-translator'
+import { runPromptGodContextMenuHandler } from './content/context-menu-handler'
+import {
+  buildContextUserMessage,
+  buildGemmaSelectedTextMetaPrompt,
+  buildSelectedTextMetaPrompt,
+  cleanContextEnhancementOutput,
+} from './lib/context-enhance-prompt'
 
 const STREAM_STALL_TIMEOUT_MS = 45000
 const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 20000
@@ -28,6 +35,29 @@ const REQUEST_SUPERVISOR_TIMEOUT_MS = 65000
 const OPENROUTER_MODEL_COOLDOWN_MS = 2 * 60 * 1000
 const OPENROUTER_RATE_LIMIT_BASE_DELAY_MS = 1500
 const OPENROUTER_RATE_LIMIT_MAX_DELAY_MS = 10000
+export const CONTEXT_MENU_ID = 'promptgod-context-enhance'
+export const CONTEXT_MENU_TITLE = 'Enhance with PromptGod'
+export const CONTEXT_SELECTION_MAX_CHARS = 10000
+const CONTEXT_PORT_NAME = 'context-enhance'
+
+export type ContextSelectionValidation =
+  | { ok: true; selectedText: string }
+  | { ok: false; code: 'SELECTION_TOO_SHORT' | 'SELECTION_TOO_LONG'; message: string }
+
+export type ContextEnhanceBootstrapRequest =
+  | {
+    requestId: string
+    status: 'ready'
+    selectedText: string
+    requestedAt: number
+  }
+  | {
+    requestId: string
+    status: 'error'
+    code: 'SELECTION_TOO_SHORT' | 'SELECTION_TOO_LONG'
+    message: string
+    requestedAt: number
+  }
 
 const OPENROUTER_FALLBACK_MODELS = [
   OPENROUTER_FALLBACK_MODEL,
@@ -176,9 +206,140 @@ function buildOpenRouterModelChain(requestedModel: string): string[] {
   return [...ready, ...cooling]
 }
 
+export function validateContextSelection(selectionText: string | undefined): ContextSelectionValidation {
+  const selectedText = (selectionText ?? '').trim()
+
+  if (selectedText.length > CONTEXT_SELECTION_MAX_CHARS) {
+    return {
+      ok: false,
+      code: 'SELECTION_TOO_LONG',
+      message: 'Selection is too long. Try a shorter passage.',
+    }
+  }
+
+  if (shouldSkipContextSelection(selectedText)) {
+    return {
+      ok: false,
+      code: 'SELECTION_TOO_SHORT',
+      message: 'Select a little more text to enhance.',
+    }
+  }
+
+  return { ok: true, selectedText }
+}
+
+function shouldSkipContextSelection(selectionText: string): boolean {
+  const words = selectionText.trim().split(/\s+/)
+  return words.length < 3 || words[0] === ''
+}
+
+export function createContextEnhanceRequest(
+  validation: ContextSelectionValidation,
+  requestId: string = crypto.randomUUID(),
+  requestedAt: number = Date.now()
+): ContextEnhanceBootstrapRequest {
+  if (!validation.ok) {
+    return {
+      requestId,
+      status: 'error',
+      code: validation.code,
+      message: validation.message,
+      requestedAt,
+    }
+  }
+
+  return {
+    requestId,
+    status: 'ready',
+    selectedText: validation.selectedText,
+    requestedAt,
+  }
+}
+
+export function buildContextInjectionTarget(tabId: number, frameId?: number): chrome.scripting.InjectionTarget {
+  const target: chrome.scripting.InjectionTarget = { tabId }
+
+  if (typeof frameId === 'number' && frameId >= 0) {
+    target.frameIds = [frameId]
+  }
+
+  return target
+}
+
+export function registerContextMenu(): void {
+  if (!chrome.contextMenus?.create) return
+
+  chrome.contextMenus.remove(CONTEXT_MENU_ID, () => {
+    void chrome.runtime.lastError
+    chrome.contextMenus.create(
+      {
+        id: CONTEXT_MENU_ID,
+        title: CONTEXT_MENU_TITLE,
+        contexts: ['selection'],
+      },
+      () => {
+        const error = chrome.runtime.lastError
+        if (error && !/duplicate id/i.test(error.message ?? '')) {
+          console.info({ cause: error.message }, '[PromptGod] Could not register context menu')
+        }
+      }
+    )
+  })
+}
+
+export async function handleContextMenuClick(
+  info: Pick<chrome.contextMenus.OnClickData, 'menuItemId' | 'selectionText' | 'frameId'>,
+  tab?: chrome.tabs.Tab
+): Promise<void> {
+  if (info.menuItemId !== CONTEXT_MENU_ID) return
+
+  const tabId = tab?.id
+  if (typeof tabId !== 'number') {
+    console.info('[PromptGod] Context enhance skipped because the clicked tab has no id')
+    return
+  }
+
+  const validation = validateContextSelection(info.selectionText)
+  const request = createContextEnhanceRequest(validation)
+
+  try {
+    await injectContextEnhanceRequest(tabId, info.frameId, request)
+  } catch (error) {
+    console.info(
+      {
+        cause: error instanceof Error ? error.message : String(error),
+        tabId,
+        frameId: info.frameId,
+      },
+      '[PromptGod] Could not inject context enhance request'
+    )
+  }
+}
+
+async function injectContextEnhanceRequest(
+  tabId: number,
+  frameId: number | undefined,
+  request: ContextEnhanceBootstrapRequest
+): Promise<void> {
+  if (!chrome.scripting?.executeScript) return
+
+  await chrome.scripting.executeScript({
+    target: buildContextInjectionTarget(tabId, frameId),
+    func: runPromptGodContextMenuHandler,
+    args: [request],
+  })
+}
+
 export function initServiceWorker() {
   chrome.storage.onChanged.addListener(() => {
     cachedSettings = null
+  })
+
+  registerContextMenu()
+  chrome.runtime.onInstalled?.addListener(registerContextMenu)
+  chrome.runtime.onStartup?.addListener(registerContextMenu)
+  chrome.contextMenus?.onClicked?.addListener((info, tab) => {
+    void handleContextMenuClick(info, tab)
   })
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -189,11 +350,11 @@ export function initServiceWorker() {
   })
 
   chrome.runtime.onConnect.addListener((port) => {
-    if (port.name !== 'enhance') {
+    if (port.name !== 'enhance' && port.name !== CONTEXT_PORT_NAME) {
       return
     }
 
-    console.info('[PromptGod] Port connected')
+    console.info({ portName: port.name }, '[PromptGod] Port connected')
 
     const abortController = new AbortController()
     port.onDisconnect.addListener(() => {
@@ -201,8 +362,10 @@ export function initServiceWorker() {
     })
 
     port.onMessage.addListener((msg: ContentMessage) => {
-      if (msg.type === 'ENHANCE') {
+      if (port.name === 'enhance' && msg.type === 'ENHANCE') {
         handleEnhance(port, msg, abortController.signal)
+      } else if (port.name === CONTEXT_PORT_NAME && msg.type === 'CONTEXT_ENHANCE') {
+        handleContextEnhance(port, msg, abortController.signal)
       }
     })
   })
@@ -410,6 +573,235 @@ export async function handleEnhance(
   } finally {
     supervisor.stop(port)
   }
+}
+
+export async function handleContextEnhance(
+  port: chrome.runtime.Port,
+  msg: ContentMessage & { type: 'CONTEXT_ENHANCE' },
+  signal: AbortSignal
+): Promise<void> {
+  console.info(
+    { requestId: msg.requestId, selectionLength: msg.selectedText.length },
+    '[PromptGod] Received CONTEXT_ENHANCE request'
+  )
+
+  supervisor.start(port)
+
+  try {
+    sendMessage(port, { type: 'START' })
+
+    const validation = validateContextSelection(msg.selectedText)
+    if (!validation.ok) {
+      sendMessage(port, {
+        type: 'ERROR',
+        message: validation.message,
+        code: validation.code,
+      })
+      sendMessage(port, { type: 'SETTLEMENT', status: 'ERROR', message: validation.message })
+      disconnectPortSoon(port)
+      return
+    }
+
+    const { apiKey, provider, model } = await getSettings()
+
+    if (!apiKey) {
+      const message = 'Set your API key in PromptGod settings.'
+      sendMessage(port, {
+        type: 'ERROR',
+        message,
+        code: 'NO_API_KEY',
+      })
+      sendMessage(port, { type: 'SETTLEMENT', status: 'ERROR', message })
+      disconnectPortSoon(port)
+      return
+    }
+
+    const selectedText = validation.selectedText
+    const promptWordCount = selectedText.trim().split(/\s+/).length
+    const systemPrompt = provider === 'google' && isGoogleGemmaModelId(model)
+      ? buildGemmaSelectedTextMetaPrompt(promptWordCount)
+      : buildSelectedTextMetaPrompt(promptWordCount)
+    const userMessage = buildContextUserMessage(selectedText)
+
+    console.info(
+      { requestId: msg.requestId, provider, model, selectionLength: selectedText.length },
+      '[PromptGod] Calling LLM API for context selection'
+    )
+
+    const output = await collectContextEnhancementText({
+      apiKey,
+      provider,
+      model,
+      systemPrompt,
+      userMessage,
+      promptWordCount,
+      signal,
+    })
+
+    const cleanText = cleanContextEnhancementOutput(output, selectedText)
+    if (!cleanText) {
+      throw new Error('[ServiceWorker] Context enhancement returned no text output')
+    }
+
+    sendMessage(port, {
+      type: 'RESULT',
+      requestId: msg.requestId,
+      text: cleanText,
+    })
+    sendMessage(port, { type: 'DONE' })
+    sendMessage(port, { type: 'SETTLEMENT', status: 'DONE' })
+    disconnectPortSoon(port)
+
+    incrementCounter('totalEnhancements', 'context')
+
+    console.info(
+      { requestId: msg.requestId, resultLength: cleanText.length },
+      '[PromptGod] Context enhancement complete'
+    )
+  } catch (error) {
+    if (signal.aborted) {
+      console.info({ requestId: msg.requestId }, '[PromptGod] Context enhancement aborted — port disconnected')
+      return
+    }
+
+    incrementCounter('errorCount')
+
+    console.error({ requestId: msg.requestId, cause: error }, '[PromptGod] Context enhancement failed')
+    const errorMessage = formatErrorMessage(error)
+    sendMessage(port, {
+      type: 'ERROR',
+      message: errorMessage,
+    })
+    sendMessage(port, { type: 'SETTLEMENT', status: 'ERROR', message: errorMessage })
+    disconnectPortSoon(port)
+  } finally {
+    supervisor.stop(port)
+  }
+}
+
+type ContextProviderRequest = {
+  apiKey: string
+  provider?: string
+  model?: string
+  systemPrompt: string
+  userMessage: string
+  promptWordCount: number
+  signal: AbortSignal
+}
+
+async function collectContextEnhancementText({
+  apiKey,
+  provider,
+  model,
+  systemPrompt,
+  userMessage,
+  promptWordCount,
+  signal,
+}: ContextProviderRequest): Promise<string> {
+  if (provider === 'openrouter') {
+    return await collectOpenRouterCompletionText(apiKey, systemPrompt, userMessage, model, promptWordCount, signal)
+  }
+
+  if (provider === 'anthropic') {
+    const response = await callWithRetry(
+      () => callAnthropicAPI(apiKey, systemPrompt, userMessage, model),
+      signal
+    )
+    return await collectStreamText(parseAnthropicStream(response), signal)
+  }
+
+  if (provider === 'openai') {
+    const response = await callWithRetry(
+      () => callOpenAIAPI(apiKey, systemPrompt, userMessage, model),
+      signal
+    )
+    return await collectStreamText(parseOpenAIStream(response), signal)
+  }
+
+  if (provider === 'google') {
+    return await callGoogleAPI(
+      apiKey,
+      systemPrompt,
+      userMessage,
+      model ?? 'gemini-2.5-flash',
+      512
+    )
+  }
+
+  throw new Error(`Unsupported provider: ${provider}. Use an Anthropic, OpenAI, Google, or OpenRouter key.`)
+}
+
+async function collectOpenRouterCompletionText(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string | undefined,
+  promptWordCount: number,
+  signal: AbortSignal
+): Promise<string> {
+  const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_FALLBACK_MODEL)
+  const modelsToTry = buildOpenRouterModelChain(requestedModel)
+
+  let lastError: unknown = null
+  let rateLimitAttempt = 0
+
+  for (let modelIndex = 0; modelIndex < modelsToTry.length; modelIndex++) {
+    if (signal.aborted) {
+      throw new Error('[ServiceWorker] Context enhancement aborted')
+    }
+
+    const currentModel = modelsToTry[modelIndex]
+    const cooldownRemaining = getOpenRouterCooldownRemainingMs(currentModel)
+    if (cooldownRemaining > 0) {
+      await delay(Math.min(cooldownRemaining, 1500))
+      if (signal.aborted) {
+        throw new Error('[ServiceWorker] Context enhancement aborted')
+      }
+    }
+
+    const maxTokens = getOpenRouterMaxTokens(currentModel, promptWordCount)
+
+    try {
+      return await callWithRetry(
+        () => callOpenRouterCompletionAPI(apiKey, systemPrompt, userMessage, currentModel, maxTokens),
+        signal
+      )
+    } catch (error) {
+      lastError = error
+
+      if (isOpenRouterRateLimitError(error)) {
+        rateLimitAttempt++
+        const backoffMs = computeRateLimitBackoffMs(error, rateLimitAttempt)
+        setOpenRouterModelCooldown(currentModel, Math.max(OPENROUTER_MODEL_COOLDOWN_MS, backoffMs))
+        console.info({ currentModel, backoffMs }, '[PromptGod] OpenRouter context request rate limited')
+        await delay(backoffMs)
+      }
+
+      const hasFallbackModel = modelIndex < modelsToTry.length - 1
+      if (hasFallbackModel && shouldRetryWithOpenRouterFallback(currentModel, false, error)) {
+        const fallbackModel = modelsToTry[modelIndex + 1]
+        console.info({ currentModel, fallback: fallbackModel }, '[PromptGod] Retrying context request with fallback model')
+        continue
+      }
+
+      break
+    }
+  }
+
+  throw lastError ?? new Error('[ServiceWorker] OpenRouter context request failed')
+}
+
+async function collectStreamText(source: AsyncGenerator<string, void, unknown>, signal: AbortSignal): Promise<string> {
+  const chunks: string[] = []
+
+  for await (const text of withStallTimeout(source, STREAM_STALL_TIMEOUT_MS)) {
+    if (signal.aborted) {
+      throw new Error('[ServiceWorker] Context enhancement aborted')
+    }
+    chunks.push(text)
+  }
+
+  return chunks.join('')
 }
 
 async function incrementCounter(key: 'totalEnhancements' | 'errorCount', platform?: string): Promise<void> {

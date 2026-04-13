@@ -10,13 +10,22 @@
 export function clearContentEditable(element: HTMLElement): void {
   element.focus()
   const selection = window.getSelection()
-  if (!selection) return
+  if (!selection) {
+    element.replaceChildren()
+    return
+  }
 
   const range = document.createRange()
   range.selectNodeContents(element)
   selection.removeAllRanges()
   selection.addRange(range)
-  document.execCommand('delete', false)
+  const deleted = typeof document.execCommand === 'function'
+    ? document.execCommand('delete', false)
+    : false
+
+  if (!deleted) {
+    element.replaceChildren()
+  }
 }
 
 /**
@@ -30,7 +39,9 @@ export function insertText(element: HTMLElement, text: string): boolean {
 
   // Primary strategy: execCommand('insertText')
   // Deprecated but still works and reliably triggers ProseMirror state updates
-  const success = document.execCommand('insertText', false, text)
+  const success = typeof document.execCommand === 'function'
+    ? document.execCommand('insertText', false, text)
+    : false
   if (success) {
     return true
   }
@@ -46,24 +57,65 @@ export function insertText(element: HTMLElement, text: string): boolean {
  */
 export function insertTextViaInputEvent(element: HTMLElement, text: string): boolean {
   try {
-    const dataTransfer = new DataTransfer()
-    dataTransfer.setData('text/plain', text)
-
-    const event = new InputEvent('input', {
+    const beforeText = element.textContent ?? ''
+    const eventInit: InputEventInit = {
       inputType: 'insertText',
       data: text,
-      dataTransfer,
       bubbles: true,
       cancelable: true,
       composed: true,
-    })
+    }
+
+    if (typeof DataTransfer !== 'undefined') {
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData('text/plain', text)
+      eventInit.dataTransfer = dataTransfer
+    }
+
+    const event = typeof InputEvent !== 'undefined'
+      ? new InputEvent('input', eventInit)
+      : new Event('input', eventInit)
 
     element.dispatchEvent(event)
+    if (text === '' || (element.textContent ?? '') !== beforeText) {
+      return true
+    }
+
+    if (!insertTextIntoDomSelection(element, text)) {
+      return false
+    }
+
+    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true, composed: true }))
     return true
   } catch (error) {
     console.error({ cause: error }, '[PromptGod] InputEvent fallback failed')
     return false
   }
+}
+
+function insertTextIntoDomSelection(element: HTMLElement, text: string): boolean {
+  const selection = window.getSelection()
+  if (selection?.rangeCount && selectionBelongsToElement(element, selection)) {
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+
+    const textNode = document.createTextNode(text)
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    return true
+  }
+
+  element.textContent = `${element.textContent ?? ''}${text}`
+  return true
+}
+
+function selectionBelongsToElement(element: HTMLElement, selection: Selection): boolean {
+  const anchor = selection.anchorNode
+  return !anchor || anchor === element || element.contains(anchor)
 }
 
 /**

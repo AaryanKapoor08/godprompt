@@ -2,7 +2,9 @@
 
 Update this file as you complete each phase.
 
-**Current Phase: 16.6 — Adapter Consistency Refactor (not started — v2 deployed, resuming here next)**
+**Current Phase: No active unresolved issues — Phase 16.6 remains deferred; highlighted-text context menu v1 is implemented and pushed**
+
+Last synced with Codex handoff: 2026-04-14
 
 
 
@@ -482,87 +484,67 @@ Update this file as you complete each phase.
 
 - Notes: Motivated by Phase 16 bug fixes — DIFF tag leak, Perplexity textarea streaming broken, Gemini rich-textarea desync. Root cause: each adapter independently reimplements text ops. Migration order: ChatGPT → Claude → Gemini → Perplexity, each commit independently revertable via git.
 
-### PHASE 17 — Context Menu: Foundation + Injection [optional — not started]
+### PHASE 17 — Context Menu: Foundation + Injection [complete — highlighted-text popup v1]
 
-- [ ] `contextMenus`, `scripting`, and `activeTab` permissions added to `manifest.json` (activeTab justified: required for `executeScript` on arbitrary pages via context menu)
-- [ ] `'generic'` added to `Platform` type in `adapters/types.ts`
-- [ ] `buildMetaPrompt()` handles `'generic'` platform (neutral context, no platform-specific guidance)
-- [ ] Context menu item "Enhance with PromptGod" registered in service worker via `chrome.contextMenus.create()` inside `chrome.runtime.onInstalled`
-- [ ] Context menu item appears ONLY when text is selected (`contexts: ['selection']`)
-- [ ] Context menu item does NOT appear when no text is selected
-- [ ] On click: service worker reads `info.selectionText` and stores it for the enhancement pipeline
-- [ ] `src/content/context-menu-handler.ts` created as a self-contained script (separate Vite entry point, NOT auto-injected)
-- [ ] Handler script is injected on demand via `chrome.scripting.executeScript({ target: { tabId, frameId }, files: [...] })` — `activeTab` + context menu click provides temporary permission
-- [ ] Handler immediately captures `window.getSelection().getRangeAt(0)` and `document.activeElement` (with `selectionStart`/`selectionEnd` for textareas) before user moves cursor
-- [ ] Handler injects its own CSS (toast styles) via `chrome.scripting.insertCSS()` or inline styles — cannot rely on the main `styles.css` being loaded on arbitrary pages
-- [ ] Handler shows loading toast: "Enhancing your prompt..."
-- [ ] Handler opens port to service worker: `chrome.runtime.connect({ name: 'context-enhance' })`
-- [ ] Service worker listens for `context-enhance` port connections alongside existing `enhance` port connections
-- [ ] Smart skip: selection under 3 words → handler shows "Prompt too short to enhance" toast, no LLM call
-- [ ] No API key: service worker sends ERROR through port → handler shows "Set your API key in PromptGod settings" toast
-- [ ] Works on a page that is NOT one of the 4 supported platforms (e.g., Wikipedia, GitHub, any random site)
-- [ ] Works on one of the 4 supported platforms alongside the existing trigger button without conflicts
-- [ ] Commit: `feat(context-menu): register menu item and inject handler on any page`
-- Notes:
+- [x] `contextMenus`, `scripting`, and `activeTab` permissions added to `manifest.json` (activeTab justified: required for `executeScript` on arbitrary pages via context menu)
+- [x] Selected-text flow uses a separate neutral prompt module: `extension/src/lib/context-enhance-prompt.ts`
+- [x] Context selected text is intentionally separate from normal `Platform` adapters and normal `meta-prompt.ts`
+- [x] Context menu item "Enhance with PromptGod" registered in service worker via `chrome.contextMenus.create()`
+- [x] Context menu item appears ONLY when text is selected (`contexts: ['selection']`)
+- [x] Context menu item does NOT appear when no text is selected
+- [x] On click: service worker reads `info.selectionText`, validates it, and creates a one-shot enhancement request
+- [x] `extension/src/content/context-menu-handler.ts` created as a self-contained injected handler
+- [x] Handler is injected on demand via `chrome.scripting.executeScript({ target, func, args })` using the clicked tab/frame
+- [x] Selected text is passed as an injected function argument, not stored in DOM attributes, URLs, or logs
+- [x] Handler renders isolated Shadow DOM CSS and does not rely on the main `styles.css`
+- [x] Handler shows loading state: "Enhancing selected text..."
+- [x] Handler opens port to service worker: `chrome.runtime.connect({ name: 'context-enhance' })`
+- [x] Service worker listens for `context-enhance` port connections alongside existing `enhance` port connections
+- [x] Smart skip: selection under 3 words shows "Select a little more text to enhance.", no LLM call
+- [x] No API key: service worker sends ERROR through port -> handler shows "Set your API key in PromptGod settings."
+- [x] Works on arbitrary webpages through `activeTab` after explicit context-menu gesture; no `<all_urls>` permission added
+- [x] Works alongside the existing trigger button without sharing the normal composer path
+- [x] Commits pushed: `881d483`, `bfcf4b9`, `54c0f43`, `a5e64e9`, `a39d7ea`, `22ca59b`, `8f8bb62`
+- Notes: Implemented as popup/copy highlighted-text v1. It does not add `'generic'` to the platform adapter type and does not route selected text through normal `buildMetaPrompt()`; this keeps the normal composer enhancer and selected-text enhancer behavior separate.
 
-### PHASE 18 — Context Menu: Enhancement + Text Replacement [optional — not started]
+### PHASE 18 — Context Menu: Enhancement + Popup Result [complete — inline replacement intentionally not implemented]
 
-- [ ] Service worker handles `context-enhance` port: reads API key, makes LLM call using existing `callAnthropicAPI`/`callOpenRouterAPI`/`callOpenAIAPI`, collects full response (concatenate all tokens, do NOT stream into DOM — wait for complete text)
-- [ ] Service worker sends `{ type: 'RESULT', text: enhancedText }` through port on completion, then disconnects
-- [ ] Service worker sends `{ type: 'ERROR', message }` through port on failure, then disconnects
-- [ ] Handler detects if saved selection is inside an editable field:
-  - `<textarea>` or `<input>`: check `activeElement.tagName`
-  - `contenteditable`: check `activeElement.isContentEditable` or walk up from selection anchor node
-  - Otherwise: non-editable (clipboard path)
-- [ ] **Textarea/input replacement:** use saved `selectionStart`/`selectionEnd`, replace selected portion via native value setter (`Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set`), dispatch `input` event with `{ bubbles: true }` — this ensures React/framework state updates
-- [ ] **Contenteditable replacement:** restore saved range via `Selection.addRange()`, delete range contents via `range.deleteContents()`, insert enhanced text via `document.execCommand('insertText')` with InputEvent fallback (reuse logic from `dom-utils.ts` but inline in handler since it's a separate bundle)
-- [ ] **Clipboard fallback:** if element is non-editable OR replacement fails → `navigator.clipboard.writeText(enhancedText)` → show toast "Enhanced prompt copied to clipboard"
-- [ ] **Success toast:** "Prompt enhanced" for inline replacement, "Enhanced prompt copied to clipboard" for clipboard path
-- [ ] Error toast for LLM failures: "Enhancement failed — try again"
-- [ ] Error toast for network failures: check `navigator.onLine` before LLM call, show "No connection" if offline
-- [ ] Platform detection for meta-prompt: if hostname matches one of 4 known platforms, pass that platform to `buildMetaPrompt()`; otherwise pass `'generic'`
-- [ ] Tested on `<textarea>` on a random website — text replaced in place
-- [ ] Tested on contenteditable on a random website — text replaced in place
-- [ ] Tested on non-editable text (e.g., a paragraph on Wikipedia) — enhanced text copied to clipboard
-- [ ] Tested on OpenAI Playground (`<textarea>`) — text replaced in place
-- [ ] Tested on Google AI Studio — text replaced or copied to clipboard
-- [ ] Commit: `feat(context-menu): implement enhancement pipeline with text replacement and clipboard fallback`
-- Notes:
+- [x] Service worker handles `context-enhance` port: reads API key, makes LLM call, and collects the full response before returning a result
+- [x] Anthropic/OpenAI context paths collect streamed chunks before sending one `RESULT`
+- [x] Google context path uses existing non-streaming `callGoogleAPI`
+- [x] OpenRouter context path uses completion mode plus existing fallback/backoff helpers
+- [x] Service worker sends `{ type: 'RESULT', text: enhancedText }`, then `DONE` and `SETTLEMENT`
+- [x] Service worker sends `{ type: 'ERROR', message }` and `SETTLEMENT` on failures
+- [x] Handler shows the final enhanced text in a centered overlay with `Copy` and `Dismiss`
+- [x] Copy uses `navigator.clipboard.writeText()` with hidden-textarea/`document.execCommand('copy')` fallback
+- [x] Handler shows scoped error state for provider, API key, runtime, and timeout failures
+- [x] Selected-text prompt never asks clarifying questions, never emits placeholders, and rewrites the selected text itself
+- [x] Output cleanup strips `[DIFF:]`, `[NO_CHANGE]`, source echoes, placeholders, and clarifying-question outputs
+- [x] Unit tests cover selected-text validation, frame targeting, prompt rules, output cleanup, placeholders, and clarification fallback
+- [x] `npm run build` passed after latest context work
+- [x] `npm test` passed after latest context work: 143/143 tests
+- [x] Commits pushed: `54c0f43`, `a5e64e9`, `a39d7ea`, `22ca59b`, `8f8bb62`
+- Notes: Original inline replacement/clipboard-fallback plan was deliberately changed. v1 never mutates page text; users copy from the overlay. Textarea/contenteditable replacement, automatic clipboard fallback, and OpenAI Playground/AI Studio replacement tests are not part of this shipped scope.
 
-### PHASE 19 — Context Menu: Undo + Edge Cases + Cross-site QA [optional — not started]
+### PHASE 19 — Context Menu: Edge Cases + Cross-site QA [partial — guards implemented, undo/replacement QA deferred]
 
-- [ ] Original text stored in handler before replacement (saved from selection capture)
-- [ ] After successful replacement: toast shows "Prompt enhanced — Undo" with clickable undo action (styled link/button inside the toast)
-- [ ] After clipboard copy: toast shows "Enhanced prompt copied — Undo" with undo action that copies original text back to clipboard
-- [ ] Clicking undo in editable field: restores original text using same replacement strategy (textarea setter or contenteditable execCommand)
-- [ ] Clicking undo in clipboard path: copies original text to clipboard, shows "Original prompt restored to clipboard"
-- [ ] Undo auto-dismisses after 10 seconds (same behavior as existing undo button)
-- [ ] **Double-trigger prevention:** handler sets a flag `isEnhancing = true` on port open, ignores subsequent context menu clicks while active — service worker checks this before injecting a new handler
-- [ ] **iframe handling:** service worker passes `frameId` from `info.frameId` to `chrome.scripting.executeScript({ target: { tabId, frameId } })` so the handler is injected into the correct frame where the selection lives
-- [ ] **Long text guard:** if selection > 10,000 characters, show warning toast "Selection too long (max 10,000 characters)" and abort — prevents accidental expensive API calls
-- [ ] **Page navigation during enhancement:** handler catches port disconnect (`port.onDisconnect`) gracefully — no errors, toast already dismissed by navigation
-- [ ] **Shadow DOM:** if selection is inside a shadow DOM, `executeScript` may not reach it — handler detects this case (selection range is null) and falls back to using `info.selectionText` from the service worker + clipboard path
-- [ ] **Google Docs / Canvas editors:** `getSelection()` returns empty or virtual selection on canvas-based editors — handler detects empty range, falls back to `info.selectionText` from service worker + clipboard path
-- [ ] **Multi-element selection:** cross-paragraph selection works (replacement or clipboard)
-- [ ] **Chrome internal pages:** `chrome://`, Web Store pages show graceful "can't run here" notification
-- [ ] **Coexistence test:** on ChatGPT, both trigger button AND context menu work independently without interfering with each other — different code paths, same service worker LLM pipeline
-- [ ] **Privacy policy update:** add context menu permissions disclosure — "The extension can read selected text on any webpage when you explicitly right-click and choose Enhance"
-- [ ] **Cross-site testing matrix — all pass:**
-  - OpenAI Playground (textarea)
-  - Google AI Studio (textarea/contenteditable)
-  - Anthropic Console Workbench (contenteditable)
-  - Notion page (contenteditable)
-  - Poe.com chat input
-  - HuggingChat input
-  - Standard HTML `<textarea>` on any form
-  - Static text on Wikipedia (clipboard path)
-  - ChatGPT (coexistence with trigger button)
-  - Claude.ai (coexistence with trigger button)
-  - Gmail compose (contenteditable)
-  - Outlook Web compose (contenteditable)
-  - Cross-paragraph selection on Notion or Google Docs
-- [ ] Commit: `feat(context-menu): add undo, edge case handling, and cross-site verification`
-- Notes:
+- [x] Existing `.promptgod-context-overlay` is removed before rendering a new highlighted-text overlay
+- [x] `Escape`, backdrop click, and `Dismiss` close the overlay
+- [x] `frameId` from the context-menu click is passed to `chrome.scripting.executeScript`
+- [x] Selection over 10,000 characters is rejected before provider calls with "Selection is too long. Try a shorter passage."
+- [x] Page/runtime disconnects are handled without crashing the content handler
+- [x] Restricted-page injection failures are caught and logged with metadata only, not selected text
+- [x] Request data is cleared from page globals after request start, settlement, and cleanup
+- [x] Selected text is not logged in background or content handler
+- [x] Coexistence architecture is separate from ChatGPT/Claude/Gemini/Perplexity trigger-button enhancement
+- [x] Guard/cleanup behavior is covered by context-menu unit tests
+- [ ] Inline replacement undo implemented
+- [ ] Clipboard undo implemented
+- [ ] Shadow DOM selection replacement fallback implemented
+- [ ] Google Docs/canvas editor replacement fallback implemented
+- [ ] Full cross-site manual QA matrix run
+- [ ] Privacy policy final check completed for the context-menu selected-text disclosure before store submission
+- Notes: Highlighted-text v1 is shipped as a non-mutating popup/copy flow. Gmail-specific manual smoke testing is still recommended; no browser automation smoke test has been run for Gmail yet.
 
 ### PHASE 20 — Future Expansion [optional — pick any]
 

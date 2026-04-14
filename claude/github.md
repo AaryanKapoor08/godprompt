@@ -248,12 +248,6 @@ Perplexity adapter and Chrome Web Store launch — see `claude/Progress.md` for 
 
 ---
 
-## Phases 16-18 — Context Menu (optional, not started)
-
-Right-click "Enhance with PromptGod" on any webpage — see `claude/BuildFlow.md` for full plan.
-
----
-
 ## Consolidation Snapshot (2026-03-30)
 
 This checkpoint bundles runtime reliability hardening (Phase 15.9 scope) and sendable-rewrite guardrails (Phase 15.10 scope).
@@ -389,3 +383,55 @@ Primary consolidation commit:
 - **16.5 Resilience:** insertTextViaInputEvent exported, stale-selector warning, custom OpenRouter model input, Shift+click preview mode
 - **CSS/branding:** All promptpilot→promptgod class renames
 - **Manual testing pending** — see Progress.md Phase 16 for full checklist
+
+---
+
+## Phase 16 Follow-up — Composer Insertion + Undo Fixes (2026-04-13)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `1cd26a8` | `fix(perplexity): write composer through lexical bridge` | `main` |
+| `7117723` | `fix(ui): keep undo visible on hosted composers` | `main` |
+| `fb799e6` | `fix(content): harden contenteditable clearing` | `main` |
+| `82c2203` | `test(content): cover editable fallback behavior` | `main` |
+
+**What was done:**
+- Added a Perplexity-only `MAIN` world bridge so PromptGod writes directly through Perplexity's Lexical editor state.
+- Removed the Perplexity preview/copy fallback as the normal composer path.
+- Kept the undo button visible on Perplexity and Gemini by using viewport-fixed placement where hosted composer DOM clips children.
+- Hardened contenteditable replacement when `execCommand('delete')` or synthetic input insertion fails.
+- Added unit coverage for ignored synthetic input events and failed delete/insert command fallback behavior.
+
+---
+
+## Phase 17-19 — Highlighted-Text Context Menu v1 (2026-04-13)
+
+| Hash | Message | Branch |
+|------|---------|--------|
+| `881d483` | `feat(context): add context menu permissions` | `main` |
+| `bfcf4b9` | `feat(context): add context message types` | `main` |
+| `54c0f43` | `feat(context): add highlighted text prompt module` | `main` |
+| `a5e64e9` | `feat(context): add injected result popup` | `main` |
+| `a39d7ea` | `feat(context): wire selected text service worker flow` | `main` |
+| `22ca59b` | `test(context): cover menu guards and cleanup` | `main` |
+| `8f8bb62` | `test(context): cover highlighted prompt rules` | `main` |
+| `27396ba` | `docs(codex): add highlighted text plan` | `main` |
+| `d40b684` | `docs(codex): update progress handoff` | `main` |
+| `474dd4d` | `docs(codex): expand highlighted text handoff` | `main` |
+| `afbdf6e` | `docs(progress): sync highlighted text context status` | `main` |
+
+**What was done:**
+- Added right-click selected-text enhancement through `contextMenus`, `scripting`, and `activeTab`; no `<all_urls>` host permission added.
+- Registered `Enhance with PromptGod` only for Chrome `selection` context.
+- Injected a one-shot highlighted-text handler into the clicked tab/frame through `chrome.scripting.executeScript`.
+- Added isolated Shadow DOM popup with loading, success, error, Copy, Dismiss, Escape, and backdrop close behavior.
+- Added separate `context-enhance` port flow in the service worker; normal composer `enhance` flow remains separate.
+- Added `context-enhance-prompt.ts` so selected-text rewriting does not alter the normal composer meta-prompt.
+- Enforced selected-text guardrails: no clarifying questions, no placeholders, no source echoes, no answering/executing the selected text.
+- Added output cleanup and conservative fallback for `[DIFF:]`, `[NO_CHANGE]`, placeholder, and clarification failures.
+- Added unit tests for selection validation, frame targeting, context-menu cleanup, and highlighted-text prompt rules.
+- Recorded the shipped scope in `claude/Progress.md`: popup/copy v1 is complete; inline page mutation and undo remain deferred.
+
+**Verification:**
+- `npm run build` in `extension/` -> passed
+- `npm test` in `extension/` -> 143/143 tests passed

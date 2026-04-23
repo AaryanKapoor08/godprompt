@@ -1,10 +1,10 @@
 # PromptGod — Codex Progress
 
-Last updated: 2026-04-13
+Last updated: 2026-04-23
 
-This is the compact handoff for the current workspace. The local `main` branch and `origin/main` are aligned, and the current working code has been pushed to GitHub.
+This is the compact handoff for the current workspace. The current local work includes the highlighted-text rewrite guardrail follow-up from 2026-04-23, and `origin/main` was verified as aligned with local `main` before the current commit/push flow.
 
-Current status: no active unresolved issues are pending.
+Current status: no active unresolved issues are pending. Today's highlighted-text follow-up is implemented and verified.
 
 ---
 
@@ -14,23 +14,15 @@ Branch:
 - `main`
 
 Remote state:
-- `origin/main...main`: `0 0`
-- latest pushed implementation commit: `d40b684` — `docs(codex): update progress handoff`
+- `origin/main...main`: `0 0` at the latest pre-commit verification on `2026-04-23`
+- use `git log --oneline -10` after pushing to see the latest commit that includes today's guardrail follow-up
 
-Latest pushed commits:
-- `fb799e6` — `fix(content): harden contenteditable clearing`
-- `82c2203` — `test(content): cover editable fallback behavior`
-- `881d483` — `feat(context): add context menu permissions`
-- `bfcf4b9` — `feat(context): add context message types`
-- `54c0f43` — `feat(context): add highlighted text prompt module`
-- `a5e64e9` — `feat(context): add injected result popup`
-- `a39d7ea` — `feat(context): wire selected text service worker flow`
-- `22ca59b` — `test(context): cover menu guards and cleanup`
-- `8f8bb62` — `test(context): cover highlighted prompt rules`
-- `27396ba` — `docs(codex): add highlighted text plan`
+Recent commits before today's new local changes:
+- `f2d0dfd` — `docs(github): record highlighted text context commits`
+- `afbdf6e` — `docs(progress): sync highlighted text context status`
+- `474dd4d` — `docs(codex): expand highlighted text handoff`
 - `d40b684` — `docs(codex): update progress handoff`
-- `1cd26a8` — `fix(perplexity): write composer through lexical bridge`
-- `7117723` — `fix(ui): keep undo visible on hosted composers`
+- `27396ba` — `docs(codex): add highlighted text plan`
 
 Verification after the latest changes:
 
@@ -42,7 +34,8 @@ npm test
 
 Latest result:
 - `npm run build`: passed
-- `npm test`: 143/143 tests passed
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
+- `npm test`: 147/147 tests passed
 
 Note:
 - Vite/CRX prints a warning that `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR. This is expected and not a failure.
@@ -51,6 +44,30 @@ Note:
 ---
 
 ## Session Summary
+
+### Follow-up: Highlighted-text rewrite guardrails tightened (2026-04-23)
+
+Status: implemented locally and verified.
+
+Files updated:
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
+
+What changed:
+- highlighted-text cleanup no longer treats placeholders/questions as the only invalid output shapes
+- `cleanContextEnhancementOutput()` now rejects answer-like/report-like outputs when the original selection looks like a rough AI prompt or instruction
+- prompt-like selection detection was widened to catch conversational phrasings such as `read these complaints and tell me...`
+- highlighted-text prompt instructions now explicitly preserve requests to draft a sendable email, message, update, or other output the user can copy/paste/send
+- cleanup now repairs dropped sendable-deliverable intent when a rewritten prompt loses `draft a clear update/message/email I can send...`
+- the repair path preserves short timing cues such as `today`, `tonight`, `tomorrow`, and `this week` when they are part of the deliverable request
+- valid prompt rewrites still pass through unchanged
+- spot checks for rough highlighted prompts now stayed in rewrite mode instead of drifting into completed answers
+
+Verification:
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
+- `npm run build`: passed
+- `npm test`: 147/147 tests passed
 
 ### 1. Highlighted Text Enhancer
 
@@ -153,6 +170,8 @@ Highlighted-text prompt behavior:
 - mode is `highlighted-text rewrite enhancer`
 - if selected text is an email/message fragment, output polished message text
 - if selected text is a rough AI prompt, output a polished prompt
+- if selected text asks for a sendable deliverable such as an email/message/update, preserve that deliverable request in the rewrite
+- if selected text includes a short timing cue tied to that deliverable, preserve it when possible
 - if selected text is a note/instruction/question, rewrite the selected text into a clearer version
 - do not answer, explain, summarize, or execute selected text
 - do not ask clarifying questions
@@ -168,6 +187,9 @@ Output cleanup and fallback:
 - `stripContextSourceEcho()` removes provider-generated source dumps
 - `hasTemplatePlaceholder()` catches bracket, brace, and common angle placeholder formats
 - `asksClarifyingQuestion()` catches common question-first/clarification outputs
+- `answersPromptInsteadOfRewriting()` catches answer/report-shaped outputs for rough prompt selections
+- `restoreCriticalPromptIntent()` repairs prompt rewrites that accidentally drop sendable email/message/update intent
+- `restoreMissingSendableDraftIntent()` preserves short timing cues such as `today` and `this week` when they are part of the sendable deliverable request
 - invalid selected-text output is replaced by `buildConservativeSelectedTextFallback()`
 - fallback removes placeholders from the original selection
 - fallback applies light common cleanup such as:
@@ -236,7 +258,8 @@ Where to modify if bugs come up:
 
 Verification:
 - `npm run build`: passed
-- `npm test`: 143/143 tests passed
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
+- `npm test`: 147/147 tests passed
 
 ---
 
@@ -353,6 +376,8 @@ Working:
 - Gemini prompt enhancement
 - Perplexity prompt enhancement
 - highlighted text enhancement via right-click context menu
+- highlighted-text rough prompts stay in rewrite mode instead of showing completed answers
+- highlighted-text rough prompts better preserve sendable update/message/email requests
 - Perplexity direct insertion through the Lexical bridge
 - undo button visibility on Perplexity and Gemini
 - no Perplexity preview/copy popup fallback
@@ -366,6 +391,7 @@ Working:
 No active issues:
 - no current Perplexity issue pending
 - no current undo placement issue pending
+- no current highlighted-text answer-vs-rewrite regression pending
 - no currently known blocking regression pending
 
 ---
@@ -392,6 +418,12 @@ Highlighted-text enhancement:
 - `extension/src/lib/types.ts`
 - `extension/test/unit/context-enhance-prompt.test.ts`
 - `extension/test/unit/context-menu.test.ts`
+
+Highlighted-text guardrail follow-up:
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
+- `codex/Progress.md`
 
 Contenteditable fallback:
 - `extension/src/content/dom-utils.ts`
@@ -422,6 +454,12 @@ After reloading the unpacked extension:
    - run one normal ChatGPT prompt
    - run one normal Claude prompt
    - run the `34_BST_merged.pdf` + lecture slides study prompt if those files are available in the target chat
+
+4. Highlighted-text prompt regression:
+   - select a rough prompt like `read these complaints and tell me what update i should send the team today`
+   - run `Enhance with PromptGod`
+   - confirm the result stays as a rewritten prompt, not a completed answer
+   - confirm the result still asks for a sendable update/message for `today`
 
 ---
 

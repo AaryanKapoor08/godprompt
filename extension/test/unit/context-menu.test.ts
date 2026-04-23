@@ -166,4 +166,44 @@ Original text:
     expect(result).toBe('Hello there, I wanted to check in on the status')
     expect(result).not.toMatch(/\?/)
   })
+
+  it('replaces answered-task outputs for rough prompts with a conservative rewrite', () => {
+    const result = cleanContextEnhancementOutput(
+      'The complaints suggest three buckets: product bugs, confusing UX, and user error. The most urgent items should be investigated this week.',
+      'analyze customer complaints, bug notes, and screenshots and draft a practical internal update'
+    )
+
+    expect(result).toBe('Analyze customer complaints, bug notes, and screenshots and draft a practical internal update')
+  })
+
+  it('keeps valid prompt rewrites for rough AI prompt selections', () => {
+    const output = 'Analyze customer complaints, bug notes, and screenshots to categorize issues as product bugs, confusing UX, or user error. Identify likely patterns, highlight where evidence is lacking, prioritize the most urgent items, and draft a concise internal update with recommended next steps.'
+    const result = cleanContextEnhancementOutput(
+      output,
+      'look at support complaints and figure out whats bug vs confusing ux and make internal update'
+    )
+
+    expect(result).toBe(output)
+  })
+
+  it('restores sendable-draft intent when a prompt rewrite drops it', () => {
+    const result = cleanContextEnhancementOutput(
+      'Analyze the provided complaints to identify the core underlying issue, distinguish between user error and systemic problems, and determine the key action items to communicate to the team today.',
+      'read these complaints and just tell me what the real problem is, what is user error, and what i should send the team today'
+    )
+
+    expect(result).toBe(
+      'Analyze the provided complaints to identify the core underlying issue, distinguish between user error and systemic problems, and determine the key action items to communicate to the team today. Draft a clear update I can send to the team today.'
+    )
+  })
+
+  it('keeps sendable-draft rewrites unchanged when the deliverable is preserved', () => {
+    const output = 'Analyze the provided complaints to identify the core underlying issue, distinguish between user error and systemic problems, and draft a clear update I can send to the team today with the key action items.'
+    const result = cleanContextEnhancementOutput(
+      output,
+      'read these complaints and just tell me what the real problem is, what is user error, and what i should send the team today'
+    )
+
+    expect(result).toBe(output)
+  })
 })

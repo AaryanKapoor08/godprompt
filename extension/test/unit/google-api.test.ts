@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { callGoogleAPI, listGoogleModels } from '../../src/lib/llm-client'
+import { buildUserMessage, callGoogleAPI, listGoogleModels } from '../../src/lib/llm-client'
+import { buildContextUserMessage } from '../../src/lib/context-enhance-prompt'
 
 describe('Google API client helpers', () => {
   const mockFetch = vi.fn()
@@ -171,6 +172,54 @@ describe('Google API client helpers', () => {
     const text = await callGoogleAPI('AIzaTestKey', 'system prompt', 'user prompt', 'gemma-3-27b-it')
 
     expect(text).toBe('Give me a focused roadmap to learn Java.\n[DIFF: roadmap structure, practical focus]')
+  })
+
+  it('falls back to a sharpened source prompt when Gemma softens a launch prompt into generic project-brief language', async () => {
+    const rawPrompt = 'I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Please use these documents to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Based on this analysis, provide:\n\n1. A practical launch readiness checklist.\n2. A concise internal risk memo.\n3. A draft customer-facing FAQ that is clear and natural-sounding.\n\nIf the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
+    const userMessage = buildUserMessage(
+      rawPrompt,
+      'chatgpt',
+      { isNewConversation: true, conversationLength: 0 }
+    )
+
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          parts: [{
+            text: 'Please analyze the attached launch brief, meeting notes, draft customer FAQ, and product screenshots to proactively identify potential issues. Deliverables include: a launch readiness checklist, an internal risk memo, and a refined customer FAQ. Focus on identifying launch risks, inconsistencies across documents, potential customer confusion, and unsupported team assumptions. Clearly flag any conflicting information found within the files, and provide a concise summary of your findings for internal distribution. Avoid speculation or ambiguous language.\n[DIFF: refined wording, deliverables]',
+          }],
+        },
+      }],
+    }), { status: 200 }))
+
+    const text = await callGoogleAPI('AIzaTestKey', 'system prompt', userMessage, 'gemma-3-27b-it')
+
+    expect(text).toBe(
+      'Use the launch brief, meeting notes, a draft customer FAQ, and product screenshots as the source material to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Then produce a practical launch readiness checklist, a concise internal risk memo, and a draft customer-facing FAQ that is clear and natural-sounding. If the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.\n[DIFF: refined wording, deliverables]'
+    )
+  })
+
+  it('uses the same Gemma fallback for highlighted-text rewrite requests', async () => {
+    const selectedText = 'I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Please use these documents to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Based on this analysis, provide:\n\n1. A practical launch readiness checklist.\n2. A concise internal risk memo.\n3. A draft customer-facing FAQ that is clear and natural-sounding.\n\nIf the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
+    const userMessage = buildContextUserMessage(selectedText)
+
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          parts: [{
+            text: 'Please analyze the attached launch brief, meeting notes, draft customer FAQ, and product screenshots to proactively identify potential issues. Deliverables include: a launch readiness checklist, an internal risk memo, and a refined customer FAQ. Focus on identifying launch risks, inconsistencies across documents, potential customer confusion, and unsupported team assumptions. Clearly flag any conflicting information found within the files, and provide a concise summary of your findings for internal distribution. Avoid speculation or ambiguous language.',
+          }],
+        },
+      }],
+    }), { status: 200 }))
+
+    const text = await callGoogleAPI('AIzaTestKey', 'system prompt', userMessage, 'gemma-3-27b-it')
+
+    expect(text).toBe(
+      'Use the launch brief, meeting notes, a draft customer FAQ, and product screenshots as the source material to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Then produce a practical launch readiness checklist, a concise internal risk memo, and a draft customer-facing FAQ that is clear and natural-sounding. If the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
+    )
   })
 
   it('sanitizes Gemini Flash wrapper tags down to the rewritten prompt', async () => {

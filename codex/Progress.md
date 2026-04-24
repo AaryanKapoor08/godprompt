@@ -2,9 +2,9 @@
 
 Last updated: 2026-04-23
 
-This is the compact handoff for the current workspace. The current local work includes the highlighted-text rewrite guardrail follow-up from 2026-04-23, and `origin/main` was verified as aligned with local `main` before the current commit/push flow.
+This is the compact handoff for the current workspace. The latest pushed highlighted-text guardrail work is commit `bc2c788`, and there is additional local uncommitted follow-up from 2026-04-23 for the duplicate-summary cleanup path.
 
-Current status: no active unresolved issues are pending. Today's highlighted-text follow-up is implemented and verified.
+Current status: one active unresolved issue is pending. In real browser testing after reloading the unpacked extension, highlighted-text prompt rewrites still produced duplicate trailing summary/restatement output for at least one rough-prompt shape. Local follow-up cleanup changes exist, but they are not browser-verified yet and should be treated as unproven.
 
 ---
 
@@ -14,8 +14,14 @@ Branch:
 - `main`
 
 Remote state:
-- `origin/main...main`: `0 0` at the latest pre-commit verification on `2026-04-23`
-- use `git log --oneline -10` after pushing to see the latest commit that includes today's guardrail follow-up
+- `origin/main...main`: `0 0` at the latest verification on `2026-04-23`
+- latest pushed commit: `bc2c788` — `fix(context): tighten highlighted-text rewrite guardrails`
+
+Working tree:
+- dirty with uncommitted local follow-up edits in:
+  - `extension/src/lib/context-enhance-prompt.ts`
+  - `extension/test/unit/context-enhance-prompt.test.ts`
+  - `extension/test/unit/context-menu.test.ts`
 
 Recent commits before today's new local changes:
 - `f2d0dfd` — `docs(github): record highlighted text context commits`
@@ -34,8 +40,8 @@ npm test
 
 Latest result:
 - `npm run build`: passed
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
-- `npm test`: 147/147 tests passed
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
+- `npm test`: 150/150 tests passed
 
 Note:
 - Vite/CRX prints a warning that `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR. This is expected and not a failure.
@@ -65,9 +71,61 @@ What changed:
 - spot checks for rough highlighted prompts now stayed in rewrite mode instead of drifting into completed answers
 
 Verification:
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
 - `npm run build`: passed
-- `npm test`: 147/147 tests passed
+- `npm test`: 150/150 tests passed
+
+### Open issue: Highlighted-text duplicate trailing summary still unresolved (2026-04-23)
+
+Status: unresolved. Do not assume the current local follow-up is fixed until one targeted browser retest confirms it.
+
+What was observed in the browser:
+- after reloading the unpacked extension, highlighted-text rewrites for rough prompts still sometimes returned a valid first rewrite plus a second shorter restatement of the same task
+- this means the issue was not just a stale extension build
+- representative observed shape:
+
+```text
+Analyze these customer complaints and bug notes to identify the core underlying issue, distinguish between user confusion and actual problems, determine what critical evidence is missing, and prioritize immediate checks. Then, draft a concise internal update based on these findings that I can send today.
+Analyze these complaints to identify what is actually broken, what stems from user confusion, and what message should be sent to the team today. Prioritize the biggest problems first.
+```
+
+Why the current implementation is still not trusted:
+- prompt instructions already tell the model to return one consolidated rewrite only, but the provider can still append a shorter restatement
+- cleanup heuristics currently rely on structure plus keyword/concept overlap
+- local unit tests now cover paragraph-separated and single-line duplicate-summary shapes, but those are still synthetic examples
+- the browser-reproduced issue happened after reload, and the latest local cleanup change has not yet been confirmed in browser
+
+Most likely root problem:
+- the duplicate-summary issue is semantic, not just structural
+- the trailing restatement can paraphrase the main rewrite using different wording, so simple paragraph splitting and concept matching may still miss some real provider outputs
+- generic verbs like `analyze`, `identify`, `draft`, and `prioritize` are too common to carry enough signal by themselves
+
+What should be fixed next session:
+- inspect `removeTrailingDuplicatePromptSummary()` in `extension/src/lib/context-enhance-prompt.ts`
+- compare the trailing block against both:
+  - the main rewritten body
+  - the original selected text
+- treat a trailing imperative block as removable when it does not introduce any new hard constraint that is present in the original selection
+- downweight generic prompt verbs and generic emphasis words when deciding whether a trailing block adds new meaning
+- prefer preserving only clearly new constraints like explicit length limits, formatting requirements, or new deliverables
+- add regression tests using the exact browser-observed output strings from this session, not just simplified synthetic variants
+
+Current local follow-up work:
+- `extension/src/lib/context-enhance-prompt.ts`
+  - added duplicate-summary cleanup for both paragraph and single-line trailing restatements
+- `extension/test/unit/context-enhance-prompt.test.ts`
+  - updated instruction expectations around consolidated rewrites
+- `extension/test/unit/context-menu.test.ts`
+  - added duplicate-summary cleanup regressions, including the exact two-line duplicate-restatement shape
+
+Important next-session caution:
+- the current local follow-up changes are not committed or pushed
+- browser behavior has not been rechecked after the latest local cleanup patch
+- next session should start by reading `git status --short`, reviewing the local diffs in the three files above, and deciding whether to continue refining the current local patch or replace it with a simpler dedupe strategy
+- only one targeted browser retest is needed after the next patch:
+  - select `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
+  - run `Enhance with PromptGod`
+  - pass condition: one consolidated rewrite only, no second shorter restatement
 
 ### 1. Highlighted Text Enhancer
 
@@ -258,8 +316,8 @@ Where to modify if bugs come up:
 
 Verification:
 - `npm run build`: passed
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 23/23 tests passed
-- `npm test`: 147/147 tests passed
+- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
+- `npm test`: 150/150 tests passed
 
 ---
 
@@ -388,11 +446,13 @@ Working:
 - smooth non-Perplexity stream completion
 - highlighted-text rewrites do not ask clarifying questions or use placeholders
 
-No active issues:
+Active issues:
+- highlighted-text rough prompts can still show a duplicate trailing summary/restatement in real browser output; see the open issue section above
+
+Resolved / not currently pending:
 - no current Perplexity issue pending
 - no current undo placement issue pending
 - no current highlighted-text answer-vs-rewrite regression pending
-- no currently known blocking regression pending
 
 ---
 
@@ -424,6 +484,11 @@ Highlighted-text guardrail follow-up:
 - `extension/test/unit/context-enhance-prompt.test.ts`
 - `extension/test/unit/context-menu.test.ts`
 - `codex/Progress.md`
+
+Uncommitted duplicate-summary follow-up:
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
 
 Contenteditable fallback:
 - `extension/src/content/dom-utils.ts`
@@ -460,6 +525,11 @@ After reloading the unpacked extension:
    - run `Enhance with PromptGod`
    - confirm the result stays as a rewritten prompt, not a completed answer
    - confirm the result still asks for a sendable update/message for `today`
+
+5. Highlighted-text duplicate-summary regression:
+   - use `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
+   - confirm the result is one consolidated rewrite only
+   - fail if a second shorter restatement is appended on the next line or in a trailing paragraph
 
 ---
 

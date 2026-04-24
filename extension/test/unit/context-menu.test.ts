@@ -206,4 +206,93 @@ Original text:
 
     expect(result).toBe(output)
   })
+
+  it('keeps valid launch-triage prompt rewrites with file references and deliverables unchanged', () => {
+    const output = 'Use the launch brief, meeting notes, draft customer FAQ, and product screenshots as the source material for a hard launch-readiness triage. Identify the primary launch risks, inconsistencies across the documents, likely customer misunderstandings, and team assumptions that are not supported by evidence. Then produce a practical launch-readiness checklist, a concise internal risk memo, a clear customer-facing FAQ, and a summary I can share internally. Highlight any conflicting information directly, avoid inventing missing details, and keep the output sharp and practical.'
+    const result = cleanContextEnhancementOutput(
+      output,
+      'I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Please use these documents to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Based on this analysis, provide:\n\n1. A practical launch readiness checklist.\n2. A concise internal risk memo.\n3. A draft customer-facing FAQ that is clear and natural-sounding.\n\nIf the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
+    )
+
+    expect(result).toBe(output)
+  })
+
+  it('restores missing internal-summary intent for launch-triage prompt rewrites', () => {
+    const result = cleanContextEnhancementOutput(
+      'Use the launch brief, meeting notes, draft customer FAQ, and product screenshots as the source material for a hard launch-readiness triage. Identify the primary launch risks, inconsistencies across the documents, likely customer misunderstandings, and team assumptions that are not supported by evidence. Then produce a practical launch-readiness checklist, a concise internal risk memo, and a clear customer-facing FAQ. Highlight any conflicting information directly, avoid inventing missing details, and keep the output sharp and practical.',
+      'I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Please use these documents to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Based on this analysis, provide:\n\n1. A practical launch readiness checklist.\n2. A concise internal risk memo.\n3. A draft customer-facing FAQ that is clear and natural-sounding.\n\nIf the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
+    )
+
+    expect(result).toBe(
+      'Use the launch brief, meeting notes, draft customer FAQ, and product screenshots as the source material for a hard launch-readiness triage. Identify the primary launch risks, inconsistencies across the documents, likely customer misunderstandings, and team assumptions that are not supported by evidence. Then produce a practical launch-readiness checklist, a concise internal risk memo, and a clear customer-facing FAQ. Highlight any conflicting information directly, avoid inventing missing details, and keep the output sharp and practical. Draft a clear summary I can share internally.'
+    )
+  })
+
+  it('removes a trailing duplicate summary paragraph from a rewritten prompt', () => {
+    const result = cleanContextEnhancementOutput(
+      `I have a collection of support complaints, screenshots, and incomplete notes. This material contains a mix of factual issues, user experience confusion, and potential bugs.
+
+First, process this raw input in stages:
+
+1. Separate the content into distinct categories: facts, assumptions, missing information, contradictions, and emotional claims.
+
+2. Based on this analysis, identify the 3 most likely root cause buckets for the issues. For each bucket, describe what specific evidence would make it more or less likely.
+
+3. Finally, draft a concise internal update for engineering, design, and support teams. This update should clearly state what happened, the impact, what is currently known, what is still unknown, proposed next steps, clear ownership for those steps, and the risks if no action is taken this week. Do not invent details or make assumptions if the source material is insufficient.
+
+Analyze these support complaints and bug notes to distinguish actual issues from user confusion. Identify likely root causes and draft a concise team update. Prioritize critical information, specify missing evidence, outline immediate checks, and detail the risks of inaction this week.`,
+      'sort these complaints and notes into facts assumptions missing info contradictions and emotional claims, then identify 3 root cause buckets and draft an internal update with next steps and risks this week'
+    )
+
+    expect(result).not.toContain('Analyze these support complaints and bug notes')
+    expect(result).toContain('1. Separate the content into distinct categories')
+    expect(result).toContain('3. Finally, draft a concise internal update')
+  })
+
+  it('removes a trailing duplicate summary line from a rewritten prompt', () => {
+    const result = cleanContextEnhancementOutput(
+      `Analyze these customer complaints and bug notes to identify the core underlying issue, distinguish between user confusion and actual problems, determine what critical evidence is missing, and prioritize immediate checks. Then, draft a concise internal update based on these findings that I can send today.
+Analyze these complaints to identify what is actually broken, what stems from user confusion, and what message should be sent to the team today. Prioritize the biggest problems first.`,
+      'read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today'
+    )
+
+    expect(result).toBe(
+      'Analyze these customer complaints and bug notes to identify the core underlying issue, distinguish between user confusion and actual problems, determine what critical evidence is missing, and prioritize immediate checks. Then, draft a concise internal update based on these findings that I can send today.'
+    )
+  })
+
+  it('removes a paraphrased trailing summary when it only repeats covered prompt constraints', () => {
+    const result = cleanContextEnhancementOutput(
+      `Review these customer complaints and bug reports to determine what is genuinely failing, what users are misunderstanding, which evidence gaps still need verification, and draft a concise internal update I can send to the team today.
+Use these complaints and notes to work out what is actually broken, what comes from user confusion, and what message the team should get today. Focus on the most urgent items first.`,
+      'read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today'
+    )
+
+    expect(result).toBe(
+      'Review these customer complaints and bug reports to determine what is genuinely failing, what users are misunderstanding, which evidence gaps still need verification, and draft a concise internal update I can send to the team today.'
+    )
+  })
+
+  it('keeps a trailing summary line when it restores original hard constraints the main rewrite dropped', () => {
+    const output = `Analyze these support complaints and bug notes to identify what is actually broken, what comes from user confusion, and draft a clear team update.
+Analyze these complaints to identify what is actually broken, what comes from user confusion, and draft the team update in under 150 words for today.`
+    const result = cleanContextEnhancementOutput(
+      output,
+      'read these complaints and tell me what is actually broken, what is user confusion, and draft a team update under 150 words for today'
+    )
+
+    expect(result).toBe(output)
+  })
+
+  it('keeps a final paragraph when it adds a genuinely new constraint', () => {
+    const output = `Analyze these support complaints and bug notes to distinguish actual issues from user confusion. Identify likely root causes and draft a concise team update.
+
+Keep the final update under 150 words and use flat bullets.`
+    const result = cleanContextEnhancementOutput(
+      output,
+      'look through support complaints and tell me whats actually broken vs user confusion, then write a short update for the team'
+    )
+
+    expect(result).toBe(output)
+  })
 })

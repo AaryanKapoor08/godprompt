@@ -1,10 +1,14 @@
 # PromptGod — Codex Progress
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
-This is the compact handoff for the current workspace. The latest pushed highlighted-text guardrail work is commit `bc2c788`, and there is additional local uncommitted follow-up from 2026-04-23 for the duplicate-summary cleanup path.
+This handoff supersedes the older 2026-04-23 note. Today’s work is fully committed and pushed to GitHub through commit `61f0733`, `main` matches `origin/main`, and the working tree should be clean after this file is pushed.
 
-Current status: one active unresolved issue is pending. In real browser testing after reloading the unpacked extension, highlighted-text prompt rewrites still produced duplicate trailing summary/restatement output for at least one rough-prompt shape. Local follow-up cleanup changes exist, but they are not browser-verified yet and should be treated as unproven.
+Current status:
+- Gemma hardening is implemented in both the normal chatbot enhancer and the highlighted-text enhancer.
+- Manual Gemma testing passed for the launch-triage and incident-triage prompt shapes that were failing earlier.
+- No further Gemma code changes are planned right now unless a different prompt family breaks.
+- The natural next step is manual comparison testing on `gemini-2.5-flash` and `gemini-2.5-flash-lite` once provider rate limits clear.
 
 ---
 
@@ -14,23 +18,25 @@ Branch:
 - `main`
 
 Remote state:
-- `origin/main...main`: `0 0` at the latest verification on `2026-04-23`
-- latest pushed commit: `bc2c788` — `fix(context): tighten highlighted-text rewrite guardrails`
+- `origin/main...main`: `0 0` at the latest verification on `2026-04-24`
+- latest pushed commit: `61f0733` — `docs(progress): update codex handoff`
+
+Latest pushed code commits from today:
+- `93b4117` — `fix(meta): sharpen gemma rewrite instructions`
+- `0f3f2d6` — `fix(gemma): harden google rewrite cleanup`
+- `35f85d3` — `fix(context): expand gemma highlighted rewrite guardrails`
+
+Latest pushed test commits from today:
+- `e14a7b1` — `test(llm): cover user message rewrite guardrails`
+- `af56b0e` — `test(context): expand highlighted prompt builder coverage`
+- `9f311e0` — `test(context): cover highlighted rewrite cleanup regressions`
+- `0444707` — `test(google): cover gemma rewrite fallback repair`
+- `ce25170` — `test(meta): expand gemma prompt guardrails`
 
 Working tree:
-- dirty with uncommitted local follow-up edits in:
-  - `extension/src/lib/context-enhance-prompt.ts`
-  - `extension/test/unit/context-enhance-prompt.test.ts`
-  - `extension/test/unit/context-menu.test.ts`
+- expected clean after this docs update is committed and pushed
 
-Recent commits before today's new local changes:
-- `f2d0dfd` — `docs(github): record highlighted text context commits`
-- `afbdf6e` — `docs(progress): sync highlighted text context status`
-- `474dd4d` — `docs(codex): expand highlighted text handoff`
-- `d40b684` — `docs(codex): update progress handoff`
-- `27396ba` — `docs(codex): add highlighted text plan`
-
-Verification after the latest changes:
+Verification after today’s pushed changes:
 
 ```powershell
 cd extension
@@ -40,20 +46,23 @@ npm test
 
 Latest result:
 - `npm run build`: passed
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
-- `npm test`: 150/150 tests passed
+- `npm test`: 156/156 tests passed
 
-Note:
-- Vite/CRX prints a warning that `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR. This is expected and not a failure.
-- Git prints a local permission warning for `C:\Users\Jaska/.config/git/ignore`. This did not affect status, commits, or pushes.
+Notes:
+- Vite/CRX prints a warning that `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR. This is expected.
+- Git may still print a local permission warning for `C:\Users\Jaska/.config/git/ignore`. It did not block status, commits, or pushes.
 
 ---
 
-## Session Summary
+## Session Summary — 2026-04-24
 
-### Follow-up: Highlighted-text rewrite guardrails tightened (2026-04-23)
+### 1. Highlighted-text duplicate-summary cleanup was hardened and pushed
 
-Status: implemented locally and verified.
+Status:
+- implemented
+- tested
+- committed
+- pushed
 
 Files updated:
 - `extension/src/lib/context-enhance-prompt.ts`
@@ -61,368 +70,107 @@ Files updated:
 - `extension/test/unit/context-menu.test.ts`
 
 What changed:
-- highlighted-text cleanup no longer treats placeholders/questions as the only invalid output shapes
-- `cleanContextEnhancementOutput()` now rejects answer-like/report-like outputs when the original selection looks like a rough AI prompt or instruction
-- prompt-like selection detection was widened to catch conversational phrasings such as `read these complaints and tell me...`
-- highlighted-text prompt instructions now explicitly preserve requests to draft a sendable email, message, update, or other output the user can copy/paste/send
-- cleanup now repairs dropped sendable-deliverable intent when a rewritten prompt loses `draft a clear update/message/email I can send...`
-- the repair path preserves short timing cues such as `today`, `tonight`, `tomorrow`, and `this week` when they are part of the deliverable request
-- valid prompt rewrites still pass through unchanged
-- spot checks for rough highlighted prompts now stayed in rewrite mode instead of drifting into completed answers
-
-Verification:
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
-- `npm run build`: passed
-- `npm test`: 150/150 tests passed
-
-### Open issue: Highlighted-text duplicate trailing summary still unresolved (2026-04-23)
-
-Status: unresolved. Do not assume the current local follow-up is fixed until one targeted browser retest confirms it.
-
-What was observed in the browser:
-- after reloading the unpacked extension, highlighted-text rewrites for rough prompts still sometimes returned a valid first rewrite plus a second shorter restatement of the same task
-- this means the issue was not just a stale extension build
-- representative observed shape:
-
-```text
-Analyze these customer complaints and bug notes to identify the core underlying issue, distinguish between user confusion and actual problems, determine what critical evidence is missing, and prioritize immediate checks. Then, draft a concise internal update based on these findings that I can send today.
-Analyze these complaints to identify what is actually broken, what stems from user confusion, and what message should be sent to the team today. Prioritize the biggest problems first.
-```
-
-Why the current implementation is still not trusted:
-- prompt instructions already tell the model to return one consolidated rewrite only, but the provider can still append a shorter restatement
-- cleanup heuristics currently rely on structure plus keyword/concept overlap
-- local unit tests now cover paragraph-separated and single-line duplicate-summary shapes, but those are still synthetic examples
-- the browser-reproduced issue happened after reload, and the latest local cleanup change has not yet been confirmed in browser
-
-Most likely root problem:
-- the duplicate-summary issue is semantic, not just structural
-- the trailing restatement can paraphrase the main rewrite using different wording, so simple paragraph splitting and concept matching may still miss some real provider outputs
-- generic verbs like `analyze`, `identify`, `draft`, and `prioritize` are too common to carry enough signal by themselves
-
-What should be fixed next session:
-- inspect `removeTrailingDuplicatePromptSummary()` in `extension/src/lib/context-enhance-prompt.ts`
-- compare the trailing block against both:
+- `removeTrailingDuplicatePromptSummary()` now compares a trailing prompt-like restatement against both:
   - the main rewritten body
   - the original selected text
-- treat a trailing imperative block as removable when it does not introduce any new hard constraint that is present in the original selection
-- downweight generic prompt verbs and generic emphasis words when deciding whether a trailing block adds new meaning
-- prefer preserving only clearly new constraints like explicit length limits, formatting requirements, or new deliverables
-- add regression tests using the exact browser-observed output strings from this session, not just simplified synthetic variants
+- duplicate-summary detection now preserves real hard constraints instead of stripping them by accident
+- concept coverage was widened so paraphrased duplicate restatements are more likely to be removed
+- highlighted-text regressions were added for:
+  - paragraph and single-line duplicate summaries
+  - paraphrased duplicate summaries
+  - preserved hard constraints
+  - the exact launch-triage highlighted-text prompt shape that was manually tested today
 
-Current local follow-up work:
-- `extension/src/lib/context-enhance-prompt.ts`
-  - added duplicate-summary cleanup for both paragraph and single-line trailing restatements
-- `extension/test/unit/context-enhance-prompt.test.ts`
-  - updated instruction expectations around consolidated rewrites
-- `extension/test/unit/context-menu.test.ts`
-  - added duplicate-summary cleanup regressions, including the exact two-line duplicate-restatement shape
+Important nuance:
+- the original 2026-04-23 unresolved duplicate-summary browser issue was addressed in code and tests today
+- highlighted-text launch-style prompts passed in manual testing today
+- the exact older complaint-prompt browser retest from 2026-04-23 was not rerun today, so that specific manual repro is still worth checking later if you want total closure
 
-Important next-session caution:
-- the current local follow-up changes are not committed or pushed
-- browser behavior has not been rechecked after the latest local cleanup patch
-- next session should start by reading `git status --short`, reviewing the local diffs in the three files above, and deciding whether to continue refining the current local patch or replace it with a simpler dedupe strategy
-- only one targeted browser retest is needed after the next patch:
-  - select `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
-  - run `Enhance with PromptGod`
-  - pass condition: one consolidated rewrite only, no second shorter restatement
+### 2. The normal chatbot enhancer was tightened for hard triage prompts
 
-### 1. Highlighted Text Enhancer
-
-Status: implemented and pushed.
-
-Files added/updated:
-- `extension/manifest.json`
-- `extension/src/service-worker.ts`
-- `extension/src/content/context-menu-handler.ts`
-- `extension/src/lib/context-enhance-prompt.ts`
-- `extension/src/lib/types.ts`
-- `extension/test/unit/context-enhance-prompt.test.ts`
-- `extension/test/unit/context-menu.test.ts`
-
-Split commits:
-- `881d483` — `feat(context): add context menu permissions`
-- `bfcf4b9` — `feat(context): add context message types`
-- `54c0f43` — `feat(context): add highlighted text prompt module`
-- `a5e64e9` — `feat(context): add injected result popup`
-- `a39d7ea` — `feat(context): wire selected text service worker flow`
-- `22ca59b` — `test(context): cover menu guards and cleanup`
-- `8f8bb62` — `test(context): cover highlighted prompt rules`
-
-Current highlighted-text behavior:
-- user highlights text anywhere in Chrome
-- user right-clicks and selects `Enhance with PromptGod`
-- PromptGod injects a one-shot popup handler into the clicked tab/frame through `chrome.scripting.executeScript`
-- the popup immediately shows `Enhancing selected text...`
-- the popup opens a separate `context-enhance` port to the service worker
-- the service worker sends selected text through the existing BYOK provider/model settings
-- the popup shows the final enhanced text with `Copy` and `Dismiss`
-- `Escape`, the backdrop, and `Dismiss` close the popup
-- the page text is never mutated in v1
-
-Hard product distinction:
-- normal composer enhancer and highlighted-text enhancer are separate features
-- normal composer enhancer can keep its current clarifying-question behavior
-- highlighted-text enhancer must never ask clarifying questions
-- highlighted-text enhancer must never output placeholders
-- highlighted-text enhancer rewrites the selected text itself, not a meta prompt about the selected text
-
-Architecture:
-- `extension/manifest.json`
-  - adds `contextMenus`, `scripting`, and `activeTab`
-  - does not add `<all_urls>`
-  - does not broaden `web_accessible_resources`
-- `extension/src/service-worker.ts`
-  - registers context menu id `promptgod-context-enhance`
-  - menu title is `Enhance with PromptGod`
-  - menu appears only for Chrome `selection` context
-  - validates selection length before provider calls
-  - creates a `ContextEnhanceBootstrapRequest`
-  - injects `runPromptGodContextMenuHandler` only after a user context-menu click
-  - handles a separate `context-enhance` port
-  - existing `enhance` port semantics remain unchanged
-- `extension/src/content/context-menu-handler.ts`
-  - self-contained injected page handler
-  - creates `.promptgod-context-overlay`
-  - replaces any previous highlighted-text overlay before rendering a new one
-  - uses Shadow DOM scoped styles so Gmail/page CSS should not leak into the popup
-  - implements loading, success, error, copy, copied state, dismiss, backdrop close, and Escape close
-  - uses `navigator.clipboard.writeText()` and falls back to hidden textarea plus `document.execCommand('copy')`
-  - clears selected-text request data from page globals after posting the request
-  - never edits selected page text
-- `extension/src/lib/context-enhance-prompt.ts`
-  - selected-text-only prompt builder and output cleaner
-  - intentionally separate from `meta-prompt.ts`
-  - normal composer prompt behavior must not be changed here
-- `extension/src/lib/types.ts`
-  - adds `ContextEnhanceMessage`
-  - adds `ResultMessage`
-
-Service worker context flow:
-- `registerContextMenu()` runs during `initServiceWorker()`, `runtime.onInstalled`, and `runtime.onStartup`
-- registration is idempotent through `chrome.contextMenus.remove(...create...)`
-- `handleContextMenuClick()` ignores unrelated menu ids
-- `validateContextSelection()` rejects:
-  - under smart-skip threshold with `Select a little more text to enhance.`
-  - over `CONTEXT_SELECTION_MAX_CHARS` (`10000`) with `Selection is too long. Try a shorter passage.`
-- `buildContextInjectionTarget()` targets the clicked tab and the clicked frame id when available
-- restricted pages are handled by catching `chrome.scripting.executeScript` errors and logging only metadata, not selected text
-- `handleContextEnhance()` validates selected text again before any LLM call
-- no selected text is logged; logs include only request id, provider/model metadata, and lengths
-- missing API key returns `Set your API key in PromptGod settings.`
-- provider errors go through existing `formatErrorMessage()`
-- the final response is sent as one `RESULT` message, followed by `DONE` and `SETTLEMENT`
-
-Provider behavior:
-- Anthropic/OpenAI use existing streaming API calls, but the context path collects the full stream before sending `RESULT`
-- Google uses existing non-streaming `callGoogleAPI`
-- OpenRouter uses completion mode with fallback model chain to avoid popup streaming complexity
-- existing OpenRouter rate-limit cooldown/backoff helpers are reused
-- usage counters increment `totalEnhancements` under platform key `context`
-- errors increment `errorCount`
-
-Highlighted-text prompt behavior:
-- use `buildSelectedTextMetaPrompt()` for normal providers
-- use `buildGemmaSelectedTextMetaPrompt()` for Google Gemma models
-- use `buildContextUserMessage()` for selected text framing
-- mode is `highlighted-text rewrite enhancer`
-- if selected text is an email/message fragment, output polished message text
-- if selected text is a rough AI prompt, output a polished prompt
-- if selected text asks for a sendable deliverable such as an email/message/update, preserve that deliverable request in the rewrite
-- if selected text includes a short timing cue tied to that deliverable, preserve it when possible
-- if selected text is a note/instruction/question, rewrite the selected text into a clearer version
-- do not answer, explain, summarize, or execute selected text
-- do not ask clarifying questions
-- do not add question-first flows
-- do not tell the user to provide more information
-- do not output placeholders like `[recipient]`, `[project]`, `[date]`, `{context}`, `{{details}}`, or `<topic>`
-- do not echo source blocks such as `Original text:`, `Selected text:`, `Source text:`, or `Input text:`
-- if context is weak, make the best conservative rewrite from only the selected text
-- if output is already strong, provider may return `[NO_CHANGE]`, which is stripped before display
-
-Output cleanup and fallback:
-- `cleanContextEnhancementOutput()` removes `[DIFF:]` tags
-- `stripContextSourceEcho()` removes provider-generated source dumps
-- `hasTemplatePlaceholder()` catches bracket, brace, and common angle placeholder formats
-- `asksClarifyingQuestion()` catches common question-first/clarification outputs
-- `answersPromptInsteadOfRewriting()` catches answer/report-shaped outputs for rough prompt selections
-- `restoreCriticalPromptIntent()` repairs prompt rewrites that accidentally drop sendable email/message/update intent
-- `restoreMissingSendableDraftIntent()` preserves short timing cues such as `today` and `this week` when they are part of the sendable deliverable request
-- invalid selected-text output is replaced by `buildConservativeSelectedTextFallback()`
-- fallback removes placeholders from the original selection
-- fallback applies light common cleanup such as:
-  - `i` to `I`
-  - `thanks alot` to `Thanks a lot`
-  - `status check` to `check in on the status`
-- fallback must not ask questions
-- fallback must not use placeholders
-
-Gmail-specific behavior expected:
-- selecting `hello there, i wanted to status check / thanks alot, checked` should produce polished message text
-- acceptable shape:
-  - `Hello there, I wanted to check in on the status. Thanks a lot, checked`
-- better provider output may be multi-line:
-  - `Hi there,`
-  - `I wanted to check in on the current status and see if there are any updates.`
-  - `Thanks.`
-- unacceptable output:
-  - `Write a follow-up email to [recipient] about [project].`
-  - `Who is the recipient?`
-  - `Original text: ...`
-
-Popup UI details:
-- centered fixed overlay
-- max width roughly `620px`
-- max height roughly `70vh`
-- light/dark colors match existing PromptGod visual language
-- no external icon resource is required on arbitrary webpages; popup uses inline text mark `PG`
-- buttons stay <= 8px radius
-- result text is selectable and scrollable
-- body styles are scoped in Shadow DOM
-- the handler removes an existing `.promptgod-context-overlay` before rendering a new one
-
-Privacy and permission notes:
-- no `<all_urls>` host permission
-- no `clipboardRead`
-- no `clipboardWrite`
-- `activeTab` is used only after explicit context-menu gesture
-- selected text is passed as an argument to the injected function, not encoded in URLs or DOM attributes
-- injected handler clears `__promptgodContextEnhanceRequest` after request start/settlement/cleanup
-- selected text is not logged in background or content handler
-
-Known constraints / not implemented:
-- no in-place replacement of selected text
-- no Gmail-specific adapter
-- no Google Docs/canvas editor replacement
-- no shadow-DOM selection replacement
-- restricted pages such as `chrome://` and Chrome Web Store may block injection
-- no browser automation smoke test has been run for Gmail yet
-
-Where to modify if bugs come up:
-- if popup styling/layout is wrong:
-  - edit `extension/src/content/context-menu-handler.ts`
-- if selected text asks questions or uses placeholders:
-  - edit `extension/src/lib/context-enhance-prompt.ts`
-  - update `extension/test/unit/context-enhance-prompt.test.ts`
-  - update cleanup cases in `extension/test/unit/context-menu.test.ts`
-- if context menu does not appear or injection fails:
-  - inspect `extension/manifest.json`
-  - inspect `registerContextMenu()`, `handleContextMenuClick()`, and `injectContextEnhanceRequest()` in `extension/src/service-worker.ts`
-- if provider call behavior breaks:
-  - inspect `handleContextEnhance()`, `collectContextEnhancementText()`, and `collectOpenRouterCompletionText()` in `extension/src/service-worker.ts`
-- if normal ChatGPT/Claude/Gemini/Perplexity composer behavior changes:
-  - first verify `context-enhance-prompt.ts` was not mixed back into `meta-prompt.ts` or `llm-client.ts`
-  - normal composer path should still use `buildMetaPromptWithIntensity()`, `buildGemmaMetaPromptWithIntensity()`, and `buildUserMessage()`
-
-Verification:
-- `npm run build`: passed
-- `npm test -- --run test/unit/context-menu.test.ts test/unit/context-enhance-prompt.test.ts`: 26/26 tests passed
-- `npm test`: 150/150 tests passed
-
----
-
-### 2. Contenteditable fallback hardened
-
-Status: fixed and pushed.
+Status:
+- implemented
+- tested
+- committed
+- pushed
 
 Files updated:
-- `extension/src/content/dom-utils.ts`
-- `extension/test/unit/dom-utils.test.ts`
-
-Commit:
-- `1ad9e82` — `fix(content): harden editable text fallback`
-
-Current behavior:
-- contenteditable clearing falls back to DOM mutation when `execCommand('delete')` is unavailable or fails
-- synthetic input-event insertion falls back to DOM selection insertion when editors ignore the event
-- tests cover ignored synthetic input events and failed delete/insert commands
-
----
-
-### 3. Prompt rewrite guardrails remain stable
-
-Previously updated:
+- `extension/src/lib/meta-prompt.ts`
 - `extension/src/lib/llm-client.ts`
 - `extension/test/unit/build-user-message.test.ts`
-- `extension/src/lib/meta-prompt.ts`
 - `extension/test/unit/meta-prompt.test.ts`
 
-Current behavior:
-- the enhancer treats the user prompt as source text to rewrite, not instructions to execute
-- staged workflows remain staged prompts instead of being converted into final answers
-- prompts that reference files, slides, PDFs, code, or documents stay framed around those inputs
-- study/exam-prep prompts stay natural and sendable
-- Gemini Flash output cleanup still removes leaked wrapper/XML-like tags
-- Gemma compact-path behavior remains preserved
+What changed:
+- the normal enhancer now explicitly bans the bad rewrite shape:
+  - `My goal is...`
+  - `Here's what I need you to do...`
+  - `Deliverables include...`
+- hard triage / ops / incident prompts are now explicitly steered toward direct operational wording instead of generic analysis phrasing
+- the normal rewrite path now preserves urgency/tone cues more explicitly
+- launch-triage and incident-triage good/bad patterns were added to the prompt instructions and tests
 
-No current action needed here.
+Why this was needed:
+- the user reported a bad normal-enhancer output that turned a sharp triage prompt into soft project-brief language
+- that failure mode is now directly guarded against in the normal prompt instructions
 
----
+### 3. Gemma got a dedicated hardening pass without changing non-Gemma runtime behavior
 
-### 4. Perplexity insertion issue resolved
-
-Status: fixed and pushed.
+Status:
+- implemented
+- tested
+- committed
+- pushed
 
 Files updated:
-- `extension/manifest.json`
-- `extension/src/content/adapters/perplexity.ts`
-- `extension/src/content/perplexity-main.ts`
-- `extension/src/content/ui/trigger-button.ts`
-
-Commit:
-- `1cd26a8` — `fix(perplexity): write composer through lexical bridge`
-
-Root cause:
-- Perplexity uses a Lexical-style editor.
-- Earlier fixes mutated visible `contenteditable` DOM and judged success from immediate `textContent`.
-- Lexical keeps the real prompt in editor state, so Perplexity could reconcile the DOM back to stale/original text.
-- Normal extension content scripts run in an isolated world, so they cannot reliably access the page-side Lexical editor instance.
+- `extension/src/lib/meta-prompt.ts`
+- `extension/src/lib/context-enhance-prompt.ts`
+- `extension/src/lib/llm-client.ts`
+- `extension/test/unit/google-api.test.ts`
 
 What changed:
-- added `extension/src/content/perplexity-main.ts` as a Perplexity-only `MAIN` world content script
-- registered the main-world bridge only for `perplexity.ai` / `www.perplexity.ai`
-- the Perplexity adapter now dispatches a bridge event to set the Lexical editor state directly
-- native DOM insertion remains only as a fallback
-- removed the Perplexity preview/copy fallback popup path that previously showed unwanted UI
+- `buildGemmaMetaPromptWithIntensity()` was expanded so Gemma is told to preserve:
+  - named inputs
+  - explicit deliverables
+  - tone cues such as `sharp`, `practical`, `clear`, `natural-sounding`, and `non-fluffy`
+  - anti-invention and uncertainty language
+- `buildGemmaSelectedTextMetaPrompt()` was expanded in the same direction for highlighted-text mode
+- `sanitizeGemmaResponse()` was hardened so Gemma-only outputs get cleaned more aggressively
+- a Gemma-only repair/fallback path was added:
+  - if Gemma softens a sharp prompt into generic project-brief language such as `Please analyze... Deliverables include...`
+  - the extension rebuilds a sharper conservative rewrite from the original source prompt instead of letting the degraded output through
+- this repair path is only used in the Google Gemma branch
+- non-Gemma providers were intentionally left alone
 
-Current Perplexity behavior:
-- direct prompt replacement works through the Lexical bridge
-- no preview overlay appears
-- no manual copy/paste fallback is used as the normal path
-- Perplexity undo button appears and works
+Why this matters:
+- the user explicitly wanted Gemma fixed without disturbing the rest of the codebase
+- today’s runtime hardening was scoped to Gemma only
 
-Old broken Perplexity commits still exist in git history, but they are superseded by `1cd26a8` on current `main`.
+### 4. Manual Gemma spot checks passed today
 
----
+Status:
+- manual spot checks passed
 
-### 5. Undo button visibility fixed
+Prompt/output classes that passed:
+- highlighted-text launch-triage prompt
+- normal chatbot launch-triage prompt
+- normal chatbot incident-triage prompt
+- a messier launch-risk prompt with multiple evidence sources and multiple deliverables
 
-Status: fixed and pushed.
+Observed outcome:
+- Gemma stopped falling back into the earlier generic `Please analyze... Deliverables include...` shape on the tested prompts
+- outputs stayed sharp enough that no further Gemma code edits were justified today
 
-File updated:
-- `extension/src/content/ui/undo-button.ts`
+### 5. Work stopped at provider comparison testing because of rate limits
 
-Commit:
-- `7117723` — `fix(ui): keep undo visible on hosted composers`
+Status:
+- planned
+- not run
 
-Root cause:
-- Perplexity and Gemini can clip children appended inside their composer/editor DOM.
-- The undo button was being appended into those hosted composer wrappers with absolute positioning, so it could exist but be visually hidden.
+What was next:
+- compare `gemini-2.5-flash` and `gemini-2.5-flash-lite`
 
-What changed:
-- Perplexity and Gemini now use viewport-fixed undo placement instead of nesting the undo button inside clipped editor DOM
-- Gemini placement was adjusted to match the ChatGPT-style below-composer alignment
-- Perplexity’s working undo placement was preserved
-- ChatGPT and Claude undo placement behavior remains unchanged
-- undo keydown listener cleanup now removes the listener from the actual input element, not only ChatGPT’s selector
-
-Current undo behavior:
-- ChatGPT: existing placement behavior
-- Claude: existing placement behavior
-- Gemini: visible below/right of composer like ChatGPT
-- Perplexity: visible and working with the fixed placement
-
-No current action needed here.
+Why it stopped:
+- provider rate limits blocked further manual testing during this session
 
 ---
 
@@ -433,103 +181,125 @@ Working:
 - Claude prompt enhancement
 - Gemini prompt enhancement
 - Perplexity prompt enhancement
-- highlighted text enhancement via right-click context menu
-- highlighted-text rough prompts stay in rewrite mode instead of showing completed answers
-- highlighted-text rough prompts better preserve sendable update/message/email requests
-- Perplexity direct insertion through the Lexical bridge
-- undo button visibility on Perplexity and Gemini
-- no Perplexity preview/copy popup fallback
-- rewrite-only guardrail against answering the prompt
-- staged workflow preservation
-- file/PDF/slides/exam-prep prompt preservation
-- Gemini Flash wrapper-tag cleanup
-- smooth non-Perplexity stream completion
-- highlighted-text rewrites do not ask clarifying questions or use placeholders
+- highlighted-text enhancement via right-click context menu
+- highlighted-text duplicate-summary cleanup is stronger than yesterday and now covered by broader regressions
+- highlighted-text launch-style prompts passed manually today
+- normal chatbot hard-triage prompts now stay much closer to the intended sharp operational wording
+- Gemma now preserves explicit evidence sources, deliverables, and anti-invention constraints much better on the tested prompt family
+- Gemma has a dedicated repair path for degraded generic rewrite outputs
+- non-Gemma regression suite remains green
 
-Active issues:
-- highlighted-text rough prompts can still show a duplicate trailing summary/restatement in real browser output; see the open issue section above
+No confirmed active code issue from today’s session:
+- none
 
-Resolved / not currently pending:
-- no current Perplexity issue pending
-- no current undo placement issue pending
-- no current highlighted-text answer-vs-rewrite regression pending
+Residual caution:
+- the exact older highlighted-text complaint-prompt duplicate-summary repro from 2026-04-23 was not manually rerun today
+- treat that as a targeted manual follow-up, not as an active confirmed bug
 
 ---
 
-## Files Changed In Latest Work
+## What Changed Today
 
-Perplexity insertion:
-- `extension/manifest.json`
-- `extension/src/content/adapters/perplexity.ts`
-- `extension/src/content/perplexity-main.ts`
-- `extension/src/content/ui/trigger-button.ts`
+Runtime / prompt code:
+- `extension/src/lib/meta-prompt.ts`
+- `extension/src/lib/llm-client.ts`
+- `extension/src/lib/context-enhance-prompt.ts`
 
-Undo visibility:
-- `extension/src/content/ui/undo-button.ts`
+Tests:
+- `extension/test/unit/build-user-message.test.ts`
+- `extension/test/unit/context-enhance-prompt.test.ts`
+- `extension/test/unit/context-menu.test.ts`
+- `extension/test/unit/google-api.test.ts`
+- `extension/test/unit/meta-prompt.test.ts`
 
-Progress handoff:
+Docs:
 - `codex/Progress.md`
-
-Highlighted-text enhancement:
-- `extension/manifest.json`
-- `extension/src/service-worker.ts`
-- `extension/src/content/context-menu-handler.ts`
-- `extension/src/lib/context-enhance-prompt.ts`
-- `extension/src/lib/types.ts`
-- `extension/test/unit/context-enhance-prompt.test.ts`
-- `extension/test/unit/context-menu.test.ts`
-
-Highlighted-text guardrail follow-up:
-- `extension/src/lib/context-enhance-prompt.ts`
-- `extension/test/unit/context-enhance-prompt.test.ts`
-- `extension/test/unit/context-menu.test.ts`
-- `codex/Progress.md`
-
-Uncommitted duplicate-summary follow-up:
-- `extension/src/lib/context-enhance-prompt.ts`
-- `extension/test/unit/context-enhance-prompt.test.ts`
-- `extension/test/unit/context-menu.test.ts`
-
-Contenteditable fallback:
-- `extension/src/content/dom-utils.ts`
-- `extension/test/unit/dom-utils.test.ts`
 
 ---
 
-## Recommended Manual Smoke Check
+## Next Session — Start Here
 
-After reloading the unpacked extension:
+There is no immediate code task queued. The next session should start with manual provider testing, not more edits.
 
-1. Perplexity:
-   - open a fresh Perplexity tab
-   - type a prompt
-   - run PromptGod
-   - confirm the visible composer is replaced with the enhanced prompt
-   - confirm no preview/copy popup appears
-   - confirm undo appears and restores the original prompt
+### Primary next task
 
-2. Gemini:
-   - type a prompt
-   - run PromptGod
-   - confirm the enhanced prompt appears
-   - confirm undo appears below/right of the composer in the ChatGPT-style placement
-   - confirm undo restores the original prompt
+Once rate limits clear, compare:
+- `gemini-2.5-flash`
+- `gemini-2.5-flash-lite`
 
-3. Quick regression:
-   - run one normal ChatGPT prompt
-   - run one normal Claude prompt
-   - run the `34_BST_merged.pdf` + lecture slides study prompt if those files are available in the target chat
+Use the normal chatbot enhancer flow first.
 
-4. Highlighted-text prompt regression:
-   - select a rough prompt like `read these complaints and tell me what update i should send the team today`
-   - run `Enhance with PromptGod`
-   - confirm the result stays as a rewritten prompt, not a completed answer
-   - confirm the result still asks for a sendable update/message for `today`
+### Prepared test categories
 
-5. Highlighted-text duplicate-summary regression:
-   - use `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
-   - confirm the result is one consolidated rewrite only
-   - fail if a second shorter restatement is appended on the next line or in a trailing paragraph
+1. Hard triage prompt
+- Use the API logs / support tickets / screenshots / Slack evidence prompt shape
+- Pass if it stays sharp, keeps evidence sources, keeps all deliverables, and does not drift into `Please analyze...`
+
+2. Broad strategy prompt with missing context
+- Use a business-strategy ask with insufficient detail
+- Pass if it asks only the minimum useful clarifying questions instead of inventing specifics
+
+3. File-based staged workflow prompt
+- Use a slides/handout/sample-code prompt where the workflow is:
+  - analyze uploaded material first
+  - solve later
+- Pass if it preserves the staged sequence and does not skip ahead
+
+4. Research / comparison prompt
+- Use a comparison prompt such as Postgres vs ClickHouse vs BigQuery
+- Pass if it stays decision-oriented and does not add filler
+
+5. Already-strong prompt
+- Use a prompt that is already specific and structured
+- Pass if it stays close to the source and does not over-rewrite
+
+### Comparison criteria for Flash vs Flash Lite
+
+Check for:
+- preserves named inputs
+- preserves explicit deliverables
+- preserves anti-invention language
+- avoids placeholders
+- avoids clarifying questions unless truly needed
+- avoids `My goal is...` / `Deliverables include...` / project-brief drift
+- does not turn a sharp operational ask into generic fluff
+
+### If something fails
+
+Do this before changing code:
+- capture the exact provider and model
+- capture the full rewritten output
+- note whether it was:
+  - normal chatbot enhancer
+  - highlighted-text enhancer
+- note whether the failure is:
+  - dropped deliverables
+  - generic softening
+  - placeholders
+  - unnecessary clarifying questions
+  - staged-workflow collapse
+  - duplicate-summary output
+
+Rule for next session:
+- do not reopen Gemma code just because wording is slightly more polished
+- only reopen code if there is a real regression or a new prompt family failure
+
+---
+
+## Recommended Manual Checks
+
+When testing resumes:
+
+1. Reload the unpacked extension first.
+
+2. Run one normal Gemma prompt from each category above to confirm today’s fixes still behave the same in the browser.
+
+3. Run the prepared Flash / Flash Lite comparison prompts once rate limits clear.
+
+4. Optional but useful:
+- rerun the original highlighted-text complaint-prompt duplicate-summary repro from 2026-04-23:
+  - `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
+  - pass condition: one consolidated rewrite only
 
 ---
 

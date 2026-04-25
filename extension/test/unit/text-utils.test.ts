@@ -1,25 +1,23 @@
-import { describe, it, expect } from 'vitest'
-import { normalizeText } from '../../src/lib/text-utils'
+import { describe, expect, it } from 'vitest'
+import { cleanEnhancedPromptOutput } from '../../src/lib/text-utils'
 
-describe('TextNormalization', () => {
-  it('should normalize multiple spaces to one', () => {
-    expect(normalizeText('Hello    World')).toBe('Hello World')
+describe('cleanEnhancedPromptOutput', () => {
+  it('strips decorative bold emphasis from rewritten prompts by default', () => {
+    const result = cleanEnhancedPromptOutput(
+      '**Task 1: Incident Triage**\n\n1. **A prioritized launch checklist.**\n2. **A short internal risk memo.**',
+      'use these files to do hard launch triage and give me a checklist and memo'
+    )
+
+    expect(result).toBe('Task 1: Incident Triage\n\n1. A prioritized launch checklist.\n2. A short internal risk memo.')
+    expect(result).not.toContain('**')
   })
 
-  it('should remove space before punctuation', () => {
-    expect(normalizeText('Hello world .')).toBe('Hello world.')
-    expect(normalizeText('Hello , world')).toBe('Hello, world')
-  })
+  it('preserves markdown emphasis when the source prompt explicitly asks for markdown', () => {
+    const result = cleanEnhancedPromptOutput(
+      '**Summary**\n- Key points\n\n**Risks**\n- Main risks',
+      'rewrite this prompt and ask the model to return the final answer in markdown with bold section headings'
+    )
 
-  it('should trim leading and trailing whitespace', () => {
-    expect(normalizeText('  Hello World  ')).toBe('Hello World')
-  })
-
-  it('should handle mixed issues', () => {
-    expect(normalizeText('  Hello   world  .  ')).toBe('Hello world.')
-  })
-
-  it('should preserve intentional line breaks', () => {
-    expect(normalizeText('Line 1\n\nLine   2')).toBe('Line 1\n\nLine 2')
+    expect(result).toBe('**Summary**\n- Key points\n\n**Risks**\n- Main risks')
   })
 })

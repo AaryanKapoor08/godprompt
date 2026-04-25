@@ -5,7 +5,7 @@ Last updated: 2026-04-24
 This handoff supersedes the older 2026-04-23 note. Today’s work is fully committed and pushed to GitHub through commit `61f0733`, `main` matches `origin/main`, and the working tree should be clean after this file is pushed.
 
 Current status:
-- Gemma hardening is implemented in both the normal chatbot enhancer and the highlighted-text enhancer.
+- Gemma hardening is implemented in both the LLM branch and the Text branch.
 - Manual Gemma testing passed for the launch-triage and incident-triage prompt shapes that were failing earlier.
 - No further Gemma code changes are planned right now unless a different prompt family breaks.
 - The natural next step is manual comparison testing on `gemini-2.5-flash` and `gemini-2.5-flash-lite` once provider rate limits clear.
@@ -56,7 +56,7 @@ Notes:
 
 ## Session Summary — 2026-04-24
 
-### 1. Highlighted-text duplicate-summary cleanup was hardened and pushed
+### 1. Text branch duplicate-summary cleanup was hardened and pushed
 
 Status:
 - implemented
@@ -75,18 +75,18 @@ What changed:
   - the original selected text
 - duplicate-summary detection now preserves real hard constraints instead of stripping them by accident
 - concept coverage was widened so paraphrased duplicate restatements are more likely to be removed
-- highlighted-text regressions were added for:
+- Text branch regressions were added for:
   - paragraph and single-line duplicate summaries
   - paraphrased duplicate summaries
   - preserved hard constraints
-  - the exact launch-triage highlighted-text prompt shape that was manually tested today
+  - the exact launch-triage Text branch prompt shape that was manually tested today
 
 Important nuance:
 - the original 2026-04-23 unresolved duplicate-summary browser issue was addressed in code and tests today
-- highlighted-text launch-style prompts passed in manual testing today
+- Text branch launch-style prompts passed in manual testing today
 - the exact older complaint-prompt browser retest from 2026-04-23 was not rerun today, so that specific manual repro is still worth checking later if you want total closure
 
-### 2. The normal chatbot enhancer was tightened for hard triage prompts
+### 2. The LLM branch was tightened for hard triage prompts
 
 Status:
 - implemented
@@ -133,7 +133,7 @@ What changed:
   - explicit deliverables
   - tone cues such as `sharp`, `practical`, `clear`, `natural-sounding`, and `non-fluffy`
   - anti-invention and uncertainty language
-- `buildGemmaSelectedTextMetaPrompt()` was expanded in the same direction for highlighted-text mode
+- `buildGemmaSelectedTextMetaPrompt()` was expanded in the same direction for Text branch mode
 - `sanitizeGemmaResponse()` was hardened so Gemma-only outputs get cleaned more aggressively
 - a Gemma-only repair/fallback path was added:
   - if Gemma softens a sharp prompt into generic project-brief language such as `Please analyze... Deliverables include...`
@@ -151,9 +151,9 @@ Status:
 - manual spot checks passed
 
 Prompt/output classes that passed:
-- highlighted-text launch-triage prompt
-- normal chatbot launch-triage prompt
-- normal chatbot incident-triage prompt
+- Text branch launch-triage prompt
+- LLM branch launch-triage prompt
+- LLM branch incident-triage prompt
 - a messier launch-risk prompt with multiple evidence sources and multiple deliverables
 
 Observed outcome:
@@ -177,14 +177,14 @@ Why it stopped:
 ## Current Working Behavior
 
 Working:
-- ChatGPT prompt enhancement
-- Claude prompt enhancement
-- Gemini prompt enhancement
-- Perplexity prompt enhancement
-- highlighted-text enhancement via right-click context menu
-- highlighted-text duplicate-summary cleanup is stronger than yesterday and now covered by broader regressions
-- highlighted-text launch-style prompts passed manually today
-- normal chatbot hard-triage prompts now stay much closer to the intended sharp operational wording
+- ChatGPT LLM branch enhancement
+- Claude LLM branch enhancement
+- Gemini LLM branch enhancement
+- Perplexity LLM branch enhancement
+- Text branch via right-click context menu
+- Text branch duplicate-summary cleanup is stronger than yesterday and now covered by broader regressions
+- Text branch launch-style prompts passed manually today
+- LLM branch hard-triage prompts now stay much closer to the intended sharp operational wording
 - Gemma now preserves explicit evidence sources, deliverables, and anti-invention constraints much better on the tested prompt family
 - Gemma has a dedicated repair path for degraded generic rewrite outputs
 - non-Gemma regression suite remains green
@@ -193,7 +193,7 @@ No confirmed active code issue from today’s session:
 - none
 
 Residual caution:
-- the exact older highlighted-text complaint-prompt duplicate-summary repro from 2026-04-23 was not manually rerun today
+- the exact older Text branch complaint-prompt duplicate-summary repro from 2026-04-23 was not manually rerun today
 - treat that as a targeted manual follow-up, not as an active confirmed bug
 
 ---
@@ -227,7 +227,7 @@ Once rate limits clear, compare:
 - `gemini-2.5-flash`
 - `gemini-2.5-flash-lite`
 
-Use the normal chatbot enhancer flow first.
+Use the LLM branch flow first.
 
 ### Prepared test categories
 
@@ -270,8 +270,8 @@ Do this before changing code:
 - capture the exact provider and model
 - capture the full rewritten output
 - note whether it was:
-  - normal chatbot enhancer
-  - highlighted-text enhancer
+  - LLM branch
+  - Text branch
 - note whether the failure is:
   - dropped deliverables
   - generic softening
@@ -297,7 +297,7 @@ When testing resumes:
 3. Run the prepared Flash / Flash Lite comparison prompts once rate limits clear.
 
 4. Optional but useful:
-- rerun the original highlighted-text complaint-prompt duplicate-summary repro from 2026-04-23:
+- rerun the original Text branch complaint-prompt duplicate-summary repro from 2026-04-23:
   - `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
   - pass condition: one consolidated rewrite only
 

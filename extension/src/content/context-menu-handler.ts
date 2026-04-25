@@ -401,8 +401,8 @@ export function runPromptGodContextMenuHandler(request: ContextEnhanceBootstrapR
 
   document.documentElement.append(overlay)
 
-  function renderLoading(message = 'Enhancing selected text...'): void {
-    status.textContent = 'Enhancing selected text'
+  function renderLoading(message = 'Running text branch...'): void {
+    status.textContent = 'Running text branch'
     state.style.display = 'flex'
     spinner.style.display = 'inline-block'
     stateText.textContent = message
@@ -422,7 +422,7 @@ export function runPromptGodContextMenuHandler(request: ContextEnhanceBootstrapR
   }
 
   function renderSuccess(text: string): void {
-    status.textContent = 'Enhanced prompt'
+    status.textContent = 'Text branch result'
     state.style.display = 'none'
     spinner.style.display = 'none'
     stateText.textContent = ''

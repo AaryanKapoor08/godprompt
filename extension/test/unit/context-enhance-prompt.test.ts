@@ -5,11 +5,11 @@ import {
   buildSelectedTextMetaPrompt,
 } from '../../src/lib/context-enhance-prompt'
 
-describe('highlighted-text prompt builders', () => {
-  it('builds a selected-text prompt that rewrites the highlighted text itself', () => {
+describe('text branch prompt builders', () => {
+  it('builds a selected-text prompt that rewrites the text branch input itself', () => {
     const result = buildSelectedTextMetaPrompt(8)
 
-    expect(result).toContain('MODE: highlighted-text rewrite enhancer')
+    expect(result).toContain('MODE: text branch')
     expect(result).toContain('CONVERSATION CONTEXT: None')
     expect(result).toContain('REWRITE INTENSITY: LIGHT')
     expect(result).toContain('Return ONLY the rewritten selected text')
@@ -26,17 +26,17 @@ describe('highlighted-text prompt builders', () => {
     expect(result).toContain('[DIFF:')
   })
 
-  it('uses full intensity for longer highlighted text', () => {
+  it('uses full intensity for longer text branch input', () => {
     const result = buildSelectedTextMetaPrompt(40)
 
     expect(result).toContain('REWRITE INTENSITY: FULL')
     expect(result).not.toContain('MODE: universal selected-text prompt enhancer')
   })
 
-  it('builds a compact Gemma selected-text prompt without questions or placeholders', () => {
+  it('builds a compact Gemma text branch prompt without questions or placeholders', () => {
     const result = buildGemmaSelectedTextMetaPrompt(20)
 
-    expect(result).toContain('Mode: highlighted-text rewrite enhancer')
+    expect(result).toContain('Mode: text branch')
     expect(result).toContain('Rewrite intensity: FULL')
     expect(result).toContain('Core job:')
     expect(result).toContain('Rewrite the selected text itself')

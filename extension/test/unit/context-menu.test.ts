@@ -7,7 +7,7 @@ import {
 } from '../../src/service-worker'
 import { cleanContextEnhancementOutput } from '../../src/lib/context-enhance-prompt'
 
-describe('context menu selected-text guards', () => {
+describe('text branch selection guards', () => {
   it('rejects missing, empty, and too-short selections', () => {
     expect(validateContextSelection(undefined)).toEqual({
       ok: false,
@@ -40,7 +40,7 @@ describe('context menu selected-text guards', () => {
   })
 })
 
-describe('context menu request handoff', () => {
+describe('text branch request handoff', () => {
   it('creates ready requests for valid selected text', () => {
     const request = createContextEnhanceRequest(
       { ok: true, selectedText: 'improve my resume bullets' },
@@ -89,7 +89,7 @@ describe('context menu request handoff', () => {
   })
 })
 
-describe('context enhancement output cleanup', () => {
+describe('text branch output cleanup', () => {
   it('strips diff tags and normalizes whitespace before returning a result', () => {
     const result = cleanContextEnhancementOutput(
       'Improve my resume bullets .\n[DIFF: clearer objective]',
@@ -215,6 +215,37 @@ Original text:
     )
 
     expect(result).toBe(output)
+  })
+
+  it('removes leading first-person prompt-brief framing when the remaining text is already a direct rewrite', () => {
+    const result = cleanContextEnhancementOutput(
+      `I am providing a collection of launch-related documents, including a half-finished FAQ, support tickets, screenshots, sales call notes, refund reasons, Slack scraps, and two potentially contradictory documents.
+
+My primary need is a blunt, no-nonsense analysis, treating this as a critical launch and incident triage.
+
+Use the provided files as direct source material. Do not assume prior knowledge or jump to unsupported conclusions. Clearly distinguish between confirmed facts, educated guesses, missing evidence, contradictions, user confusion, and actual product breakage. If documents conflict, specify the exact points of disagreement and identify unsupported claims. If there are multiple potential failure paths, rank them by priority rather than simply listing them. If evidence is insufficient, state that explicitly instead of glossing over it.
+
+Following this analysis, provide the following in plain text only:
+
+1. A prioritized launch checklist.
+2. A concise internal risk memo.
+3. The single highest-value item to verify today to prevent potential issues.
+
+Ensure the output is sharp, practical, non-fluffy, and natural-sounding. Do not invent numbers, names, dates, or express unearned confidence. If information is missing, state "missing."`,
+      'i am providing launch docs and need a blunt launch triage prompt with a checklist memo and one thing to verify today'
+    )
+
+    expect(result).toBe(
+      `Use the provided files as direct source material. Do not assume prior knowledge or jump to unsupported conclusions. Clearly distinguish between confirmed facts, educated guesses, missing evidence, contradictions, user confusion, and actual product breakage. If documents conflict, specify the exact points of disagreement and identify unsupported claims. If there are multiple potential failure paths, rank them by priority rather than simply listing them. If evidence is insufficient, state that explicitly instead of glossing over it.
+
+Following this analysis, provide the following in plain text only:
+
+1. A prioritized launch checklist.
+2. A concise internal risk memo.
+3. The single highest-value item to verify today to prevent potential issues.
+
+Ensure the output is sharp, practical, non-fluffy, and natural-sounding. Do not invent numbers, names, dates, or express unearned confidence. If information is missing, state "missing."`
+    )
   })
 
   it('restores missing internal-summary intent for launch-triage prompt rewrites', () => {

@@ -1,5 +1,5 @@
-// Highlighted-text enhancer prompt and output cleanup.
-// This is intentionally separate from the normal composer enhancer.
+// Text branch prompt and output cleanup.
+// This is intentionally separate from the LLM branch.
 
 type PromptHardConstraintKind =
   | 'length'
@@ -21,7 +21,7 @@ export function buildSelectedTextMetaPrompt(promptWordCount: number): string {
 
   return `You are PromptGod, an expert editor and prompt engineer. Rewrite highlighted webpage text into a clearer, stronger, polished version the user can copy and use immediately.
 
-MODE: highlighted-text rewrite enhancer
+MODE: text branch
 CONVERSATION CONTEXT: None. The selected text is standalone source text from a webpage.
 ${intensity}
 
@@ -100,7 +100,7 @@ This is invalid because it contains placeholders.
 
 BAD output:
 "Who is the recipient, and what project should I mention?"
-This is invalid because highlighted-text enhancement must not ask clarifying questions.
+This is invalid because Text branch must not ask clarifying questions.
 
 BAD output:
 "Original text: hello there, i wanted to status check..."
@@ -121,7 +121,7 @@ export function buildGemmaSelectedTextMetaPrompt(promptWordCount: number): strin
 
   return `You rewrite highlighted webpage text into clearer, stronger, polished text.
 
-Mode: highlighted-text rewrite enhancer
+Mode: text branch
 Conversation: none
 Rewrite intensity: ${intensity}
 
@@ -195,7 +195,8 @@ export function cleanContextEnhancementOutput(output: string, originalSelection:
     return buildConservativeSelectedTextFallback(originalSelection)
   }
 
-  const withoutDuplicateSummary = removeTrailingDuplicatePromptSummary(normalized, originalSelection)
+  const withoutPromptBrief = stripLeadingFirstPersonPromptBrief(normalized, originalSelection)
+  const withoutDuplicateSummary = removeTrailingDuplicatePromptSummary(withoutPromptBrief, originalSelection)
   const repaired = restoreCriticalPromptIntent(withoutDuplicateSummary, originalSelection)
 
   if (!repaired.startsWith('[NO_CHANGE]')) {
@@ -253,6 +254,37 @@ function restoreCriticalPromptIntent(output: string, originalSelection: string):
   }
 
   return restoreMissingSendableDraftIntent(output, originalSelection)
+}
+
+function stripLeadingFirstPersonPromptBrief(output: string, originalSelection: string): string {
+  if (output.startsWith('[NO_CHANGE]')) {
+    return output
+  }
+
+  const paragraphs = output
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0)
+
+  if (paragraphs.length < 2) {
+    return output
+  }
+
+  let briefCount = 0
+  while (briefCount < paragraphs.length && isFirstPersonPromptBriefParagraph(paragraphs[briefCount])) {
+    briefCount += 1
+  }
+
+  if (briefCount === 0 || briefCount >= paragraphs.length) {
+    return output
+  }
+
+  const firstDirectParagraph = paragraphs[briefCount]
+  if (!hasPromptRewriteSignal(firstDirectParagraph)) {
+    return output
+  }
+
+  return paragraphs.slice(briefCount).join('\n\n')
 }
 
 function removeTrailingDuplicatePromptSummary(output: string, originalSelection: string): string {
@@ -351,6 +383,15 @@ function looksLikeAnsweredTask(text: string): boolean {
   }
 
   return /\b(?:the complaints suggest|the data suggests|the evidence suggests|the main issues are|the most likely root causes are|the likely root causes are|based on the (?:complaints|notes|evidence)|this indicates|these issues fall into)\b/i.test(normalized)
+}
+
+function isFirstPersonPromptBriefParagraph(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) {
+    return false
+  }
+
+  return /^(?:i am providing|i'm providing|i’m providing|i am sharing|i'm sharing|i’m sharing|i have provided|i've provided|i’ve provided|my primary need is|my main need is)\b/i.test(normalized)
 }
 
 function isDuplicatePromptSummary(summary: string, mainBody: string, originalSelection: string): boolean {

@@ -97,6 +97,7 @@ RULES:
 - Keep the user's voice and intent — enhance, don't rewrite from scratch
 - Prefer natural plain-text phrasing unless the user explicitly asks for a specific format
 - NEVER wrap the rewritten prompt in XML, HTML-like tags, or custom markup unless the user explicitly requests that format
+- NEVER add decorative markdown emphasis such as **bold**, __underline__, or bolded section labels unless the user explicitly requests markdown in the rewritten prompt
 - NEVER add assistant-style preambles such as "Here's the plan", "Sure", "I can help", or "Let's start". The output is the sendable prompt itself.
 - Do not introduce headings, sections, numbered lists, or bullet lists unless the user's request is genuinely multi-part and the added structure materially improves the prompt
 - For study, lecture, PDF, slides, or exam-prep prompts, prefer one natural instruction paragraph. Preserve requests to divide material into parts or teach step by step, but do not turn the rewrite into a numbered meta-plan unless the user explicitly asks for the rewritten prompt itself to be a list.
@@ -191,6 +192,11 @@ BAD rewrite — do NOT do this:
 Before: "i have api logs, support tickets, screenshots, and random notes from slack about a problem users are hitting. i need a serious triage prompt, not a fluffy analysis one."
 After: "I have API logs, support tickets, screenshots, and random notes from Slack regarding a problem users are encountering. My goal is to perform a serious, practical triage of this issue. Here's what I need you to do: 1. Sort and categorize the evidence..."
 (This turns the prompt into explanatory scaffolding instead of a sharp sendable instruction. Preserve the operational ask directly.)
+
+BAD rewrite — do NOT do this:
+Before: "use these files to do launch triage and give me a checklist memo faq and slack summary"
+After: "**Launch Triage Task**\n\n1. **Checklist**\n2. **Memo**\n3. **FAQ**\n4. **Slack Summary**"
+(This adds decorative markdown styling instead of a cleaner sendable prompt. Prefer plain text unless the user explicitly asks for markdown.)
 
 BAD rewrite — do NOT do this:
 Before: "Analyze my coding style from the provided C files and lecture slides, then help me with the next assignment using only that material."

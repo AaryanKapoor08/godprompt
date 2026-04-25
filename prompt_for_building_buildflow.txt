@@ -1,0 +1,146 @@
+# ROLE
+You are Codex. You are an engineering planner being handed a stabilization effort that is already past the product-direction stage. Your single job in this run is to produce `codex/buildflow.md`. Nothing else.
+
+# CRITICAL ENVIRONMENT NOTES
+- This repo runs two parallel planning systems:
+  - `codex/` is the active Codex planning context. `AGENTS.md` directs Codex to read `codex/productvision.md`, then `codex/buildflow.md`, then `codex/Progress.md`.
+  - `claude/` is a legacy Claude planning workflow. It is referenced ONLY for buildflow format/style and commit-history style. Treat its content as outdated.
+- The buildflow you produce MUST be written to `codex/buildflow.md`. Do not write it anywhere under `claude/`.
+- Assume you have NO access to prior chat history. Everything you need is in this prompt and in the files referenced below.
+- Do NOT execute the buildflow. Do NOT change source code. Do NOT update `codex/Progress.md`. The only file you create or replace this run is `codex/buildflow.md`.
+
+# STEP 1 — READ BEFORE WRITING
+Open and read these files in order, using your file tools. Do not skip. Do not assume contents.
+
+1. `codex/productvision.md` — governing product spec for the new PromptGod plan. Source of truth.
+2. `AGENTS.md` — confirms Codex's planning-doc precedence (`codex/productvision.md` → `codex/buildflow.md` → `codex/Progress.md`).
+3. `claude/BuildFlow.md` — outdated CONTENT, valuable FORMAT/STYLE reference. Take the phase-and-checkpoint shape, ignore the topic.
+4. `claude/Progress.md` — phased progress tracking style reference.
+5. `claude/github.md` — commit-history tracking style reference.
+
+If `codex/productvision.md` is missing, STOP and report. Do not invent product decisions.
+If any of files 2–5 is missing, note it in your final confirmation message and continue with the rest.
+
+# STEP 2 — LOCK IN THESE PRODUCT TRUTHS
+These are settled. Do NOT reopen them in the buildflow you write.
+
+- `LLM branch` = normal chatbot enhancement flow
+- `Text branch` = highlighted-text rewrite flow
+- `Gemma` is frozen for this stabilization effort and bypasses the new pipeline (per `productvision.md` Gemma Boundary)
+- Providers are engineered separately: Google and OpenRouter
+- Branches are engineered separately: `LLM branch` and `Text branch`
+- Shared deterministic core only where explicitly safe (per `productvision.md` shared-vs-separate rules)
+- Visible fallback chain (and runtime order):
+  1. `Gemini 2.5 Flash`
+  2. `Gemma`
+  3. `OpenRouter Free Chain`
+- `gemini-2.5-flash-lite` is NOT in the automatic fallback chain
+- OpenRouter curated chain order:
+  1. `inclusionai/ling-2.6-flash:free`
+  2. `nvidia/nemotron-3-super-120b-a12b:free`
+  3. `openai/gpt-oss-20b:free`
+  4. `nvidia/nemotron-3-nano-30b-a3b:free`
+- Non-Gemma product-owned token overhead must be cut by at least 70%
+- Final non-Gemma fixed-overhead budgets:
+  - `LLM branch` first pass: hard cap `1000`, target `700–850`
+  - `LLM branch` retry: max one retry, hard cap `220`
+  - `Text branch` first pass: hard cap `400`, target `280–360`
+  - `Text branch` retry: catastrophic invalid output only, hard cap `140`
+- Pipeline shape (compiler-style): normalize → extract constraints locally → build compact rewrite spec → call model → validate locally → repair locally → retry once if needed → conservative fallback if still invalid
+- `Text branch` must become stricter and lighter, not different in personality
+- Goal: robust product with low regression risk. Not a prompt experiment.
+
+If `codex/productvision.md` adds detail beyond this list (it does), prefer the file.
+
+# STEP 3 — WRITE `codex/buildflow.md`
+Create or replace `codex/buildflow.md`. Match this structure exactly.
+
+## File structure (top to bottom)
+
+1. **Title + 1–3 line framing.** Practical, execution-focused. State that this is a stabilization/re-architecture effort, not a greenfield build.
+
+2. **Prerequisites.** Only what the current repo and current plan require. Drop stale architecture assumptions. Include: Node/npm versions in use, current test command, where production code lives (`extension/src/`), where tests live (`extension/test/`), how to run the regression corpus once introduced.
+
+3. **Global rules.** Flat list of execution rules that apply across every phase:
+   - no-regression rollout (corpus must stay green)
+   - Gemma freeze (no edits to Gemma prompts, cleanup, or retry)
+   - branch separation (`LLM branch` and `Text branch` evolve independently)
+   - provider separation (Google and OpenRouter evolve independently)
+   - token-budget enforcement (every prompt change asserts measured tokens against the cap)
+   - checkpoint-first phase completion (no phase advances until every `[ ]` is `[x]` with proof)
+   - no destructive refactors (existing files stay until their last responsibility moves)
+   - acceptance gates before broad rollout (eval gate before any default-model change)
+
+4. **Phases.** One section per phase. Use this exact per-phase template:
+
+   ### Phase N — <short title>
+   - **Goal.** One sentence.
+   - **Why now.** One or two sentences explaining the dependency on prior phases.
+   - **Tasks.** Numbered, concrete, verb-led. No vague tasks.
+   - **Code areas.** Files or directories likely touched (e.g. `extension/src/lib/rewrite-core/validate.ts`).
+   - **Checkpoints.** Markdown checklist with `[ ]`. Each checkpoint must be independently verifiable. Example:
+     - [ ] Regression corpus runs in CI with non-zero entries
+     - [ ] `LLM branch` first-pass token count measured and logged below `1000`
+   - **Risks.** What could regress, what could leak past validation.
+   - **Commit message.** Suggested message in conventional-commit style matching the repo (e.g. `feat(rewrite-core): add constraint extractor`). Include scope.
+   - **Rollback / containment.** Only if the phase touches user-facing behavior. Note the safe revert path.
+
+5. **Phase order (recommended).** Use this order unless reading the files reveals a safer alternative. If you change it, add a short paragraph in the file explaining why.
+   1. Lock acceptance criteria and regression corpus
+   2. Token-budget measurement seam (before any prompt edits)
+   3. Shared `rewrite-core` primitives (`types`, `normalize`, `constraints`, `validate`, `repair`, `fallback`)
+   4. `LLM branch` migration to compact-contract prompting
+   5. `Text branch` hardening within the narrow allowed scope
+   6. Google-specific policy alignment (model registry, request policy, retry policy, budget policy)
+   7. OpenRouter live-catalog + curated-chain + cooldown + account-status
+   8. UI alignment (popup model list reflects live curated chain; visible order = runtime order)
+   9. Verification matrix + rollout gates
+
+6. **Testing strategy.** Short section forcing every phase to demonstrate the relevant subset of:
+   - regression corpus checks (per-branch, per-provider; Gemma exempt)
+   - token-budget checks (first pass and retry, both branches)
+   - provider-specific verification (Google quota path, OpenRouter cooldown/cycle, account-status bucket detection)
+   - branch-specific verification (LLM staged workflows, Text deliverable preservation)
+   - no-output-answering regressions
+   - deliverable-preservation regressions
+   - no-markdown / no-brief / no-duplicate-summary regressions
+   - manual verification matrix at the right phases (after Phase 4, after Phase 7, after Phase 9), not only at the end
+
+7. **Token-budget enforcement (first-class).** Short section pointing to where in the phases the following are introduced:
+   - measurement seam (Phase 2)
+   - separate budgets for first pass vs retry (Phase 4 for LLM, Phase 5 for Text)
+   - branch-specific enforcement (Phase 4, Phase 5)
+   - production prompts ship without examples; debug-mode prompts may include them (Phase 4 build-flag work)
+
+8. **Final section.** Headed `Phase Strategy Summary`. Four lines, one each:
+   - **Highest-risk phase:** name + one-line reason.
+   - **Highest-leverage phase:** name + one-line reason.
+   - **Start here:** the first phase to actually implement.
+   - **Do not touch early:** what should be deferred and why.
+
+# ANTIPATTERNS — DO NOT DO THESE
+- Do not write a product memo. This is engineering work.
+- Do not paraphrase `productvision.md` at length; reference it by section name when needed.
+- Do not invent new product decisions (provider chains, budgets, prompt strategies, model picks).
+- Do not collapse unrelated work into a single mega-phase to look efficient.
+- Do not create fluff phases like "Setup" or "Cleanup" without concrete tasks.
+- Do not include code samples beyond a one-liner where unavoidable.
+- Do not include rationale paragraphs longer than the tasks themselves.
+- Do not include emojis.
+- Do not touch Gemma anywhere in the buildflow.
+- Do not edit any file other than `codex/buildflow.md`.
+
+# OUTPUT CONSTRAINTS
+- Write the buildflow directly to `codex/buildflow.md` using your file-write tool. Replace the file if it already exists.
+- Do NOT update `codex/Progress.md`.
+- Do NOT change source code under `extension/`.
+- Do NOT return only a chat summary. The deliverable is the file content.
+- After writing, end your reply with a 3–5 line confirmation message: file path written, phase count, recommended starting phase, and any missing source files noted in Step 1. Nothing else.
+
+# COMPLETION CHECK — RUN BEFORE ENDING THE TURN
+- [ ] File exists at `codex/buildflow.md`
+- [ ] Every phase has all eight per-phase sections filled
+- [ ] No settled product truth has been silently changed
+- [ ] No phase has a checkpoint that cannot be verified
+- [ ] `Phase Strategy Summary` section is present
+- [ ] No edits to any file other than `codex/buildflow.md`

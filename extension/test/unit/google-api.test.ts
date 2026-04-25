@@ -200,7 +200,7 @@ describe('Google API client helpers', () => {
     )
   })
 
-  it('uses the same Gemma fallback for highlighted-text rewrite requests', async () => {
+  it('uses the same Gemma fallback for text branch rewrite requests', async () => {
     const selectedText = 'I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Please use these documents to create actionable launch preparation materials. Specifically, identify the primary launch risks, any inconsistencies or contradictions within the provided documents, potential customer misunderstandings, and team assumptions that lack evidence. Based on this analysis, provide:\n\n1. A practical launch readiness checklist.\n2. A concise internal risk memo.\n3. A draft customer-facing FAQ that is clear and natural-sounding.\n\nIf the files present conflicting information, please highlight these discrepancies directly. Avoid inventing missing details or masking uncertainty with vague language. Draft a clear summary I can share internally.'
     const userMessage = buildContextUserMessage(selectedText)
 

@@ -4,7 +4,7 @@ import type { PlatformAdapter } from '../adapters/types'
 import type { EnhanceMessage, ServiceWorkerMessage } from '../../lib/types'
 import { shouldSkipEnhancement } from '../../lib/smart-skip'
 import { mergeStreamChunk } from '../../lib/stream-merge'
-import { normalizeText } from '../../lib/text-utils'
+import { cleanEnhancedPromptOutput, normalizeText } from '../../lib/text-utils'
 import { showToast } from './toast'
 import { showUndoButton, removeUndoButton } from './undo-button'
 
@@ -37,6 +37,10 @@ function hasRuntimeContext(): boolean {
   }
 }
 
+function shouldSkipNormalCleanup(model: unknown): boolean {
+  return typeof model === 'string' && /\bgemma\b/i.test(model)
+}
+
 export function injectTriggerButton(adapter: PlatformAdapter): void {
   // Don't double-inject
   if (injectedButton && document.body.contains(injectedButton)) {
@@ -53,8 +57,8 @@ export function injectTriggerButton(adapter: PlatformAdapter): void {
   button.id = 'promptgod-trigger'
   button.type = 'button'
   button.className = 'promptgod-trigger-btn'
-  button.title = 'Enhance prompt'
-  button.setAttribute('aria-label', 'Enhance prompt')
+  button.title = 'Run LLM branch'
+  button.setAttribute('aria-label', 'Run LLM branch')
 
   // Brand icon loaded via chrome.runtime.getURL (requires web_accessible_resources)
   const iconUrl = chrome.runtime.getURL('assets/icon-48.png')
@@ -296,9 +300,11 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   // Gather recent conversation context if toggle is on
   let recentContext: string | undefined
+  let selectedModel: string | undefined
   try {
-    const settings = await chrome.storage.local.get(['includeConversationContext'])
+    const settings = await chrome.storage.local.get(['includeConversationContext', 'model'])
     const includeContext = settings.includeConversationContext !== false // default: on
+    selectedModel = typeof settings.model === 'string' ? settings.model : undefined
     if (includeContext && !context.isNewConversation) {
       const scraped = adapter.getRecentMessages(500)
       if (scraped) recentContext = scraped
@@ -431,7 +437,9 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     }
     finalOutputCommitted = true
 
-    const normalizedText = normalizeText(accumulatedText)
+    const normalizedText = shouldSkipNormalCleanup(selectedModel)
+      ? normalizeText(accumulatedText)
+      : cleanEnhancedPromptOutput(accumulatedText, effectivePrompt)
     if (normalizedText.startsWith('[NO_CHANGE]')) {
       showToast({ message: 'Your prompt is already strong', variant: 'info' })
       try {
@@ -745,8 +753,10 @@ async function handlePreviewEnhance(adapter: PlatformAdapter): Promise<void> {
   }
 
   let recentContext: string | undefined
+  let selectedModel: string | undefined
   try {
-    const settings = await chrome.storage.local.get(['includeConversationContext'])
+    const settings = await chrome.storage.local.get(['includeConversationContext', 'model'])
+    selectedModel = typeof settings.model === 'string' ? settings.model : undefined
     if (settings.includeConversationContext !== false && !context.isNewConversation) {
       const scraped = adapter.getRecentMessages(500)
       if (scraped) recentContext = scraped
@@ -781,7 +791,9 @@ async function handlePreviewEnhance(adapter: PlatformAdapter): Promise<void> {
         return
       }
       const { cleanText } = stripDiffTag(accumulated)
-      const normalizedText = normalizeText(cleanText)
+      const normalizedText = shouldSkipNormalCleanup(selectedModel)
+        ? normalizeText(cleanText)
+        : cleanEnhancedPromptOutput(cleanText, promptText)
       if (normalizedText.startsWith('[NO_CHANGE]')) {
         showToast({ message: 'Your prompt is already strong', variant: 'info' })
         return
@@ -832,7 +844,7 @@ function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): voi
       void copyTextToClipboard(enhancedText).then((copied) => {
         showToast({
           message: copied
-            ? 'Could not write into this page. Enhanced prompt copied — paste it manually.'
+            ? 'Could not write into this page. LLM branch result copied — paste it manually.'
             : 'Could not write into this page. Select the preview text and copy it manually.',
           variant: copied ? 'warning' : 'error',
         })
@@ -846,7 +858,7 @@ function showPreviewOverlay(adapter: PlatformAdapter, enhancedText: string): voi
   copyBtn.addEventListener('click', () => {
     void copyTextToClipboard(enhancedText).then((copied) => {
       showToast({
-        message: copied ? 'Enhanced prompt copied' : 'Could not copy automatically',
+        message: copied ? 'LLM branch result copied' : 'Could not copy automatically',
         variant: copied ? 'info' : 'error',
       })
     })
@@ -928,7 +940,7 @@ function showEnhancingStatus(): void {
   removeEnhancingStatus()
   const el = document.createElement('span')
   el.className = 'promptgod-enhancing-status'
-  el.textContent = 'Enhancing...'
+  el.textContent = 'Running LLM branch...'
   const btn = injectedButton
   if (btn?.parentElement) {
     btn.parentElement.style.position = btn.parentElement.style.position || 'relative'
@@ -951,7 +963,7 @@ export function showFirstRunTooltip(): void {
 
     const tooltip = document.createElement('div')
     tooltip.className = 'promptgod-tooltip'
-    tooltip.textContent = 'Click to enhance your prompt'
+    tooltip.textContent = 'Click to run the LLM branch'
 
     injectedButton.style.position = injectedButton.style.position || 'relative'
     injectedButton.appendChild(tooltip)

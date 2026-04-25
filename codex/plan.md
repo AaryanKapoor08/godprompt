@@ -8,7 +8,7 @@ Build Option 1 first:
 
 1. User highlights text anywhere in Chrome.
 2. User right-clicks.
-3. User clicks `Enhance with PromptGod`.
+3. User clicks `Run Text Branch`.
 4. PromptGod rewrites the selected text itself into cleaner, stronger text.
 5. PromptGod shows a polished on-page result popup with `Copy` and `Dismiss`.
 
@@ -23,7 +23,7 @@ Keep Option 2 as a later optional phase:
 
 This is not an explain/summarize feature.
 
-It is a universal highlighted-text rewrite enhancer:
+It is the Text branch:
 
 - selected text in any webpage goes in
 - cleaner, stronger, immediately usable text comes out
@@ -73,7 +73,7 @@ The earlier draft was directionally right but had gaps:
 - It mixed Option 1 and Option 2 too much. That creates unnecessary risk because direct page editing is the fragile part.
 - It made editable replacement part of the main smoke matrix, even though we now want overlay-only first.
 - It did not specify enough UI quality requirements for the result popup.
-- It did not clearly separate "generic selected-text enhancer" from the existing four-platform composer enhancer.
+- It did not clearly separate the Text branch from the existing LLM branch.
 - It did not explicitly say that selected text must not be logged.
 - It did not make the privacy/store disclosure work a release blocker.
 - It left too much room to touch existing adapters, which is not needed for v1.
@@ -84,11 +84,11 @@ This revised plan fixes those gaps by shipping the lowest-risk useful slice firs
 
 ### V1 In Scope
 
-- Right-click context menu item: `Enhance with PromptGod`.
+- Right-click context menu item: `Run Text Branch`.
 - Appears only when text is selected.
 - Works on arbitrary webpages after explicit user action.
 - Sends selected text through existing BYOK provider/model pipeline.
-- Uses a separate highlighted-text rewrite mode.
+- Uses a separate Text branch rewrite mode.
 - Shows an on-page PromptGod result popup.
 - User can copy the enhanced text.
 - User can dismiss the popup.
@@ -174,7 +174,7 @@ Responsibilities:
 
 - Register context menu item:
   - id: `promptgod-context-enhance`
-  - title: `Enhance with PromptGod`
+  - title: `Run Text Branch`
   - contexts: `selection`
 - Register on install/startup defensively.
   - registration must be idempotent because service workers can restart
@@ -187,7 +187,7 @@ Responsibilities:
   - pass a request id and selected text to the handler
 - Handle new `context-enhance` port:
   - read existing settings
-  - build highlighted-text rewrite prompt
+  - build Text branch rewrite prompt
   - call the selected provider/model
   - collect the full output
   - strip `[DIFF:]`
@@ -297,7 +297,7 @@ Popup structure:
 - Small PromptGod header row:
   - icon or compact text mark
   - `PromptGod`
-  - status text: `Enhanced prompt`
+  - status text: `Text branch result`
 - Main result area:
   - selectable enhanced text
   - max height with smooth internal scroll
@@ -350,8 +350,8 @@ Icon constraint:
 
 Suggested user-facing copy:
 
-- Loading: `Enhancing selected text...`
-- Success header: `Enhanced prompt`
+- Loading: `Running text branch...`
+- Success header: `Text branch result`
 - Copy button: `Copy`
 - Copied state: `Copied`
 - Dismiss: `Dismiss`
@@ -389,7 +389,7 @@ Files likely touched:
 Tasks:
 
 - Add minimal permissions.
-- Register `Enhance with PromptGod`.
+- Register `Run Text Branch`.
 - Ensure menu appears only for selected text.
 - Add selection length guards.
 - Add restricted-page safe failure.
@@ -402,7 +402,7 @@ Exit criteria:
 - Existing tests pass.
 - No existing content-script match patterns changed.
 
-### Phase 2: Highlighted-Text Rewrite Pipeline
+### Phase 2: Text Branch Rewrite Pipeline
 
 Files likely touched:
 
@@ -413,7 +413,7 @@ Files likely touched:
 
 Tasks:
 
-- Add isolated highlighted-text prompt builder.
+- Add isolated Text branch prompt builder.
 - Add `context-enhance` port.
 - Reuse provider/model/settings.
 - Collect complete result.
@@ -421,7 +421,7 @@ Tasks:
 - Strip provider source-echo blocks.
 - Reject/repair placeholder and clarifying-question outputs.
 - Return friendly errors.
-- Add tests proving highlighted-text mode rewrites text directly without questions or placeholders.
+- Add tests proving Text branch mode rewrites text directly without questions or placeholders.
 
 Exit criteria:
 
@@ -471,7 +471,7 @@ Exit criteria:
 
 - No broad permissions.
 - No current product regression.
-- Release notes clearly describe selected-text behavior.
+- Release notes clearly describe Text branch behavior.
 
 ### Optional Phase 5: In-Place Replacement
 
@@ -526,7 +526,7 @@ Current choices:
 
 - V1 behavior: overlay/popup only.
 - Optional later behavior: in-place replacement.
-- Menu label: `Enhance with PromptGod`.
+- Menu label: `Run Text Branch`.
 - Recommended max length: 10,000 characters.
 - No explain mode.
 - No `clipboardWrite` permission in v1.

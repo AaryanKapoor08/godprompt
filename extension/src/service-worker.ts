@@ -36,7 +36,7 @@ const OPENROUTER_MODEL_COOLDOWN_MS = 2 * 60 * 1000
 const OPENROUTER_RATE_LIMIT_BASE_DELAY_MS = 1500
 const OPENROUTER_RATE_LIMIT_MAX_DELAY_MS = 10000
 export const CONTEXT_MENU_ID = 'promptgod-context-enhance'
-export const CONTEXT_MENU_TITLE = 'Enhance with PromptGod'
+export const CONTEXT_MENU_TITLE = 'Run Text Branch'
 export const CONTEXT_SELECTION_MAX_CHARS = 10000
 const CONTEXT_PORT_NAME = 'context-enhance'
 
@@ -311,7 +311,7 @@ export async function handleContextMenuClick(
         tabId,
         frameId: info.frameId,
       },
-      '[PromptGod] Could not inject context enhance request'
+      '[PromptGod] Could not inject text branch request'
     )
   }
 }
@@ -582,7 +582,7 @@ export async function handleContextEnhance(
 ): Promise<void> {
   console.info(
     { requestId: msg.requestId, selectionLength: msg.selectedText.length },
-    '[PromptGod] Received CONTEXT_ENHANCE request'
+    '[PromptGod] Received text branch request'
   )
 
   supervisor.start(port)
@@ -625,7 +625,7 @@ export async function handleContextEnhance(
 
     console.info(
       { requestId: msg.requestId, provider, model, selectionLength: selectedText.length },
-      '[PromptGod] Calling LLM API for context selection'
+      '[PromptGod] Calling LLM API for text branch'
     )
 
     const output = await collectContextEnhancementText({
@@ -656,17 +656,17 @@ export async function handleContextEnhance(
 
     console.info(
       { requestId: msg.requestId, resultLength: cleanText.length },
-      '[PromptGod] Context enhancement complete'
+      '[PromptGod] Text branch complete'
     )
   } catch (error) {
     if (signal.aborted) {
-      console.info({ requestId: msg.requestId }, '[PromptGod] Context enhancement aborted — port disconnected')
+      console.info({ requestId: msg.requestId }, '[PromptGod] Text branch aborted — port disconnected')
       return
     }
 
     incrementCounter('errorCount')
 
-    console.error({ requestId: msg.requestId, cause: error }, '[PromptGod] Context enhancement failed')
+    console.error({ requestId: msg.requestId, cause: error }, '[PromptGod] Text branch failed')
     const errorMessage = formatErrorMessage(error)
     sendMessage(port, {
       type: 'ERROR',

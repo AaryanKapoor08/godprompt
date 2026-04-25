@@ -49,6 +49,7 @@ describe('buildMetaPrompt', () => {
     expect(result).toContain('If the prompt mentions provided files, slides, code, or documents')
     expect(result).toContain('Prefer natural plain-text phrasing unless the user explicitly asks for a specific format')
     expect(result).toContain('NEVER wrap the rewritten prompt in XML, HTML-like tags, or custom markup')
+    expect(result).toContain('NEVER add decorative markdown emphasis such as **bold**, __underline__, or bolded section labels')
     expect(result).toContain('NEVER add assistant-style preambles such as "Here\'s the plan"')
     expect(result).toContain('Do NOT rewrite the prompt as a first-person brief about the prompt itself')
     expect(result).toContain('compress them into one sharp prompt instead of expanding into explanatory setup')
@@ -97,6 +98,7 @@ describe('buildMetaPrompt', () => {
     expect(result).toContain('This over-questions despite sufficient context.')
     expect(result).toContain('This is an assistant response, not a rewritten prompt.')
     expect(result).toContain('My goal is to perform a serious, practical triage of this issue.')
+    expect(result).toContain('This adds decorative markdown styling instead of a cleaner sendable prompt.')
     expect(result).toContain('This turns the prompt into explanatory scaffolding instead of a sharp sendable instruction.')
   })
 

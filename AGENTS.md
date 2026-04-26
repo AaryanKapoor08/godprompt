@@ -34,16 +34,22 @@ cd src; pytest; ruff check .
 <!-- MANUAL ADDITIONS START -->
 ## Codex Planning Docs
 
-When resuming work, planning implementation, or answering questions about current project direction, read the `codex/` docs by default unless the user explicitly says otherwise.
+At the start of every new Codex session in this repository, read the project-planning docs before doing project work or answering questions about implementation direction. This is required startup context, not optional background reading.
 
 Use this order:
 
 1. `codex/productvision.md`
    - canonical source of current product direction and settled decisions
-2. `codex/buildflow.md` if it exists
-   - canonical execution/phase plan once created
+2. `codex/buildflow.md`
+   - canonical execution/phase plan
 3. `codex/Progress.md`
    - latest implementation and verification handoff
 
-Treat these files as the default project-planning context for Codex sessions. If they conflict with older docs in `claude/` or elsewhere, prefer the `codex/` versions unless the user explicitly redirects you.
+Treat these files as the active project-planning context for the session. If they conflict with older docs in `claude/` or elsewhere, prefer the `codex/` versions unless the user explicitly redirects you.
+
+After reading them, keep the main constraints in mind while working:
+- `productvision.md` defines the product truth and settled decisions.
+- `buildflow.md` defines the current implementation order and phase gates.
+- `Progress.md` defines the latest completed work, verification status, and next-session handoff.
+- Gemma is frozen unless the user explicitly asks to reopen Gemma work.
 <!-- MANUAL ADDITIONS END -->

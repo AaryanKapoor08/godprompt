@@ -1,6 +1,282 @@
 # PromptGod — Codex Progress
 
-Last updated: 2026-04-24
+Last updated: 2026-04-26
+
+## Session Update — 2026-04-26
+
+Phase 8 popup alignment update from this session:
+- Added `extension/src/popup/model-options.ts` so popup model options and visible chain display are derived from shared OpenRouter curation data.
+- Updated the popup UI to show the visible fallback chain:
+  - `Gemini 2.5 Flash`
+  - `Gemma`
+  - `OpenRouter Free Chain`
+- Updated the OpenRouter popup model list to use the live-aware curated chain projection instead of appending arbitrary free catalog entries.
+- The popup OpenRouter chain renders `stable free` / `experimental free` classifications and excludes `openrouter/free` from recommended options.
+- OpenRouter account-status bucket and cap-reached display are now formatted through a tested popup helper.
+- Custom OpenRouter model entry remains available and validates the required `/` model-id format.
+- Added `extension/test/unit/popup-model-options.test.ts` covering visible chain order, curated OpenRouter order, exclusion of `openrouter/free`, custom model validation, and account-status display.
+
+Latest focused Phase 8 verification:
+- `npm test -- --run test/unit/popup-model-options.test.ts test/unit/rewrite-openrouter-policy.test.ts`: passed, 2 files / 13 tests
+- `npm test`: passed, 37 files / 202 tests; skipped 1 live OpenRouter eval test
+- `npm run build`: passed
+
+Remaining gate:
+- Phase 8 is complete in `codex/buildflow.md`.
+- The Phase 7 live OpenRouter Primary Eval Gate remains blocked by the OpenRouter free-model daily cap and is still recorded in `codex/openrouter-primary-eval.md`.
+- A second free OpenRouter key was probed on 2026-04-26. The key was valid, but a single primary-model request still returned `free-models-per-day` with `X-RateLimit-Limit: 50`, `X-RateLimit-Remaining: 0`, and reset at `2026-04-27 00:00:00 UTC`. No full corpus eval was run with that key.
+- Phase 9 rollout verification should wait until that eval gate is rerun successfully or explicitly accepted as blocked.
+
+Phase 9 automated verification update from this session:
+- Ran the automated/local rollout gate subset.
+- Marked the automated Phase 9 checkpoints complete in `codex/buildflow.md`:
+  - regression corpus thresholds across all four non-Gemma targets
+  - token-budget assertions
+  - Google quota/fallback policy coverage
+  - OpenRouter cooldown policy coverage
+  - OpenRouter account-status bucket coverage for mocked `50/day` and `1000/day`
+  - terminal failure UI timing/logging coverage
+- Left these Phase 9 checkpoints open:
+  - manual browser/provider verification matrix
+  - live OpenRouter Primary Eval Gate
+
+Latest Phase 9 verification:
+- `npm test -- --run test/regression/runner.test.ts test/unit/budget-snapshots.test.ts test/unit/rewrite-llm-branch.test.ts test/unit/rewrite-text-branch.test.ts test/unit/rewrite-google-policy.test.ts test/unit/rewrite-openrouter-policy.test.ts test/unit/openrouter-account-status.test.ts test/unit/service-worker-provider-fallback.test.ts test/unit/popup-model-options.test.ts`: passed, 9 files / 41 tests
+- `npm test`: passed, 37 files / 202 tests; skipped 1 live OpenRouter eval test
+- `npm run build`: passed
+
+## Next Session Manual Testing Checklist
+
+Start here next time. Automated Phase 9 gates are green; the remaining work is manual browser/provider verification.
+
+Before testing:
+- Reload the unpacked extension from `extension/dist`.
+- Use a real prompt composer on ChatGPT, Claude, Gemini, or Perplexity for `LLM branch`.
+- Use browser text selection + right-click enhancement for `Text branch`.
+- Keep Gemma frozen: do not request Gemma code changes unless there is a real regression, not just slightly different wording.
+
+### 1. Popup / Settings UI
+
+Pass conditions:
+- Popup shows fallback chain in this order:
+  1. `Gemini 2.5 Flash`
+  2. `Gemma`
+  3. `OpenRouter Free Chain`
+- OpenRouter section shows the curated free chain in this order:
+  1. `Ling 2.6 Flash`
+  2. `Nemotron 3 Super 120B`
+  3. `GPT-OSS 20B`
+  4. `Nemotron 3 Nano 30B`
+- `openrouter/free` is not shown as a recommended option.
+- Custom OpenRouter model input still accepts IDs like `org/model-name` and rejects IDs without `/`.
+- If OpenRouter account status appears, cap-reached state says routing is paused today.
+
+### 2. LLM Branch — Gemini 2.5 Flash
+
+Use normal prompt enhancement in a chat composer.
+
+Test prompts:
+1. Hard launch triage:
+   - Ask it to use API logs, support tickets, screenshots, Slack notes, and customer complaints.
+   - Require root-cause buckets, missing evidence, team update, and risks.
+   - Pass if it stays sharp, preserves all evidence sources and deliverables, and does not become `Please analyze... Deliverables include...`.
+2. Missing-context strategy prompt:
+   - Ask for business strategy with missing business type/customer/objective.
+   - Pass if it asks only minimal useful clarifying questions and does not invent specifics.
+3. Staged file workflow:
+   - Ask it to analyze uploaded slides/handout/sample code first and wait before solving.
+   - Pass if it preserves the staged sequence and does not solve early.
+4. Research comparison:
+   - Example: compare Postgres vs ClickHouse vs BigQuery for an analytics workload.
+   - Pass if it stays decision-oriented, preserves comparison criteria, and avoids filler.
+5. Already-strong prompt:
+   - Use a clear structured prompt.
+   - Pass if it stays close to the source and does not over-rewrite.
+
+### 3. Text Branch — Gemini 2.5 Flash
+
+Use highlighted selected text + right-click enhancement.
+
+Test prompts:
+1. Complaint triage selection:
+   - `read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today`
+   - Pass if output is one consolidated rewrite, not an answer, and no duplicate trailing summary appears.
+2. Launch deliverables selection:
+   - Include files/evidence/deliverables.
+   - Pass if named inputs and deliverables are preserved.
+3. Message polish:
+   - Select a rough team-update message.
+   - Pass if it rewrites the selected text directly, with no clarifying questions.
+4. Plain-text constraint:
+   - Include `plain text only, no markdown, under 150 words`.
+   - Pass if the output preserves the hard constraint.
+
+### 4. OpenRouter Free Chain
+
+Only test lightly because of free quota.
+
+Use OpenRouter provider and the default curated free model.
+
+Pass conditions:
+- The selected model is from the curated chain, not `openrouter/free`.
+- If a model fails before output, fallback/cooldown behavior does not break the UI.
+- If the free daily cap is reached, the user gets a clear error/pause state instead of a fake rewrite.
+
+Recommended OpenRouter prompts:
+1. One LLM Branch hard launch triage prompt.
+2. One Text Branch complaint triage selection.
+
+Do not burn the full quota on repeated OpenRouter testing. Manual behavior is enough for now.
+
+### 5. Failure Capture Rules
+
+If anything fails, record:
+- provider
+- model
+- branch: `LLM branch` or `Text branch`
+- exact source prompt/selected text
+- full rewritten output
+- failure category:
+  - dropped deliverables
+  - generic softening / project-brief drift
+  - placeholder leak
+  - unnecessary clarifying questions
+  - staged-workflow collapse
+  - duplicate summary
+  - source echo
+  - answered instead of rewriting
+  - provider/rate-limit failure
+
+Then add a new regression entry before changing prompts or code.
+
+Phase 4/5 cleanup update from this session:
+- Closed the remaining Phase 4/5 buildflow checkboxes without changing Gemma behavior.
+- Moved frozen Gemma LLM prompt behavior into `extension/src/lib/gemma-legacy/llm-branch.ts`.
+- Moved frozen Gemma Text branch prompt/user-message/cleanup behavior into `extension/src/lib/gemma-legacy/text-branch.ts`.
+- Deleted the old mixed modules:
+  - `extension/src/lib/meta-prompt.ts`
+  - `extension/src/lib/context-enhance-prompt.ts`
+- Added `extension/test/unit/service-worker-provider-fallback.test.ts` proving Google non-Gemma first-pass validation failure plus targeted-retry validation failure escalates to frozen Gemma for both LLM and Text branches.
+- Gemma prompt strings, cleanup behavior, and retry policy were not retuned.
+
+Latest focused verification:
+- `npm test -- --run test/unit/service-worker-provider-fallback.test.ts test/unit/meta-prompt.test.ts test/unit/context-enhance-prompt.test.ts test/unit/context-menu.test.ts test/unit/google-api.test.ts test/unit/budget-snapshots.test.ts test/unit/rewrite-llm-branch.test.ts test/unit/rewrite-text-branch.test.ts`: passed, 8 files / 59 tests
+- `npm test`: passed, 36 files / 197 tests
+- `npm run build`: passed
+
+Phase 6/7 completion update from this session:
+- Added `extension/test/unit/service-worker-gemma-isolation.test.ts`.
+  - Direct Gemma LLM and Text paths now have a code-path assertion test proving shared rewrite-core repair and branch validators are not called.
+  - The test mocks those shared modules to throw if touched, while Gemma output still completes through the frozen legacy path.
+- Extended `extension/test/unit/service-worker-provider-fallback.test.ts`.
+  - LLM and Text all-provider terminal failures now assert the user-facing error is posted in `< 1 second` after mocked chain exhaustion.
+  - Terminal failures now log a structured failure chain containing Google, Gemma, and OpenRouter entries.
+- Added structured all-provider failure-chain logging in `extension/src/service-worker.ts`.
+- Phase 6 is now complete in `codex/buildflow.md`.
+- Phase 7 is complete except the live OpenRouter Primary Eval Gate, which cannot be honestly run without an OpenRouter API key. No `OPENROUTER_API_KEY` was present in the environment.
+- The OpenRouter Primary Eval Gate was later attempted with the developer-provided key and only `inclusionai/ling-2.6-flash:free`.
+  - First attempt hit OpenRouter's `free-models-per-min` limit.
+  - The eval harness was updated to throttle requests.
+  - The throttled rerun hit OpenRouter's `free-models-per-day` cap for the `50/day` bucket before the full corpus completed.
+  - No paid model, custom model, or `openrouter/free` fallback was used.
+  - Result is recorded as blocked in `codex/openrouter-primary-eval.md`; the Phase 7 eval checkbox remains open.
+
+Latest focused Phase 6/7 verification:
+- `npm test -- --run test/unit/service-worker-gemma-isolation.test.ts test/unit/service-worker-provider-fallback.test.ts`: passed, 2 files / 6 tests
+- `npm test`: passed, 36 files / 197 tests; skipped live OpenRouter eval when `OPENROUTER_API_KEY` is unset
+- `npm run build`: passed
+
+Phase 6/7 work from the latest session:
+- Phase 6 Google policy alignment is implemented in code and covered by unit tests.
+- Phase 7 OpenRouter runtime policy is implemented in code and covered by unit tests, with one buildflow checkbox intentionally left open:
+  - OpenRouter Primary Eval Gate against live `inclusionai/ling-2.6-flash:free`
+- Gemma remains frozen. No Gemma prompt, cleanup, or retry tuning was done.
+
+What landed for Phase 6:
+- Added `extension/src/lib/rewrite-google/`:
+  - `models.ts`
+  - `request-policy.ts`
+  - `retry-policy.ts`
+  - `budget-policy.ts`
+- Refactored Google request policy out of `llm-client.ts`.
+- Removed automatic Gemini Flash -> Flash-Lite fallback from `callGoogleAPI`; Flash now retries once on approved transient failures and surfaces fallback-eligible failures to service-worker policy.
+- Wired non-Gemma Google LLM/Text branch calls through provider fallback:
+  - Gemini Flash pipeline
+  - frozen Gemma fallback
+  - OpenRouter curated chain fallback when an OpenRouter key is saved
+
+What landed for Phase 7:
+- Added `extension/src/lib/rewrite-openrouter/`:
+  - `catalog.ts`
+  - `curation.ts`
+  - `route-policy.ts`
+  - `budget-policy.ts`
+  - `account-status.ts`
+- Replaced the runtime OpenRouter free chain with the curated order:
+  - `inclusionai/ling-2.6-flash:free`
+  - `nvidia/nemotron-3-super-120b-a12b:free`
+  - `openai/gpt-oss-20b:free`
+  - `nvidia/nemotron-3-nano-30b-a3b:free`
+- Excluded `openrouter/free`, `inclusionai/ling-2.6-1t:free`, and `meta-llama/llama-3.3-70b-instruct:free` from the curated free chain.
+- Added live OpenRouter catalog caching with pinned fallback, install/startup/background refresh, and popup-open refresh.
+- Added per-model 5-minute in-memory cooldown.
+- Added OpenRouter account bucket detection (`50/day`, `1000/day`, `unknown`) and cap pause behavior.
+- Popup now reads the shared curated OpenRouter list and displays cached OpenRouter account bucket state.
+
+Latest verification:
+- `npm test -- --run test/unit/google-api.test.ts test/unit/rewrite-google-policy.test.ts test/unit/rewrite-openrouter-policy.test.ts test/unit/openrouter-account-status.test.ts test/unit/openrouter-retry.test.ts test/unit/retry-policy.test.ts`: passed, 6 files / 43 tests
+- `npm test`: passed, 36 files / 197 tests; skipped live OpenRouter eval when `OPENROUTER_API_KEY` is unset
+- `npm run build`: passed
+- Expected warning remains: `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR.
+
+Next recommended work:
+- Re-run the OpenRouter Primary Eval Gate after the daily free quota resets, or with a dev account in the `1000/day` free-model bucket.
+- Then proceed to Phase 9 rollout verification gates.
+
+---
+
+Current uncommitted buildflow status:
+- Phases 1, 2, and 3 are complete with all checkpoints checked in `codex/buildflow.md`.
+- Phase 4 implementation is complete in `codex/buildflow.md`; repeated Google validation failure now has a service-worker fallback test, and `meta-prompt.ts` is removed.
+- Phase 5 implementation is complete in `codex/buildflow.md`; repeated catastrophic Google validation failure now has a service-worker fallback test, and `context-enhance-prompt.ts` is removed.
+- Phase 6 is complete in `codex/buildflow.md`.
+- Phase 7 runtime policy is implemented and verified, except the live OpenRouter Primary Eval Gate remains open in `codex/buildflow.md`.
+- Gemma remains frozen. Do not retune Gemma prompts or cleanup as part of the next phase.
+
+What landed in the worktree:
+- `AGENTS.md` now requires new Codex sessions to read `codex/productvision.md`, `codex/buildflow.md`, and `codex/Progress.md` first.
+- Phase 1 added `extension/test/regression/` with 33 JSON entries and a Vitest runner.
+- Phase 2 added `extension/src/lib/rewrite-core/budget.ts`, `prompt-mode.ts`, budget snapshots, and Vite prompt-mode define wiring.
+- Phase 3 added shared rewrite-core primitives:
+  - `types.ts`
+  - `normalize.ts`
+  - `constraints.ts`
+  - `validate.ts`
+  - `repair.ts`
+  - `fallback.ts`
+- Phase 4 added `extension/src/lib/rewrite-llm-branch/` and wired non-Gemma LLM branch calls through compact-contract prompting, validation, deterministic repair, one targeted retry, and provider fallback after repeated validation failure.
+- Phase 5 added `extension/src/lib/rewrite-text-branch/` and wired non-Gemma Text branch calls through compact-contract prompting, validation, narrow repair, catastrophic-output retry, and provider fallback after repeated catastrophic validation failure.
+- Frozen Gemma prompt and Text cleanup code now lives under `extension/src/lib/gemma-legacy/`; the old mixed prompt modules are removed.
+- Phase 6 added `extension/src/lib/rewrite-google/` and Google provider fallback policy.
+- Phase 7 added `extension/src/lib/rewrite-openrouter/` and curated OpenRouter catalog/routing/account-status policy.
+
+Latest verification:
+
+```powershell
+cd extension
+npm test
+npm run build
+```
+
+Latest result:
+- `npm test`: passed, 36/36 files and 197/197 tests; skipped live OpenRouter eval when `OPENROUTER_API_KEY` is unset
+- `npm run build`: passed
+- Expected warning remains: `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR.
+
+Next recommended phase:
+- Re-run the OpenRouter Primary Eval Gate after the daily free quota resets, or with a dev account in the `1000/day` free-model bucket, then proceed to Phase 9 rollout verification gates.
+
+---
 
 This handoff supersedes the older 2026-04-23 note. Today’s work is fully committed and pushed to GitHub through commit `61f0733`, `main` matches `origin/main`, and the working tree should be clean after this file is pushed.
 

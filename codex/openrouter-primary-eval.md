@@ -37,3 +37,17 @@ Conclusion:
 - the free-model daily bucket is still exhausted
 - no full corpus eval was run with this key
 - no paid model or `openrouter/free` fallback was used
+
+## Resumption
+
+When a working OpenRouter key is available (`1000/day` bucket preferred, or `50/day` after the daily reset):
+
+```powershell
+cd extension
+$env:OPENROUTER_API_KEY = "sk-or-..."
+npm run eval:openrouter
+```
+
+The harness lives at `extension/test/regression/openrouter-primary-eval.test.ts`. It reads `OPENROUTER_API_KEY` from the environment, throttles requests at `~4.5s` spacing, runs the locked corpus under `extension/test/regression/entries/` against `OPENROUTER_PRIMARY_FREE_MODEL` (currently `inclusionai/ling-2.6-flash:free`), and appends the result to this file.
+
+If the eval passes, mark the Phase 7 and Phase 9 OpenRouter eval-gate boxes `[x]` in `codex/buildflow.md` and record model id, date, and corpus version here.

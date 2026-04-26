@@ -1,0 +1,10 @@
+{
+  "id": "text-message-fragment-polish",
+  "branch": "Text",
+  "source": "hey maya quick update the migration dry run is done but billing owner is still unclear can you confirm by friday",
+  "expected_violation_codes": ["ASKED_FORBIDDEN_QUESTION", "PLACEHOLDER_LEAK", "SOURCE_ECHO"],
+  "expected_preserved_constraints": ["return polished message itself", "preserve Maya", "preserve migration dry run and billing owner", "preserve Friday"],
+  "severity": "quality-target",
+  "notes": "Covers selected email/message fragment behavior."
+}
+

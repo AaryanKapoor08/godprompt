@@ -1,0 +1,10 @@
+{
+  "id": "llm-app-help-missing-context",
+  "branch": "LLM",
+  "source": "help me with my app",
+  "expected_violation_codes": ["PLACEHOLDER_LEAK", "TEMPLATE_OUTPUT", "ANSWERED_INSTEAD_OF_REWRITING"],
+  "expected_preserved_constraints": ["ask up to 3 concise clarifying questions inside the rewritten prompt", "do not answer the app problem", "no placeholders"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from existing meta-prompt tests for missing app context."
+}
+

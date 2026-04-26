@@ -1,0 +1,10 @@
+{
+  "id": "llm-multi-task-boundaries",
+  "branch": "LLM",
+  "source": "Read the customer interview notes. First summarize the top pain points. Then list the product risks. Then draft a short follow-up email to the customer. Keep those as separate sections and do not merge them.",
+  "expected_violation_codes": ["MERGED_SEPARATE_TASKS", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["preserve task order", "keep summary risks and email separate", "do not merge sections"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers multi-task boundary preservation for the LLM branch."
+}
+

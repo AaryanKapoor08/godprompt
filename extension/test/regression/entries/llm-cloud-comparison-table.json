@@ -1,0 +1,10 @@
+{
+  "id": "llm-cloud-comparison-table",
+  "branch": "LLM",
+  "source": "compare AWS and Google Cloud for my startup. focus on pricing, deployment complexity, managed database options, and scalability. give me a comparison table and a short recommendation.",
+  "expected_violation_codes": ["DROPPED_DELIVERABLE", "DECORATIVE_MARKDOWN", "UNNECESSARY_CLARIFYING_QUESTION"],
+  "expected_preserved_constraints": ["preserve comparison table request", "preserve short recommendation", "preserve listed comparison criteria"],
+  "severity": "quality-target",
+  "notes": "Seeded from current meta-prompt examples for decision-oriented comparison prompts."
+}
+

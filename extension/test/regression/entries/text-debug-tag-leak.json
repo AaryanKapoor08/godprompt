@@ -1,0 +1,10 @@
+{
+  "id": "text-debug-tag-leak",
+  "branch": "Text",
+  "source": "clean this prompt and do not include any notes about what changed",
+  "expected_violation_codes": ["DEBUG_TAG_LEAK", "SOURCE_ECHO", "DUPLICATE_SUMMARY"],
+  "expected_preserved_constraints": ["output only rewritten selected text", "do not include change notes", "no DIFF tag"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from historical cleanup behavior around DIFF and NO_CHANGE markers."
+}
+

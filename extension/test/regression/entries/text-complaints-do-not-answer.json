@@ -1,0 +1,10 @@
+{
+  "id": "text-complaints-do-not-answer",
+  "branch": "Text",
+  "source": "analyze customer complaints, bug notes, and screenshots and draft a practical internal update",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["rewrite the rough AI prompt itself", "preserve internal update deliverable", "do not answer the complaint analysis"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch answered-task cleanup test."
+}
+

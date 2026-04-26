@@ -1,0 +1,10 @@
+{
+  "id": "text-plain-text-no-markdown",
+  "branch": "Text",
+  "source": "make this clearer but keep it plain text only, no markdown, no bold, no fancy labels",
+  "expected_violation_codes": ["DECORATIVE_MARKDOWN", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["plain text only", "no markdown", "no bold", "no fancy labels"],
+  "severity": "quality-target",
+  "notes": "Covers explicit formatting constraints in the Text branch."
+}
+

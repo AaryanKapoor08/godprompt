@@ -1,0 +1,10 @@
+{
+  "id": "llm-debug-code-not-answer",
+  "branch": "LLM",
+  "source": "make this a better prompt: debug the React component I pasted and identify the likely state bug, but do not rewrite the component until I confirm the cause",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "STAGED_WORKFLOW_COLLAPSE", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["rewrite the prompt only", "identify likely state bug first", "do not rewrite component until confirmation"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers no-output-answering and staged debugging flow."
+}
+

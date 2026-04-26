@@ -1,0 +1,10 @@
+{
+  "id": "llm-study-pdf-part-one",
+  "branch": "LLM",
+  "source": "check out the 34_BST_merged.pdf. teach this to me in parts and start with part 1. lecture slides are also included. exam hai and mujhe kuch nahi aata.",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "STAGED_WORKFLOW_COLLAPSE", "GENERIC_SOFTENING"],
+  "expected_preserved_constraints": ["use PDF and slides as source material", "teach in parts", "start with part 1", "assume beginner level"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from existing study-material prompt examples."
+}
+

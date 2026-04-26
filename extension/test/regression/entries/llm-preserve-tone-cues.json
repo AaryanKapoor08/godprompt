@@ -1,0 +1,10 @@
+{
+  "id": "llm-preserve-tone-cues",
+  "branch": "LLM",
+  "source": "make this prompt sharp, practical, clear, natural-sounding, and non-fluffy. I need the AI to challenge weak assumptions and give me a direct decision memo, not a long brainstorm.",
+  "expected_violation_codes": ["GENERIC_SOFTENING", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["preserve sharp practical clear natural-sounding non-fluffy tone", "preserve decision memo request", "avoid long brainstorm"],
+  "severity": "quality-target",
+  "notes": "Covers preservation of explicit tone cues."
+}
+

@@ -1,0 +1,10 @@
+{
+  "id": "llm-plain-text-no-markdown",
+  "branch": "LLM",
+  "source": "Rewrite this into a prompt I can send to an AI. The final AI response must be plain text only, with no markdown, no bold labels, and no tables.",
+  "expected_violation_codes": ["DECORATIVE_MARKDOWN", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["plain text only", "no markdown", "no bold labels", "no tables"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers explicit no-markdown and no-decorative-formatting constraints."
+}
+

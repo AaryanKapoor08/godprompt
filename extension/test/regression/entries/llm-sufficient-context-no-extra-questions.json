@@ -1,0 +1,10 @@
+{
+  "id": "llm-sufficient-context-no-extra-questions",
+  "branch": "LLM",
+  "source": "Create a 30-day onboarding plan for a new customer support manager at a B2B SaaS company. Include weekly goals, stakeholder meetings, documentation to review, and success metrics.",
+  "expected_violation_codes": ["UNNECESSARY_CLARIFYING_QUESTION", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["context is sufficient", "preserve 30-day scope", "preserve weekly goals and success metrics"],
+  "severity": "quality-target",
+  "notes": "Covers the rule that clarifying questions should only appear when critical context is missing."
+}
+

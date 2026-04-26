@@ -1,0 +1,10 @@
+{
+  "id": "text-forbidden-clarifying-question",
+  "branch": "Text",
+  "source": "follow up with them and ask if they saw the docs",
+  "expected_violation_codes": ["ASKED_FORBIDDEN_QUESTION", "PLACEHOLDER_LEAK"],
+  "expected_preserved_constraints": ["never ask clarifying questions in Text branch", "make a conservative rewrite from selected text only"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers the Text branch no-question contract."
+}
+

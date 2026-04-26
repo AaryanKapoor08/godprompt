@@ -1,0 +1,10 @@
+{
+  "id": "llm-already-strong-prompt",
+  "branch": "LLM",
+  "source": "Review this pull request for correctness, regressions, missing tests, and security risks. Prioritize concrete findings with file and line references before any summary. Do not rewrite code unless I ask for a patch.",
+  "expected_violation_codes": ["GENERIC_SOFTENING", "DROPPED_DELIVERABLE", "ANSWERED_INSTEAD_OF_REWRITING"],
+  "expected_preserved_constraints": ["keep close to already-strong prompt", "preserve file and line reference requirement", "do not turn into a code patch task"],
+  "severity": "quality-target",
+  "notes": "Covers the already-strong prompt category from provider comparison guidance."
+}
+

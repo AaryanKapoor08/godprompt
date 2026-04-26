@@ -1,0 +1,10 @@
+{
+  "id": "llm-staged-c-assignment-style-first",
+  "branch": "LLM",
+  "source": "I will upload my old C assignments. First analyze the files to learn my coding style, naming, comments, and structure. Do not solve the new assignment yet. After the style analysis, wait for me to send the new assignment and then help me match my style.",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "STAGED_WORKFLOW_COLLAPSE", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["analyze uploaded material first", "do not solve yet", "preserve staged workflow"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from rewrite-boundary guidance for file-analysis and assignment-prep prompts."
+}
+

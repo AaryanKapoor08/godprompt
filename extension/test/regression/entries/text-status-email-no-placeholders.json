@@ -1,0 +1,10 @@
+{
+  "id": "text-status-email-no-placeholders",
+  "branch": "Text",
+  "source": "hello there, i wanted to status check thanks alot, checked",
+  "expected_violation_codes": ["PLACEHOLDER_LEAK", "TEMPLATE_OUTPUT", "ASKED_FORBIDDEN_QUESTION"],
+  "expected_preserved_constraints": ["polish selected message itself", "no placeholders", "no clarifying questions"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch placeholder cleanup tests."
+}
+

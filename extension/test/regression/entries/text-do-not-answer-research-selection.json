@@ -1,0 +1,10 @@
+{
+  "id": "text-do-not-answer-research-selection",
+  "branch": "Text",
+  "source": "compare Postgres ClickHouse and BigQuery for analytics, include tradeoffs and a recommendation",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["rewrite prompt instead of comparing databases", "preserve three database names", "preserve tradeoffs and recommendation"],
+  "severity": "quality-target",
+  "notes": "Covers Text branch no-answering behavior for research/comparison selections."
+}
+

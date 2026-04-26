@@ -1,0 +1,10 @@
+{
+  "id": "text-no-quote-selected-text",
+  "branch": "Text",
+  "source": "fix grammar: the rollout plan have gaps and we need decide owners before monday",
+  "expected_violation_codes": ["SOURCE_ECHO", "DUPLICATE_SUMMARY"],
+  "expected_preserved_constraints": ["do not quote selected text back", "rewrite selected text itself", "preserve rollout plan owners and Monday"],
+  "severity": "quality-target",
+  "notes": "Covers source-echo prevention beyond explicit Original text labels."
+}
+

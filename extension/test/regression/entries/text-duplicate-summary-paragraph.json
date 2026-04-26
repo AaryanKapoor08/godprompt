@@ -1,0 +1,10 @@
+{
+  "id": "text-duplicate-summary-paragraph",
+  "branch": "Text",
+  "source": "sort these complaints and notes into facts assumptions missing info contradictions and emotional claims, then identify 3 root cause buckets and draft an internal update with next steps and risks this week",
+  "expected_violation_codes": ["DUPLICATE_SUMMARY", "MERGED_SEPARATE_TASKS", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["one consolidated rewrite only", "preserve staged categories", "preserve 3 root cause buckets", "preserve internal update with risks this week"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch paragraph duplicate-summary cleanup test."
+}
+

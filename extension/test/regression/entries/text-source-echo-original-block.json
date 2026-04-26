@@ -1,0 +1,10 @@
+{
+  "id": "text-source-echo-original-block",
+  "branch": "Text",
+  "source": "Hi everyone, the project is moving forward. fix this project plan and make it sound more professional",
+  "expected_violation_codes": ["SOURCE_ECHO", "DUPLICATE_SUMMARY"],
+  "expected_preserved_constraints": ["do not include Original text or Source text blocks", "rewrite selected text itself"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch source-echo cleanup tests."
+}
+

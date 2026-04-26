@@ -1,0 +1,10 @@
+{
+  "id": "text-keep-hard-constraint-under-150",
+  "branch": "Text",
+  "source": "read these complaints and tell me what is actually broken, what is user confusion, and draft a team update under 150 words for today",
+  "expected_violation_codes": ["DROPPED_DELIVERABLE", "DUPLICATE_SUMMARY"],
+  "expected_preserved_constraints": ["preserve under 150 words", "preserve today", "preserve actual breakage vs user confusion", "preserve team update"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch duplicate-summary guard that preserves real hard constraints."
+}
+

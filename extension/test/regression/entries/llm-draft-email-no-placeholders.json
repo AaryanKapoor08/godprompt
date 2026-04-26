@@ -1,0 +1,10 @@
+{
+  "id": "llm-draft-email-no-placeholders",
+  "branch": "LLM",
+  "source": "write a polite follow-up email to Maya about the April 30 onboarding checklist. Ask if she can confirm the owner for the billing setup and the migration dry run by Friday.",
+  "expected_violation_codes": ["PLACEHOLDER_LEAK", "TEMPLATE_OUTPUT", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["preserve recipient Maya", "preserve April 30 onboarding checklist", "preserve billing setup and migration dry run", "no placeholders"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from placeholder/template regressions in older progress notes."
+}
+

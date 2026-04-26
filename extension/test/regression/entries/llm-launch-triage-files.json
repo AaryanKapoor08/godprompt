@@ -1,0 +1,10 @@
+{
+  "id": "llm-launch-triage-files",
+  "branch": "LLM",
+  "source": "I will upload the launch brief, meeting notes, a draft customer FAQ, and product screenshots. Use them for a sharp launch-readiness triage. Identify launch risks, inconsistencies, customer misunderstandings, and unsupported team assumptions. Provide a practical launch checklist, a concise internal risk memo, a clear customer-facing FAQ, and a summary I can share internally. Highlight conflicts directly and do not invent missing details.",
+  "expected_violation_codes": ["FIRST_PERSON_BRIEF", "DROPPED_DELIVERABLE", "GENERIC_SOFTENING"],
+  "expected_preserved_constraints": ["preserve named source files", "preserve all four deliverables", "preserve anti-invention language", "preserve sharp triage tone"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from the 2026-04-24 launch-triage failure family."
+}
+

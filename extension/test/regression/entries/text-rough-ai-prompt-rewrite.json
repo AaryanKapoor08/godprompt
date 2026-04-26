@@ -1,0 +1,10 @@
+{
+  "id": "text-rough-ai-prompt-rewrite",
+  "branch": "Text",
+  "source": "look at support complaints and figure out whats bug vs confusing ux and make internal update",
+  "expected_violation_codes": ["ANSWERED_INSTEAD_OF_REWRITING", "DROPPED_DELIVERABLE", "DUPLICATE_SUMMARY"],
+  "expected_preserved_constraints": ["treat as rough AI prompt", "preserve bug vs confusing UX distinction", "preserve internal update"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch valid rough-prompt rewrite tests."
+}
+

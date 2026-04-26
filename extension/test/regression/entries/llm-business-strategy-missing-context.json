@@ -1,0 +1,10 @@
+{
+  "id": "llm-business-strategy-missing-context",
+  "branch": "LLM",
+  "source": "i need a business strategy",
+  "expected_violation_codes": ["PLACEHOLDER_LEAK", "TEMPLATE_OUTPUT", "UNNECESSARY_CLARIFYING_QUESTION"],
+  "expected_preserved_constraints": ["ask clarifying questions first when business type, customer, and objective are missing", "do not invent business details", "no placeholders"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from prompt guardrails for broad business asks with critical missing context."
+}
+

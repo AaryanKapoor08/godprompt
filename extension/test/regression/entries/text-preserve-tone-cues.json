@@ -1,0 +1,10 @@
+{
+  "id": "text-preserve-tone-cues",
+  "branch": "Text",
+  "source": "make this prompt sharper and more practical but still natural-sounding and non-fluffy",
+  "expected_violation_codes": ["GENERIC_SOFTENING", "SOURCE_ECHO"],
+  "expected_preserved_constraints": ["preserve sharper", "preserve practical", "preserve natural-sounding", "preserve non-fluffy"],
+  "severity": "quality-target",
+  "notes": "Covers Text branch preservation of tone cues without broad personality changes."
+}
+

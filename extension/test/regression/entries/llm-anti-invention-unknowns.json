@@ -1,0 +1,10 @@
+{
+  "id": "llm-anti-invention-unknowns",
+  "branch": "LLM",
+  "source": "Analyze these churn notes and tell me what is known, what is unknown, and what we need to verify. Do not invent numbers, customer names, dates, or causes. If evidence is missing, say missing.",
+  "expected_violation_codes": ["INVENTED_DETAIL", "DROPPED_DELIVERABLE", "GENERIC_SOFTENING"],
+  "expected_preserved_constraints": ["separate known unknown and verify", "do not invent numbers names dates or causes", "state missing when evidence is missing"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers anti-invention and uncertainty preservation."
+}
+

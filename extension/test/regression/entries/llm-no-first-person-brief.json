@@ -1,0 +1,10 @@
+{
+  "id": "llm-no-first-person-brief",
+  "branch": "LLM",
+  "source": "make this sharper: use the refund notes and angry support tickets to find what actually broke, what is confusion, what evidence is missing, and what update I should send the team today",
+  "expected_violation_codes": ["FIRST_PERSON_BRIEF", "GENERIC_SOFTENING", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["do not start with My goal is", "preserve refund notes and support tickets", "preserve team update deliverable"],
+  "severity": "regression-must-not-recur",
+  "notes": "Covers the bad project-brief rewrite shape called out in Progress.md."
+}
+

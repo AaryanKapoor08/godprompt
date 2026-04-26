@@ -1,0 +1,10 @@
+{
+  "id": "text-send-team-update-preserved",
+  "branch": "Text",
+  "source": "read these complaints and just tell me what the real problem is, what is user error, and what i should send the team today",
+  "expected_violation_codes": ["DROPPED_DELIVERABLE", "ANSWERED_INSTEAD_OF_REWRITING"],
+  "expected_preserved_constraints": ["preserve sendable team update intent", "preserve real problem vs user error distinction"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch sendable-draft intent repair tests."
+}
+

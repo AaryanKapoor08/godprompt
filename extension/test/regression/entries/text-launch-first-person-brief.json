@@ -1,0 +1,10 @@
+{
+  "id": "text-launch-first-person-brief",
+  "branch": "Text",
+  "source": "i am providing launch docs and need a blunt launch triage prompt with a checklist memo and one thing to verify today",
+  "expected_violation_codes": ["FIRST_PERSON_BRIEF", "GENERIC_SOFTENING", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["do not rewrite as My goal is", "preserve blunt launch triage", "preserve checklist memo and one item to verify"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from Text branch first-person brief cleanup test."
+}
+

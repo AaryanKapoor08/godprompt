@@ -1,0 +1,10 @@
+{
+  "id": "llm-incident-triage-evidence",
+  "branch": "LLM",
+  "source": "Use the API logs, support tickets, screenshots, and Slack notes as evidence for a hard triage pass. Separate confirmed facts, guesses, missing evidence, contradictions, and product breakage. Rank the likely failure paths by priority and draft an internal update for engineering and support. Do not invent numbers, names, or dates.",
+  "expected_violation_codes": ["FIRST_PERSON_BRIEF", "DROPPED_DELIVERABLE", "INVENTED_DETAIL"],
+  "expected_preserved_constraints": ["preserve evidence sources", "distinguish facts from guesses and missing evidence", "rank likely failure paths", "do not invent details"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from current incident-triage manual test guidance."
+}
+

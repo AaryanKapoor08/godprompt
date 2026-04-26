@@ -1,0 +1,10 @@
+{
+  "id": "text-complaints-duplicate-summary-line",
+  "branch": "Text",
+  "source": "read these complaints and tell me what is actually broken, what is user confusion, what evidence is missing, and what update i should send the team today",
+  "expected_violation_codes": ["DUPLICATE_SUMMARY", "DROPPED_DELIVERABLE"],
+  "expected_preserved_constraints": ["one consolidated rewrite only", "preserve broken vs user confusion distinction", "preserve missing evidence", "preserve team update deliverable"],
+  "severity": "regression-must-not-recur",
+  "notes": "Seeded from the 2026-04-23/2026-04-24 duplicate-summary repro."
+}
+

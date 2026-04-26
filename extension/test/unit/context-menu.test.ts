@@ -5,7 +5,7 @@ import {
   createContextEnhanceRequest,
   validateContextSelection,
 } from '../../src/service-worker'
-import { cleanContextEnhancementOutput } from '../../src/lib/context-enhance-prompt'
+import { cleanContextEnhancementOutput } from '../../src/lib/gemma-legacy/text-branch'
 
 describe('text branch selection guards', () => {
   it('rejects missing, empty, and too-short selections', () => {

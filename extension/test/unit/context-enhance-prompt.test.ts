@@ -2,37 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildContextUserMessage,
   buildGemmaSelectedTextMetaPrompt,
-  buildSelectedTextMetaPrompt,
-} from '../../src/lib/context-enhance-prompt'
+} from '../../src/lib/gemma-legacy/text-branch'
 
-describe('text branch prompt builders', () => {
-  it('builds a selected-text prompt that rewrites the text branch input itself', () => {
-    const result = buildSelectedTextMetaPrompt(8)
-
-    expect(result).toContain('MODE: text branch')
-    expect(result).toContain('CONVERSATION CONTEXT: None')
-    expect(result).toContain('REWRITE INTENSITY: LIGHT')
-    expect(result).toContain('Return ONLY the rewritten selected text')
-    expect(result).toContain('Email/message:')
-    expect(result).toContain('Rough AI prompt/instruction:')
-    expect(result).toContain('Never ask clarifying questions.')
-    expect(result).toContain('Never add a question-first flow.')
-    expect(result).toContain('Never output fill-in-the-blank templates.')
-    expect(result).toContain('Preserve explicit requests to draft an email, message, update, or other sendable output')
-    expect(result).toContain('Return one consolidated rewrite only')
-    expect(result).toContain('[recipient], [project], [date], {context}, {{details}}, or <topic>')
-    expect(result).toContain('Never include a separate "Original text"')
-    expect(result).toContain('Output only the improved version.')
-    expect(result).toContain('[DIFF:')
-  })
-
-  it('uses full intensity for longer text branch input', () => {
-    const result = buildSelectedTextMetaPrompt(40)
-
-    expect(result).toContain('REWRITE INTENSITY: FULL')
-    expect(result).not.toContain('MODE: universal selected-text prompt enhancer')
-  })
-
+describe('Gemma legacy text branch prompt builders', () => {
   it('builds a compact Gemma text branch prompt without questions or placeholders', () => {
     const result = buildGemmaSelectedTextMetaPrompt(20)
 

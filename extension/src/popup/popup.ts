@@ -1,6 +1,15 @@
 import { analyzeApiKey, detectProviderFromApiKey, type Provider } from '../lib/provider-policy'
 import { PreferenceManager } from '../lib/preferences'
 import { listGoogleModels } from '../lib/llm-client'
+import { OPENROUTER_ACCOUNT_STATUS_KEY, type OpenRouterAccountStatus } from '../lib/rewrite-openrouter/account-status'
+import { getOpenRouterCatalogWithPinnedFallback } from '../lib/rewrite-openrouter/catalog'
+import {
+  VISIBLE_PROVIDER_CHAIN,
+  formatOpenRouterAccountStatus,
+  getModelOptions,
+  getOpenRouterFreeChainOptions,
+  validateCustomOpenRouterModelId,
+} from './model-options'
 
 const headerLogo = document.getElementById('header-logo') as HTMLImageElement
 const apiKeyInput = document.getElementById('api-key') as HTMLInputElement
@@ -9,6 +18,9 @@ const providerSelect = document.getElementById('provider-select') as HTMLSelectE
 const modelSelect = document.getElementById('model-select') as HTMLSelectElement
 const modelHint = document.getElementById('model-hint') as HTMLSpanElement
 const costHint = document.getElementById('cost-hint') as HTMLSpanElement
+const openRouterAccountStatus = document.getElementById('openrouter-account-status') as HTMLDivElement
+const visibleChainList = document.getElementById('visible-chain') as HTMLOListElement
+const openRouterChainList = document.getElementById('openrouter-chain') as HTMLOListElement
 const contextToggle = document.getElementById('context-toggle') as HTMLInputElement
 const enhancementCountEl = document.getElementById('enhancement-count') as HTMLSpanElement
 const customModelSection = document.getElementById('custom-model-section') as HTMLDivElement
@@ -18,36 +30,6 @@ const saveButton = document.getElementById('save-settings') as HTMLButtonElement
 const saveStatus = document.getElementById('save-status') as HTMLDivElement
 
 headerLogo.src = chrome.runtime.getURL('assets/icon-48.png')
-
-interface ModelOption {
-  label: string
-  value: string
-  cost: string
-  tier: 'free' | 'paid'
-}
-
-const MODELS: Record<Provider, ModelOption[]> = {
-  anthropic: [
-    { label: 'Claude Haiku 3.5', value: 'claude-3-5-haiku-20241022', cost: 'Low cost', tier: 'paid' },
-    { label: 'Claude Sonnet 4', value: 'claude-sonnet-4-20250514', cost: 'Higher quality, higher cost', tier: 'paid' },
-  ],
-  openai: [
-    { label: 'GPT-4o-mini', value: 'gpt-4o-mini', cost: '~$0.001/enhance', tier: 'paid' },
-    { label: 'GPT-4o', value: 'gpt-4o', cost: '~$0.01/enhance', tier: 'paid' },
-  ],
-  google: [
-    { label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash', cost: 'Free tier available', tier: 'free' },
-    { label: 'Gemini 2.5 Flash Lite', value: 'gemini-2.5-flash-lite', cost: 'Free tier available', tier: 'free' },
-    { label: 'Gemma 3 27B IT', value: 'gemma-3-27b-it', cost: 'Free tier available', tier: 'free' },
-  ],
-  openrouter: [
-    { label: 'GPT-OSS 20B', value: 'openai/gpt-oss-20b:free', cost: 'Free', tier: 'free' },
-    { label: 'Llama 3.3 70B', value: 'meta-llama/llama-3.3-70b-instruct:free', cost: 'Free', tier: 'free' },
-    { label: 'Nemotron Nano 30B', value: 'nvidia/nemotron-3-nano-30b-a3b:free', cost: 'Free', tier: 'free' },
-    { label: 'Gemma 3 27B', value: 'google/gemma-3-27b-it:free', cost: 'Free', tier: 'free' },
-    { label: 'GPT-4o-mini', value: 'openai/gpt-4o-mini', cost: '~$0.001/enhance', tier: 'paid' },
-  ],
-}
 
 const PROVIDER_NAMES: Record<Provider, string> = {
   anthropic: 'Anthropic',
@@ -59,6 +41,7 @@ const PROVIDER_NAMES: Record<Provider, string> = {
 const draftModelByProvider: Partial<Record<Provider, string>> = {}
 const savedApiKeysByProvider: Partial<Record<Provider, string>> = {}
 const draftApiKeysByProvider: Partial<Record<Provider, string>> = {}
+let openRouterLiveModelIds: string[] | undefined
 
 function isProvider(value: string | undefined): value is Provider {
   return value === 'anthropic' || value === 'openai' || value === 'google' || value === 'openrouter'
@@ -90,14 +73,6 @@ function normalizeModelId(model: string | undefined): string | undefined {
 
 function getSelectedProvider(): Provider {
   return providerSelect.value as Provider
-}
-
-function getOpenRouterOptionLabel(modelId: string): string {
-  if (modelId.endsWith(':free')) {
-    return `${modelId} [FREE]`
-  }
-
-  return `${modelId} [PAID?]`
 }
 
 function createModelOption(model: string, label: string): HTMLOptionElement {
@@ -148,6 +123,7 @@ async function initPopup() {
   }
 
   updateModelDropdown(savedProvider, normalizedModel)
+  renderRoutingChain()
 
   if (typeof extraPrefs.customModel === 'string') {
     customModelInput.value = extraPrefs.customModel
@@ -158,6 +134,7 @@ async function initPopup() {
 
   if (savedProvider === 'openrouter') {
     void loadOpenRouterModels()
+    void updateOpenRouterAccountStatus()
   }
 
   if (savedProvider === 'google' && apiKeyInput.value.trim()) {
@@ -184,6 +161,10 @@ providerSelect.addEventListener('change', async () => {
 
   if (provider === 'openrouter') {
     void loadOpenRouterModels()
+    void updateOpenRouterAccountStatus()
+  } else {
+    openRouterAccountStatus.textContent = ''
+    openRouterAccountStatus.className = 'status'
   }
 
   if (provider === 'google' && apiKeyInput.value.trim()) {
@@ -209,25 +190,10 @@ modelSelect.addEventListener('change', () => {
 
 customModelInput.addEventListener('input', () => {
   const value = customModelInput.value.trim()
-  if (!value) {
-    customModelStatus.textContent = ''
-    customModelStatus.className = 'status'
-    updateCostHint()
-    clearSaveStatus()
-    return
-  }
-
-  if (!value.includes('/')) {
-    customModelStatus.textContent = 'Custom model IDs must look like org/model-name.'
-    customModelStatus.className = 'status status--error'
-    updateCostHint()
-    clearSaveStatus()
-    return
-  }
-
-  customModelStatus.textContent = 'Custom model will be saved for OpenRouter.'
-  customModelStatus.className = 'status status--saved'
-  draftModelByProvider.openrouter = value
+  const validation = validateCustomOpenRouterModelId(value)
+  customModelStatus.textContent = validation.message
+  customModelStatus.className = validation.valid && value ? 'status status--saved' : validation.valid ? 'status' : 'status status--error'
+  if (validation.valid && value) draftModelByProvider.openrouter = value
   updateCostHint()
   clearSaveStatus()
 })
@@ -322,11 +288,13 @@ function updateModelDropdown(provider: Provider, selectedModel?: string): void {
   updateModelHint(provider)
   customModelSection.style.display = provider === 'openrouter' ? 'block' : 'none'
 
-  const models = MODELS[provider]
+  const models = getModelOptions(provider, openRouterLiveModelIds)
   modelSelect.innerHTML = ''
 
   for (const model of models) {
-    const tierLabel = model.tier === 'free' ? ' [FREE]' : ' [PAID]'
+    const tierLabel = model.curationTier
+      ? ` [${model.curationTier.toUpperCase()}]`
+      : model.tier === 'free' ? ' [FREE]' : ' [PAID]'
     modelSelect.appendChild(createModelOption(model.value, `${model.label}${tierLabel}`))
   }
 
@@ -346,7 +314,7 @@ function updateModelDropdown(provider: Provider, selectedModel?: string): void {
 
 function updateModelHint(provider: Provider): void {
   if (provider === 'openrouter') {
-    modelHint.textContent = '4o-mini recommended (paid) | GPT-OSS recommended (free)'
+    modelHint.textContent = 'Curated free chain'
   } else if (provider === 'openai') {
     modelHint.textContent = '4o-mini recommended'
   } else if (provider === 'anthropic') {
@@ -367,7 +335,7 @@ function updateCostHint(): void {
     return
   }
 
-  const selected = MODELS[provider].find((model) => model.value === modelSelect.value)
+  const selected = getModelOptions(provider, openRouterLiveModelIds).find((model) => model.value === modelSelect.value)
   costHint.textContent = selected?.cost ?? 'Saved custom model'
 }
 
@@ -389,47 +357,48 @@ function clearSaveStatus(): void {
   saveStatus.className = 'status'
 }
 
-const OPENROUTER_CACHE_KEY = 'openrouterModelCache'
-const OPENROUTER_CACHE_TTL_MS = 24 * 60 * 60 * 1000
-
 async function loadOpenRouterModels(): Promise<void> {
   try {
-    const cached = await chrome.storage.local.get([OPENROUTER_CACHE_KEY])
-    const cache = cached[OPENROUTER_CACHE_KEY] as { models: string[]; timestamp: number } | undefined
-
-    if (cache && Date.now() - cache.timestamp < OPENROUTER_CACHE_TTL_MS) {
-      appendOpenRouterModels(cache.models)
-      return
+    const currentValue = modelSelect.value
+    openRouterLiveModelIds = await getOpenRouterCatalogWithPinnedFallback()
+    if (getSelectedProvider() === 'openrouter') {
+      updateModelDropdown('openrouter', currentValue)
     }
-
-    const response = await fetch('https://openrouter.ai/api/v1/models')
-    if (!response.ok) return
-
-    const data = await response.json() as { data?: Array<{ id: string }> }
-    const ids = data.data?.map((model) => model.id).filter(Boolean) ?? []
-    if (ids.length === 0) return
-
-    await chrome.storage.local.set({
-      [OPENROUTER_CACHE_KEY]: { models: ids, timestamp: Date.now() },
-    })
-    appendOpenRouterModels(ids)
+    renderRoutingChain()
   } catch (error) {
     console.error({ cause: error }, '[PromptGod] Failed to load OpenRouter models')
   }
 }
 
-function appendOpenRouterModels(modelIds: string[]): void {
-  const currentValue = modelSelect.value
-  const existing = new Set(Array.from(modelSelect.options).map((option) => option.value))
+async function updateOpenRouterAccountStatus(): Promise<void> {
+  const stored = await chrome.storage.local.get([OPENROUTER_ACCOUNT_STATUS_KEY])
+  const status = stored[OPENROUTER_ACCOUNT_STATUS_KEY] as OpenRouterAccountStatus | undefined
 
-  for (const id of modelIds.slice(0, 80)) {
-    if (!existing.has(id)) {
-      modelSelect.appendChild(createModelOption(id, getOpenRouterOptionLabel(id)))
-    }
+  const view = formatOpenRouterAccountStatus(status)
+  openRouterAccountStatus.textContent = view.message
+  openRouterAccountStatus.className = view.className
+}
+
+function renderRoutingChain(): void {
+  visibleChainList.innerHTML = ''
+  for (const item of VISIBLE_PROVIDER_CHAIN) {
+    const row = document.createElement('li')
+    row.textContent = item.label
+    visibleChainList.appendChild(row)
   }
 
-  if (currentValue && Array.from(modelSelect.options).some((option) => option.value === currentValue)) {
-    modelSelect.value = currentValue
+  openRouterChainList.innerHTML = ''
+  for (const model of getOpenRouterFreeChainOptions(openRouterLiveModelIds)) {
+    const row = document.createElement('li')
+    const label = document.createElement('span')
+    const tier = document.createElement('span')
+    label.textContent = model.label
+    tier.textContent = model.curationTier ?? 'stable free'
+    tier.className = model.curationTier === 'experimental free'
+      ? 'chain-tier chain-tier--experimental'
+      : 'chain-tier'
+    row.append(label, tier)
+    openRouterChainList.appendChild(row)
   }
 }
 

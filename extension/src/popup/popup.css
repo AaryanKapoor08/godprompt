@@ -276,6 +276,56 @@ input[type="password"].input--invalid {
   margin-top: 4px;
 }
 
+/* === Provider Chain === */
+.chain-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+  background: var(--pp-bg-subtle);
+}
+
+.chain-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--pp-fg-muted);
+}
+
+.chain-title--sub {
+  margin-top: 9px;
+}
+
+.chain-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--pp-fg);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chain-list li {
+  padding: 1px 0;
+}
+
+.chain-list--openrouter li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chain-tier {
+  flex: 0 0 auto;
+  color: var(--pp-success);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.chain-tier--experimental {
+  color: var(--pp-warning);
+}
+
 /* === Toggle === */
 .toggle-section {
   margin-bottom: 14px;

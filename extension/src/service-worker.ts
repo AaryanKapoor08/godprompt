@@ -3,7 +3,7 @@
 // Uses chrome.runtime.connect (ports) for streaming, NOT sendMessage
 
 import type { ContentMessage, ServiceWorkerMessage } from './lib/types'
-import { buildGemmaMetaPromptWithIntensity, buildMetaPromptWithIntensity } from './lib/meta-prompt'
+import { buildGemmaMetaPromptWithIntensity } from './lib/gemma-legacy/llm-branch'
 import {
   buildUserMessage,
   callAnthropicAPI,
@@ -15,7 +15,6 @@ import {
   parseOpenAIStream,
 } from './lib/llm-client'
 import {
-  OPENROUTER_FALLBACK_MODEL,
   shouldRetryOpenRouterSameModel,
   shouldRetryWithOpenRouterFallback,
 } from './lib/openrouter-retry'
@@ -25,16 +24,41 @@ import { runPromptGodContextMenuHandler } from './content/context-menu-handler'
 import {
   buildContextUserMessage,
   buildGemmaSelectedTextMetaPrompt,
-  buildSelectedTextMetaPrompt,
   cleanContextEnhancementOutput,
-} from './lib/context-enhance-prompt'
+} from './lib/gemma-legacy/text-branch'
+import { buildConservativeFallback } from './lib/rewrite-core/fallback'
+import { repairRewrite } from './lib/rewrite-core/repair'
+import type { RewriteProvider } from './lib/rewrite-core/types'
+import { buildLlmBranchSpec } from './lib/rewrite-llm-branch/spec-builder'
+import { buildLlmRetryUserMessage } from './lib/rewrite-llm-branch/retry'
+import { validateLlmBranchRewrite } from './lib/rewrite-llm-branch/validator'
+import { buildTextBranchSpec } from './lib/rewrite-text-branch/spec-builder'
+import { repairTextBranchRewrite } from './lib/rewrite-text-branch/repair'
+import { buildTextRetryUserMessage, shouldRetryTextBranch } from './lib/rewrite-text-branch/retry'
+import { validateTextBranchRewrite } from './lib/rewrite-text-branch/validator'
+import { GOOGLE_PRIMARY_MODEL, isGoogleGemmaModel } from './lib/rewrite-google/models'
+import { shouldEscalateGoogleToFallback } from './lib/rewrite-google/retry-policy'
+import { inspectOpenRouterAccountStatus, resetOpenRouterAccountStatusSession } from './lib/rewrite-openrouter/account-status'
+import { getOpenRouterMaxTokens } from './lib/rewrite-openrouter/budget-policy'
+import {
+  OPENROUTER_CATALOG_TTL_MS,
+  getOpenRouterCatalogWithPinnedFallback,
+  refreshOpenRouterCatalog,
+} from './lib/rewrite-openrouter/catalog'
+import { OPENROUTER_PRIMARY_FREE_MODEL, normalizeOpenRouterModelId } from './lib/rewrite-openrouter/curation'
+import {
+  OPENROUTER_MODEL_COOLDOWN_MS,
+  buildOpenRouterRouteChain,
+  computeOpenRouterRateLimitBackoffMs,
+  getOpenRouterCooldownRemainingMs,
+  isOpenRouterRateLimitError,
+  setOpenRouterModelCooldown,
+  shouldTryNextOpenRouterModel,
+} from './lib/rewrite-openrouter/route-policy'
 
 const STREAM_STALL_TIMEOUT_MS = 45000
 const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 20000
 const REQUEST_SUPERVISOR_TIMEOUT_MS = 65000
-const OPENROUTER_MODEL_COOLDOWN_MS = 2 * 60 * 1000
-const OPENROUTER_RATE_LIMIT_BASE_DELAY_MS = 1500
-const OPENROUTER_RATE_LIMIT_MAX_DELAY_MS = 10000
 export const CONTEXT_MENU_ID = 'promptgod-context-enhance'
 export const CONTEXT_MENU_TITLE = 'Run Text Branch'
 export const CONTEXT_SELECTION_MAX_CHARS = 10000
@@ -59,79 +83,27 @@ export type ContextEnhanceBootstrapRequest =
     requestedAt: number
   }
 
-const OPENROUTER_FALLBACK_MODELS = [
-  OPENROUTER_FALLBACK_MODEL,
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'nvidia/nemotron-3-nano-30b-a3b:free',
-  'google/gemma-3-27b-it:free',
-]
-
-const openRouterModelCooldownUntil = new Map<string, number>()
-
 function isGoogleGemmaModelId(model: string | undefined): boolean {
-  return typeof model === 'string' && model.trim().toLowerCase().startsWith('gemma-')
+  return isGoogleGemmaModel(model)
 }
 
-function normalizeOpenRouterModelId(modelId: string): string {
-  if (modelId === 'nvidia/nemotron-nano-30b-a3b:free') {
-    return 'nvidia/nemotron-3-nano-30b-a3b:free'
-  }
-  return modelId
-}
-
-function isOpenRouterRateLimitError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  if (/rate limit|429/i.test(error.message)) return true
-  return extractHttpStatus(error) === 429
-}
-
-function parseRetryAfterMs(error: unknown): number | null {
-  if (!(error instanceof Error)) return null
-  const match = error.message.match(/retry-after\s*(\d+)/i)
-  if (!match) return null
-  const seconds = Number.parseInt(match[1], 10)
-  if (!Number.isFinite(seconds) || seconds <= 0) return null
-  return seconds * 1000
-}
-
-function getOpenRouterCooldownRemainingMs(model: string): number {
-  const until = openRouterModelCooldownUntil.get(model)
-  if (!until) return 0
-  const remaining = until - Date.now()
-  return remaining > 0 ? remaining : 0
-}
-
-function setOpenRouterModelCooldown(model: string, cooldownMs: number): void {
-  const until = Date.now() + cooldownMs
-  const current = openRouterModelCooldownUntil.get(model) ?? 0
-  if (until > current) {
-    openRouterModelCooldownUntil.set(model, until)
-  }
-}
-
-function computeRateLimitBackoffMs(error: unknown, rateLimitAttempt: number): number {
-  const retryAfterMs = parseRetryAfterMs(error)
-  if (retryAfterMs !== null) {
-    return Math.min(Math.max(retryAfterMs, OPENROUTER_RATE_LIMIT_BASE_DELAY_MS), OPENROUTER_RATE_LIMIT_MAX_DELAY_MS)
-  }
-
-  const exponential = OPENROUTER_RATE_LIMIT_BASE_DELAY_MS * (2 ** Math.max(0, rateLimitAttempt - 1))
-  return Math.min(exponential, OPENROUTER_RATE_LIMIT_MAX_DELAY_MS)
-}
-
-function getOpenRouterMaxTokens(model: string, promptWordCount: number): number {
-  const isFree = model.includes(':free')
-  if (!isFree) {
-    return 512
-  }
-
-  if (promptWordCount <= 40) return 256
-  if (promptWordCount <= 120) return 320
-  return 384
+function mapRewriteProvider(provider: string | undefined): RewriteProvider {
+  if (provider === 'openrouter') return 'OpenRouter'
+  if (provider === 'openai') return 'OpenAI'
+  if (provider === 'anthropic') return 'Anthropic'
+  return 'Google'
 }
 
 type StreamProgress = {
   sentAnyToken: boolean
+}
+
+type ProviderFailureChainEntry = {
+  branch: 'LLM' | 'Text'
+  provider: 'Google' | 'Gemma' | 'OpenRouter'
+  model: string
+  stage: 'primary' | 'fallback' | 'final-chain'
+  failure: string
 }
 
 // Retryable HTTP status codes (pre-first-token only)
@@ -163,7 +135,13 @@ let cachedSettings: {
   providerApiKeys?: Record<string, string>
 } | null = null
 
-async function getSettings(): Promise<{ apiKey?: string; provider?: string; model?: string; includeConversationContext?: boolean }> {
+async function getSettings(): Promise<{
+  apiKey?: string
+  provider?: string
+  model?: string
+  includeConversationContext?: boolean
+  providerApiKeys?: Record<string, string>
+}> {
   if (!cachedSettings) {
     const storedSettings = await chrome.storage.local.get(['apiKey', 'provider', 'model', 'includeConversationContext', 'providerApiKeys']) as typeof cachedSettings
     const provider = storedSettings?.provider
@@ -184,26 +162,13 @@ async function getSettings(): Promise<{ apiKey?: string; provider?: string; mode
     provider: cachedSettings.provider,
     model: cachedSettings.model,
     includeConversationContext: cachedSettings.includeConversationContext,
+    providerApiKeys: cachedSettings.providerApiKeys,
   }
 }
 
-function buildOpenRouterModelChain(requestedModel: string): string[] {
-  const models = [requestedModel, ...OPENROUTER_FALLBACK_MODELS]
-  const deduped: string[] = []
-
-  for (const model of models) {
-    const normalized = model.trim()
-    if (!normalized) continue
-    if (!deduped.includes(normalized)) {
-      deduped.push(normalized)
-    }
-  }
-
-  const now = Date.now()
-  const ready = deduped.filter((model) => (openRouterModelCooldownUntil.get(model) ?? 0) <= now)
-  const cooling = deduped.filter((model) => (openRouterModelCooldownUntil.get(model) ?? 0) > now)
-
-  return [...ready, ...cooling]
+async function buildOpenRouterModelChain(requestedModel: string): Promise<string[]> {
+  const liveModelIds = await getOpenRouterCatalogWithPinnedFallback()
+  return buildOpenRouterRouteChain(requestedModel, liveModelIds)
 }
 
 export function validateContextSelection(selectionText: string | undefined): ContextSelectionValidation {
@@ -333,14 +298,31 @@ async function injectContextEnhanceRequest(
 export function initServiceWorker() {
   chrome.storage.onChanged.addListener(() => {
     cachedSettings = null
+    resetOpenRouterAccountStatusSession()
   })
 
   registerContextMenu()
-  chrome.runtime.onInstalled?.addListener(registerContextMenu)
-  chrome.runtime.onStartup?.addListener(registerContextMenu)
+  chrome.runtime.onInstalled?.addListener(() => {
+    registerContextMenu()
+    void refreshOpenRouterCatalog().catch((error) => {
+      console.info({ cause: error }, '[PromptGod] OpenRouter catalog refresh failed on install')
+    })
+  })
+  chrome.runtime.onStartup?.addListener(() => {
+    registerContextMenu()
+    void refreshOpenRouterCatalog().catch((error) => {
+      console.info({ cause: error }, '[PromptGod] OpenRouter catalog refresh failed on startup')
+    })
+  })
   chrome.contextMenus?.onClicked?.addListener((info, tab) => {
     void handleContextMenuClick(info, tab)
   })
+
+  setInterval(() => {
+    void refreshOpenRouterCatalog().catch((error) => {
+      console.info({ cause: error }, '[PromptGod] OpenRouter catalog background refresh failed')
+    })
+  }, OPENROUTER_CATALOG_TTL_MS)
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'PING') {
@@ -391,7 +373,7 @@ export async function handleEnhance(
   try {
     sendMessage(port, { type: 'START' })
 
-    const { apiKey, provider, model } = await getSettings()
+    const { apiKey, provider, model, providerApiKeys } = await getSettings()
 
     if (!apiKey) {
       sendMessage(port, {
@@ -405,21 +387,38 @@ export async function handleEnhance(
 
     // BYOK mode — direct API call
     const promptWordCount = msg.rawPrompt.trim().split(/\s+/).length
-    const systemPrompt = provider === 'google' && isGoogleGemmaModelId(model)
-      ? buildGemmaMetaPromptWithIntensity(
-        msg.platform,
-        msg.context.isNewConversation,
-        msg.context.conversationLength,
+    const isFrozenGemmaPath = provider === 'google' && isGoogleGemmaModelId(model)
+
+    if (!isFrozenGemmaPath) {
+      const finalText = await runLlmBranchWithProviderFallback({
+        apiKey,
+        providerApiKeys,
+        provider,
+        model,
+        platform: msg.platform,
+        rawPrompt: msg.rawPrompt,
         promptWordCount,
-        msg.recentContext
-      )
-      : buildMetaPromptWithIntensity(
-        msg.platform,
-        msg.context.isNewConversation,
-        msg.context.conversationLength,
-        promptWordCount,
-        msg.recentContext
-      )
+        context: msg.context,
+        recentContext: msg.recentContext,
+        signal,
+      })
+
+      sendMessage(port, { type: 'TOKEN', text: finalText })
+      sendMessage(port, { type: 'DONE' })
+      sendMessage(port, { type: 'SETTLEMENT', status: 'DONE' })
+      disconnectPortSoon(port)
+      incrementCounter('totalEnhancements', msg.platform)
+      console.info('[PromptGod] Enhancement complete')
+      return
+    }
+
+    const systemPrompt = buildGemmaMetaPromptWithIntensity(
+      msg.platform,
+      msg.context.isNewConversation,
+      msg.context.conversationLength,
+      promptWordCount,
+      msg.recentContext
+    )
 
     const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, msg.recentContext)
 
@@ -430,8 +429,8 @@ export async function handleEnhance(
 
     // Route to the correct provider, passing the selected model
     if (provider === 'openrouter') {
-      const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_FALLBACK_MODEL)
-      const modelsToTry = buildOpenRouterModelChain(requestedModel)
+      const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_PRIMARY_FREE_MODEL)
+      const modelsToTry = await buildOpenRouterModelChain(requestedModel)
 
       let sentAnyToken = false
       let openRouterSucceeded = false
@@ -472,7 +471,7 @@ export async function handleEnhance(
 
             if (isOpenRouterRateLimitError(error)) {
               rateLimitAttempt++
-              const backoffMs = computeRateLimitBackoffMs(error, rateLimitAttempt)
+              const backoffMs = computeOpenRouterRateLimitBackoffMs(error, rateLimitAttempt)
               setOpenRouterModelCooldown(currentModel, Math.max(OPENROUTER_MODEL_COOLDOWN_MS, backoffMs))
               console.info({ currentModel, backoffMs }, '[PromptGod] OpenRouter rate limited, cooling model and backing off')
               await delay(backoffMs)
@@ -531,7 +530,7 @@ export async function handleEnhance(
         apiKey,
         systemPrompt,
         userMessage,
-        model ?? 'gemini-2.5-flash',
+        model ?? GOOGLE_PRIMARY_MODEL,
         512
       )
       sendMessage(port, { type: 'TOKEN', text: responseText })
@@ -575,6 +574,361 @@ export async function handleEnhance(
   }
 }
 
+type LlmBranchPipelineRequest = {
+  apiKey: string
+  provider?: string
+  providerApiKeys?: Record<string, string>
+  model?: string
+  platform: string
+  rawPrompt: string
+  promptWordCount: number
+  context: {
+    isNewConversation: boolean
+    conversationLength: number
+  }
+  recentContext?: string
+  signal: AbortSignal
+  escalateOnValidationFailure?: boolean
+}
+
+class RewriteValidationFailure extends Error {
+  constructor(readonly branch: 'LLM' | 'Text') {
+    super(`[ServiceWorker] ${branch} branch rewrite failed validation after targeted retry`)
+    this.name = 'RewriteValidationFailure'
+  }
+}
+
+async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineRequest): Promise<string> {
+  if (request.provider !== 'google') {
+    return await runLlmBranchPipeline(request)
+  }
+
+  const failureChain: ProviderFailureChainEntry[] = []
+
+  try {
+    return await runLlmBranchPipeline({
+      ...request,
+      model: request.model ?? GOOGLE_PRIMARY_MODEL,
+      escalateOnValidationFailure: true,
+    })
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('LLM', 'Google', request.model ?? GOOGLE_PRIMARY_MODEL, 'primary', error))
+    if (!(error instanceof RewriteValidationFailure) && !shouldEscalateGoogleToFallback(error)) {
+      throw error
+    }
+    console.info({ cause: error }, '[PromptGod] Escalating Google LLM branch request to frozen Gemma fallback')
+  }
+
+  try {
+    const systemPrompt = buildGemmaMetaPromptWithIntensity(
+      request.platform,
+      request.context.isNewConversation,
+      request.context.conversationLength,
+      request.promptWordCount,
+      request.recentContext
+    )
+    const userMessage = buildUserMessage(request.rawPrompt, request.platform, request.context, request.recentContext)
+    return await collectContextEnhancementText({
+      apiKey: request.apiKey,
+      provider: 'google',
+      model: 'gemma-3-27b-it',
+      systemPrompt,
+      userMessage,
+      promptWordCount: request.promptWordCount,
+      signal: request.signal,
+    })
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('LLM', 'Gemma', 'gemma-3-27b-it', 'fallback', error))
+    if (!shouldEscalateGoogleToFallback(error)) {
+      throw error
+    }
+    console.info({ cause: error }, '[PromptGod] Escalating LLM branch request from Gemma to OpenRouter chain')
+  }
+
+  const openRouterKey = request.providerApiKeys?.openrouter
+  if (!openRouterKey) {
+    failureChain.push({
+      branch: 'LLM',
+      provider: 'OpenRouter',
+      model: OPENROUTER_PRIMARY_FREE_MODEL,
+      stage: 'final-chain',
+      failure: 'no OpenRouter key saved for final fallback',
+    })
+    throw buildAllProvidersFailedError('LLM', failureChain)
+  }
+
+  try {
+    return await runLlmBranchPipeline({
+      ...request,
+      apiKey: openRouterKey,
+      provider: 'openrouter',
+      model: OPENROUTER_PRIMARY_FREE_MODEL,
+      escalateOnValidationFailure: true,
+    })
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('LLM', 'OpenRouter', OPENROUTER_PRIMARY_FREE_MODEL, 'final-chain', error))
+    throw buildAllProvidersFailedError('LLM', failureChain)
+  }
+}
+
+async function runLlmBranchPipeline({
+  apiKey,
+  provider,
+  model,
+  platform,
+  rawPrompt,
+  promptWordCount,
+  context,
+  recentContext,
+  signal,
+  escalateOnValidationFailure = false,
+}: LlmBranchPipelineRequest): Promise<string> {
+  const built = buildLlmBranchSpec({
+    sourceText: rawPrompt,
+    provider: mapRewriteProvider(provider),
+    modelId: model ?? '',
+    platform,
+    isNewConversation: context.isNewConversation,
+    conversationLength: context.conversationLength,
+    recentContext,
+  })
+
+  const firstOutput = await collectContextEnhancementText({
+    apiKey,
+    provider,
+    model,
+    systemPrompt: built.systemPrompt,
+    userMessage: built.userMessage,
+    promptWordCount,
+    signal,
+  })
+  const firstFinal = finalizeLlmBranchCandidate(rawPrompt, firstOutput)
+  if (firstFinal.validation.ok) {
+    return firstFinal.text
+  }
+
+  const retryUserMessage = buildLlmRetryUserMessage(rawPrompt, firstOutput, firstFinal.validation.issues)
+  const retryOutput = await collectContextEnhancementText({
+    apiKey,
+    provider,
+    model,
+    systemPrompt: built.systemPrompt,
+    userMessage: retryUserMessage,
+    promptWordCount,
+    signal,
+  })
+  const retryFinal = finalizeLlmBranchCandidate(rawPrompt, retryOutput)
+  if (retryFinal.validation.ok) {
+    return retryFinal.text
+  }
+
+  if (escalateOnValidationFailure) {
+    throw new RewriteValidationFailure('LLM')
+  }
+
+  return buildConservativeFallback({ sourceText: rawPrompt })
+}
+
+function finalizeLlmBranchCandidate(sourceText: string, output: string): {
+  text: string
+  validation: ReturnType<typeof validateLlmBranchRewrite>
+} {
+  const repaired = repairRewrite({ sourceText, output }).output
+  const text = normalizeNoChangeOutput(repaired, sourceText)
+  return {
+    text,
+    validation: validateLlmBranchRewrite(sourceText, text),
+  }
+}
+
+type TextBranchPipelineRequest = {
+  apiKey: string
+  provider?: string
+  providerApiKeys?: Record<string, string>
+  model?: string
+  selectedText: string
+  promptWordCount: number
+  signal: AbortSignal
+  escalateOnValidationFailure?: boolean
+}
+
+async function runTextBranchWithProviderFallback(request: TextBranchPipelineRequest): Promise<string> {
+  if (request.provider !== 'google') {
+    return await runTextBranchPipeline(request)
+  }
+
+  const failureChain: ProviderFailureChainEntry[] = []
+
+  try {
+    return await runTextBranchPipeline({
+      ...request,
+      model: request.model ?? GOOGLE_PRIMARY_MODEL,
+      escalateOnValidationFailure: true,
+    })
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('Text', 'Google', request.model ?? GOOGLE_PRIMARY_MODEL, 'primary', error))
+    if (!(error instanceof RewriteValidationFailure) && !shouldEscalateGoogleToFallback(error)) {
+      throw error
+    }
+    console.info({ cause: error }, '[PromptGod] Escalating Google Text branch request to frozen Gemma fallback')
+  }
+
+  try {
+    return cleanContextEnhancementOutput(
+      await collectContextEnhancementText({
+        apiKey: request.apiKey,
+        provider: 'google',
+        model: 'gemma-3-27b-it',
+        systemPrompt: buildGemmaSelectedTextMetaPrompt(request.promptWordCount),
+        userMessage: buildContextUserMessage(request.selectedText),
+        promptWordCount: request.promptWordCount,
+        signal: request.signal,
+      }),
+      request.selectedText
+    )
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('Text', 'Gemma', 'gemma-3-27b-it', 'fallback', error))
+    if (!shouldEscalateGoogleToFallback(error)) {
+      throw error
+    }
+    console.info({ cause: error }, '[PromptGod] Escalating Text branch request from Gemma to OpenRouter chain')
+  }
+
+  const openRouterKey = request.providerApiKeys?.openrouter
+  if (!openRouterKey) {
+    failureChain.push({
+      branch: 'Text',
+      provider: 'OpenRouter',
+      model: OPENROUTER_PRIMARY_FREE_MODEL,
+      stage: 'final-chain',
+      failure: 'no OpenRouter key saved for final fallback',
+    })
+    throw buildAllProvidersFailedError('Text', failureChain)
+  }
+
+  try {
+    return await runTextBranchPipeline({
+      ...request,
+      apiKey: openRouterKey,
+      provider: 'openrouter',
+      model: OPENROUTER_PRIMARY_FREE_MODEL,
+      escalateOnValidationFailure: true,
+    })
+  } catch (error) {
+    failureChain.push(buildFailureChainEntry('Text', 'OpenRouter', OPENROUTER_PRIMARY_FREE_MODEL, 'final-chain', error))
+    throw buildAllProvidersFailedError('Text', failureChain)
+  }
+}
+
+function buildFailureChainEntry(
+  branch: 'LLM' | 'Text',
+  provider: ProviderFailureChainEntry['provider'],
+  model: string,
+  stage: ProviderFailureChainEntry['stage'],
+  error: unknown
+): ProviderFailureChainEntry {
+  return {
+    branch,
+    provider,
+    model,
+    stage,
+    failure: summarizeProviderFailure(error),
+  }
+}
+
+function summarizeProviderFailure(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
+}
+
+function buildAllProvidersFailedError(branch: 'LLM' | 'Text', failureChain: ProviderFailureChainEntry[]): Error {
+  console.error(
+    { branch, failureChain },
+    `[PromptGod] All providers failed for ${branch} branch`
+  )
+
+  const chainSummary = failureChain
+    .map((entry) => `${entry.provider}/${entry.model}: ${entry.failure}`)
+    .join(' | ')
+
+  return new Error(`All providers failed for ${branch} branch. Failure chain: ${chainSummary}`)
+}
+
+async function runTextBranchPipeline({
+  apiKey,
+  provider,
+  model,
+  selectedText,
+  promptWordCount,
+  signal,
+  escalateOnValidationFailure = false,
+}: TextBranchPipelineRequest): Promise<string> {
+  const built = buildTextBranchSpec({
+    sourceText: selectedText,
+    provider: mapRewriteProvider(provider),
+    modelId: model ?? '',
+  })
+
+  const firstOutput = await collectContextEnhancementText({
+    apiKey,
+    provider,
+    model,
+    systemPrompt: built.systemPrompt,
+    userMessage: built.userMessage,
+    promptWordCount,
+    signal,
+  })
+  const firstFinal = finalizeTextBranchCandidate(selectedText, firstOutput)
+  if (firstFinal.validation.ok) {
+    return firstFinal.text
+  }
+
+  if (shouldRetryTextBranch(firstFinal.validation.issues)) {
+    const retryUserMessage = buildTextRetryUserMessage(selectedText, firstFinal.validation.issues)
+    const retryOutput = await collectContextEnhancementText({
+      apiKey,
+      provider,
+      model,
+      systemPrompt: built.systemPrompt,
+      userMessage: retryUserMessage,
+      promptWordCount,
+      signal,
+    })
+    const retryFinal = finalizeTextBranchCandidate(selectedText, retryOutput)
+    if (retryFinal.validation.ok) {
+      return retryFinal.text
+    }
+  }
+
+  if (escalateOnValidationFailure) {
+    throw new RewriteValidationFailure('Text')
+  }
+
+  return buildConservativeFallback({ sourceText: selectedText })
+}
+
+function finalizeTextBranchCandidate(sourceText: string, output: string): {
+  text: string
+  validation: ReturnType<typeof validateTextBranchRewrite>
+} {
+  const text = normalizeNoChangeOutput(repairTextBranchRewrite(sourceText, output), sourceText)
+  return {
+    text,
+    validation: validateTextBranchRewrite(sourceText, text),
+  }
+}
+
+function normalizeNoChangeOutput(output: string, sourceText: string): string {
+  const withoutDiff = output.replace(/\[DIFF:[\s\S]*?\]/gi, '').trim()
+  if (/^\[NO_CHANGE\]\b/i.test(withoutDiff)) {
+    const body = withoutDiff.replace(/^\[NO_CHANGE\]\s*/i, '').trim()
+    return body || sourceText.trim()
+  }
+  return withoutDiff
+}
+
 export async function handleContextEnhance(
   port: chrome.runtime.Port,
   msg: ContentMessage & { type: 'CONTEXT_ENHANCE' },
@@ -602,7 +956,7 @@ export async function handleContextEnhance(
       return
     }
 
-    const { apiKey, provider, model } = await getSettings()
+    const { apiKey, provider, model, providerApiKeys } = await getSettings()
 
     if (!apiKey) {
       const message = 'Set your API key in PromptGod settings.'
@@ -618,27 +972,41 @@ export async function handleContextEnhance(
 
     const selectedText = validation.selectedText
     const promptWordCount = selectedText.trim().split(/\s+/).length
-    const systemPrompt = provider === 'google' && isGoogleGemmaModelId(model)
+    const isFrozenGemmaPath = provider === 'google' && isGoogleGemmaModelId(model)
+    const systemPrompt = isFrozenGemmaPath
       ? buildGemmaSelectedTextMetaPrompt(promptWordCount)
-      : buildSelectedTextMetaPrompt(promptWordCount)
-    const userMessage = buildContextUserMessage(selectedText)
+      : ''
+    const userMessage = isFrozenGemmaPath
+      ? buildContextUserMessage(selectedText)
+      : ''
 
     console.info(
       { requestId: msg.requestId, provider, model, selectionLength: selectedText.length },
       '[PromptGod] Calling LLM API for text branch'
     )
 
-    const output = await collectContextEnhancementText({
-      apiKey,
-      provider,
-      model,
-      systemPrompt,
-      userMessage,
-      promptWordCount,
-      signal,
-    })
-
-    const cleanText = cleanContextEnhancementOutput(output, selectedText)
+    const cleanText = isFrozenGemmaPath
+      ? cleanContextEnhancementOutput(
+        await collectContextEnhancementText({
+          apiKey,
+          provider,
+          model,
+          systemPrompt,
+          userMessage,
+          promptWordCount,
+          signal,
+        }),
+        selectedText
+      )
+      : await runTextBranchWithProviderFallback({
+        apiKey,
+        providerApiKeys,
+        provider,
+        model,
+        selectedText,
+        promptWordCount,
+        signal,
+      })
     if (!cleanText) {
       throw new Error('[ServiceWorker] Context enhancement returned no text output')
     }
@@ -723,7 +1091,7 @@ async function collectContextEnhancementText({
       apiKey,
       systemPrompt,
       userMessage,
-      model ?? 'gemini-2.5-flash',
+      model ?? GOOGLE_PRIMARY_MODEL,
       512
     )
   }
@@ -739,8 +1107,16 @@ async function collectOpenRouterCompletionText(
   promptWordCount: number,
   signal: AbortSignal
 ): Promise<string> {
-  const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_FALLBACK_MODEL)
-  const modelsToTry = buildOpenRouterModelChain(requestedModel)
+  const accountStatus = await inspectOpenRouterAccountStatus(apiKey).catch((error) => {
+    console.info({ cause: error }, '[PromptGod] Could not inspect OpenRouter account status')
+    return null
+  })
+  if (accountStatus?.paused) {
+    throw new Error('[ServiceWorker] OpenRouter daily limit reached; routing paused for today')
+  }
+
+  const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_PRIMARY_FREE_MODEL)
+  const modelsToTry = await buildOpenRouterModelChain(requestedModel)
 
   let lastError: unknown = null
   let rateLimitAttempt = 0
@@ -771,14 +1147,14 @@ async function collectOpenRouterCompletionText(
 
       if (isOpenRouterRateLimitError(error)) {
         rateLimitAttempt++
-        const backoffMs = computeRateLimitBackoffMs(error, rateLimitAttempt)
+        const backoffMs = computeOpenRouterRateLimitBackoffMs(error, rateLimitAttempt)
         setOpenRouterModelCooldown(currentModel, Math.max(OPENROUTER_MODEL_COOLDOWN_MS, backoffMs))
         console.info({ currentModel, backoffMs }, '[PromptGod] OpenRouter context request rate limited')
         await delay(backoffMs)
       }
 
       const hasFallbackModel = modelIndex < modelsToTry.length - 1
-      if (hasFallbackModel && shouldRetryWithOpenRouterFallback(currentModel, false, error)) {
+      if (hasFallbackModel && shouldTryNextOpenRouterModel(false, error)) {
         const fallbackModel = modelsToTry[modelIndex + 1]
         console.info({ currentModel, fallback: fallbackModel }, '[PromptGod] Retrying context request with fallback model')
         continue
@@ -788,7 +1164,11 @@ async function collectOpenRouterCompletionText(
     }
   }
 
-  throw lastError ?? new Error('[ServiceWorker] OpenRouter context request failed')
+  throw new Error(
+    `[ServiceWorker] OpenRouter curated chain exhausted (${modelsToTry.join(' -> ')}): ${
+      lastError instanceof Error ? lastError.message : 'no provider responded'
+    }`
+  )
 }
 
 async function collectStreamText(source: AsyncGenerator<string, void, unknown>, signal: AbortSignal): Promise<string> {
@@ -832,8 +1212,12 @@ function formatErrorMessage(error: unknown): string {
     return 'API request blocked — if you\'re using Brave or a privacy browser, allow requests from extensions in your shield/privacy settings'
   }
 
-  if (/OpenRouter completion returned no text output|ended before emitting tokens|timed out while waiting for tokens|stream stalled/i.test(error.message)) {
-    return 'That OpenRouter model did not return usable text. Retry once, or switch to another free model like `openai/gpt-oss-20b:free` or `meta-llama/llama-3.3-70b-instruct:free`.'
+  if (/OpenRouter completion returned no text output|OpenRouter curated chain exhausted|ended before emitting tokens|timed out while waiting for tokens|stream stalled/i.test(error.message)) {
+    return 'The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model.'
+  }
+
+  if (/All providers failed/i.test(error.message)) {
+    return 'No provider returned a usable rewrite. Retry once, or save an OpenRouter key/custom model and try again.'
   }
 
   if (/Google API returned unusable output|Google API returned no text output/i.test(error.message)) {

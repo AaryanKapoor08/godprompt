@@ -1,4 +1,6 @@
-export const OPENROUTER_FALLBACK_MODEL = 'openai/gpt-oss-20b:free'
+import { OPENROUTER_PRIMARY_FREE_MODEL } from './rewrite-openrouter/curation'
+
+export const OPENROUTER_FALLBACK_MODEL = OPENROUTER_PRIMARY_FREE_MODEL
 
 function isAuthLikeError(message: string): boolean {
   return /401|unauthorized|invalid api key|authentication/i.test(message)

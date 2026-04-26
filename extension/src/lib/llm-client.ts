@@ -4,10 +4,16 @@
 
 import type { ConversationContext } from '../content/adapters/types'
 import { detectProviderFromApiKey, type Provider } from './provider-policy'
+import { GOOGLE_PRIMARY_MODEL, isGoogleGemmaModel, normalizeGoogleModelName } from './rewrite-google/models'
+import { buildGoogleRequestBody, GOOGLE_REWRITE_TEMPERATURE } from './rewrite-google/request-policy'
+import {
+  GOOGLE_MAX_ATTEMPTS_PER_MODEL,
+  shouldRetryGoogleSameModel,
+} from './rewrite-google/retry-policy'
 import { normalizeText } from './text-utils'
 
 export type ProviderAlias = Provider
-const REWRITE_TEMPERATURE = 0.2
+const REWRITE_TEMPERATURE = GOOGLE_REWRITE_TEMPERATURE
 const REQUEST_TIMEOUT_MS = {
   anthropic: 60000,
   openai: 60000,
@@ -45,10 +51,6 @@ type OpenAICompatibleResponse = {
   }>
 }
 
-const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash'
-const GOOGLE_FALLBACK_MODEL = 'gemini-2.5-flash-lite'
-const GOOGLE_MAX_ATTEMPTS_PER_MODEL = 2
-const GOOGLE_RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
 const GOOGLE_BLOCKING_FINISH_REASONS = new Set([
   'SAFETY',
   'BLOCKLIST',
@@ -66,71 +68,14 @@ const GOOGLE_MODEL_ALIASES: Record<string, string> = {
   'gemma-4-26b-a4b-it': 'gemma-3-27b-it',
 }
 
-function normalizeGoogleModelName(model: string): string {
-  const trimmed = model.trim()
-  if (!trimmed) return GOOGLE_DEFAULT_MODEL
-  const raw = trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed
+function normalizeGoogleModelForRequest(model: string | undefined): string {
+  const raw = normalizeGoogleModelName(model)
   const alias = GOOGLE_MODEL_ALIASES[raw.toLowerCase()]
   return alias ?? raw
 }
 
 function buildGoogleModelChain(model: string): string[] {
-  const normalized = normalizeGoogleModelName(model)
-  const chain = [normalized, GOOGLE_DEFAULT_MODEL, GOOGLE_FALLBACK_MODEL]
-
-  return chain.filter((candidate, index) => candidate.length > 0 && chain.indexOf(candidate) === index)
-}
-
-function isGoogleGemmaModel(model: string): boolean {
-  return normalizeGoogleModelName(model).toLowerCase().startsWith('gemma-')
-}
-
-function supportsGoogleThinkingConfig(model: string): boolean {
-  return normalizeGoogleModelName(model).toLowerCase().startsWith('gemini-2.5-flash')
-}
-
-function buildGoogleGenerationConfig(model: string, maxTokens: number): Record<string, unknown> {
-  const config: Record<string, unknown> = {
-    temperature: REWRITE_TEMPERATURE,
-    maxOutputTokens: maxTokens,
-  }
-
-  // Prompt rewrites need low latency and deterministic output, not extra reasoning tokens.
-  if (supportsGoogleThinkingConfig(model)) {
-    config.thinkingConfig = { thinkingBudget: 0 }
-  }
-
-  return config
-}
-
-function buildGoogleRequestBody(
-  model: string,
-  systemPrompt: string,
-  userMessage: string,
-  maxTokens: number
-): Record<string, unknown> {
-  const normalizedModel = normalizeGoogleModelName(model)
-  const body: Record<string, unknown> = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{
-          text: isGoogleGemmaModel(normalizedModel)
-            ? `Instruction:\n${systemPrompt}\n\nTask:\n${userMessage}`
-            : userMessage,
-        }],
-      },
-    ],
-    generationConfig: buildGoogleGenerationConfig(normalizedModel, maxTokens),
-  }
-
-  if (!isGoogleGemmaModel(normalizedModel)) {
-    body.systemInstruction = {
-      parts: [{ text: systemPrompt }],
-    }
-  }
-
-  return body
+  return [normalizeGoogleModelForRequest(model)].filter((candidate) => candidate.length > 0)
 }
 
 function sanitizeGemmaResponse(text: string, sourceText: string = ''): string {
@@ -575,7 +520,7 @@ export async function callGoogleAPI(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string = GOOGLE_DEFAULT_MODEL,
+  model: string = GOOGLE_PRIMARY_MODEL,
   maxTokens: number = 512
 ): Promise<string> {
   const deadline = Date.now() + GOOGLE_TOTAL_REQUEST_BUDGET_MS
@@ -611,21 +556,13 @@ export async function callGoogleAPI(
           cause: new Error(errorBody),
         })
 
-        // Retry once on default Flash when the selected model isn't available.
-        if (response.status === 404 && modelToTry !== GOOGLE_DEFAULT_MODEL) {
+        if (shouldRetryGoogleSameModel(response.status, attempt)) {
           lastError = error
-          break
+          continue
         }
 
-        if (GOOGLE_RETRYABLE_STATUS_CODES.has(response.status)) {
-          lastError = error
-          if (attempt < GOOGLE_MAX_ATTEMPTS_PER_MODEL) {
-            continue
-          }
-          break
-        }
-
-        throw error
+        lastError = error
+        break
       }
 
       const payload = await response.json()

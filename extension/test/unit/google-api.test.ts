@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildUserMessage, callGoogleAPI, listGoogleModels } from '../../src/lib/llm-client'
-import { buildContextUserMessage } from '../../src/lib/context-enhance-prompt'
+import { buildContextUserMessage } from '../../src/lib/gemma-legacy/text-branch'
 
 describe('Google API client helpers', () => {
   const mockFetch = vi.fn()
@@ -41,21 +41,16 @@ describe('Google API client helpers', () => {
     expect(calledUrl).toContain('/models/gemma-3-27b-it:generateContent')
   })
 
-  it('falls back to gemini-2.5-flash after a 404 model error', async () => {
-    mockFetch
-      .mockResolvedValueOnce(new Response('model not found', { status: 404 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        candidates: [{ content: { parts: [{ text: 'Fallback rewrite' }] } }],
-      }), { status: 200 }))
+  it('surfaces a 404 model error for provider-policy escalation', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('model not found', { status: 404 }))
 
-    const text = await callGoogleAPI('AIzaTestKey', 'system', 'user', 'unknown-model')
+    await expect(
+      callGoogleAPI('AIzaTestKey', 'system', 'user', 'unknown-model')
+    ).rejects.toThrow('Google API returned 404')
 
-    expect(text).toBe('Fallback rewrite')
-    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
     const firstUrl = String(mockFetch.mock.calls[0][0])
-    const secondUrl = String(mockFetch.mock.calls[1][0])
     expect(firstUrl).toContain('/models/unknown-model:generateContent')
-    expect(secondUrl).toContain('/models/gemini-2.5-flash:generateContent')
   })
 
   it('surfaces blocked responses when no text is returned', async () => {
@@ -122,20 +117,18 @@ describe('Google API client helpers', () => {
     })
   })
 
-  it('falls back to Flash-Lite after retryable Flash failures', async () => {
+  it('retries Flash once and then surfaces retryable failures for provider fallback', async () => {
     mockFetch
       .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
       .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Flash Lite rewrite' }] } }],
-      }), { status: 200 }))
 
-    const text = await callGoogleAPI('AIzaTestKey', 'system', 'user', 'gemini-2.5-flash')
+    await expect(
+      callGoogleAPI('AIzaTestKey', 'system', 'user', 'gemini-2.5-flash')
+    ).rejects.toThrow('Google API returned 503')
 
-    expect(text).toBe('Flash Lite rewrite')
-    expect(mockFetch).toHaveBeenCalledTimes(3)
-    const thirdUrl = String(mockFetch.mock.calls[2][0])
-    expect(thirdUrl).toContain('/models/gemini-2.5-flash-lite:generateContent')
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const secondUrl = String(mockFetch.mock.calls[1][0])
+    expect(secondUrl).toContain('/models/gemini-2.5-flash:generateContent')
   })
 
   it('uses Gemma-compatible request shape without systemInstruction', async () => {

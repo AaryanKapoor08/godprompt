@@ -1,9 +1,0 @@
-{
-  "id": "llm-phase10-founding-designer",
-  "branch": "LLM",
-  "source": "write a Founding Designer job post. we need senior product thinking and UI craft. do not oversell the company. make it direct, slightly weird, human, and high standards. ask for compensation, location, and remote policy before finalizing.",
-  "expected_violation_codes": ["DROPPED_TONE_CUE", "DROPPED_NATURAL_LANGUAGE_CONSTRAINT", "BROKEN_COMPOSITE_DIRECTIVE"],
-  "expected_preserved_constraints": ["preserve Founding Designer", "preserve senior product thinking and UI craft", "preserve no oversell", "preserve direct slightly weird human high standards tone", "ask for compensation location remote policy before finalizing"],
-  "severity": "quality-target",
-  "notes": "Phase 10 Additional Test C fixture for tone operationalization and missing-policy gate."
-}

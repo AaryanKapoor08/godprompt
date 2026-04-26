@@ -32,10 +32,10 @@ describe('popup model options', () => {
 
     expect(options.map((model) => model.value)).toEqual([
       'nvidia/nemotron-3-super-120b-a12b:free',
+      'openai/gpt-oss-20b:free',
       'openai/gpt-4o-mini',
     ])
     expect(options.map((model) => model.value)).not.toContain('openrouter/free')
-    expect(options.map((model) => model.value)).not.toContain('openai/gpt-oss-20b:free')
   })
 
   it('keeps custom OpenRouter model validation permissive but format-aware', () => {

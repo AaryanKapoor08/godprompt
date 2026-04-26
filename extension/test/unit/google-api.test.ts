@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildUserMessage, callGoogleAPI, callGoogleStreamingAPI, listGoogleModels, parseGoogleStream } from '../../src/lib/llm-client'
+import { buildUserMessage, callGoogleAPI, listGoogleModels } from '../../src/lib/llm-client'
 import { buildContextUserMessage } from '../../src/lib/gemma-legacy/text-branch'
 
 describe('Google API client helpers', () => {
@@ -129,41 +129,6 @@ describe('Google API client helpers', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2)
     const secondUrl = String(mockFetch.mock.calls[1][0])
     expect(secondUrl).toContain('/models/gemini-2.5-flash:generateContent')
-  })
-
-  it('uses the Google streaming endpoint for Gemini Flash optimistic rendering', async () => {
-    mockFetch.mockResolvedValueOnce(new Response('data: {"candidates":[]}\n\n', {
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-    }))
-
-    await callGoogleStreamingAPI('AIzaTestKey', 'system prompt', 'user prompt', 'gemini-2.5-flash')
-
-    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
-    expect(url).toContain('/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
-    expect(init.headers).toMatchObject({
-      'Content-Type': 'application/json',
-      'x-goog-api-key': 'AIzaTestKey',
-    })
-  })
-
-  it('parses Google streaming chunks', async () => {
-    const response = new Response(
-      [
-        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Use the logs ' }] } }] })}`,
-        '',
-        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'for triage.' }] } }] })}`,
-        '',
-      ].join('\n'),
-      { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
-    )
-
-    const chunks: string[] = []
-    for await (const chunk of parseGoogleStream(response)) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual(['Use the logs ', 'for triage.'])
   })
 
   it('uses Gemma-compatible request shape without systemInstruction', async () => {

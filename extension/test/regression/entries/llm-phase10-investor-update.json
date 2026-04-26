@@ -1,0 +1,9 @@
+{
+  "id": "llm-phase10-investor-update",
+  "branch": "LLM",
+  "source": "help me write an investor update after a bad month. keep it calm and honest, no excited to share. ask for churn, deal, and usage numbers first, then draft sections for what went wrong, what improved, next actions, and investor help.",
+  "expected_violation_codes": ["DROPPED_TONE_CUE", "DROPPED_NATURAL_LANGUAGE_CONSTRAINT", "BROKEN_COMPOSITE_DIRECTIVE"],
+  "expected_preserved_constraints": ["preserve calm and honest tone", "preserve no excited to share", "ask for churn deal and usage numbers first", "then draft all four investor update sections"],
+  "severity": "quality-target",
+  "notes": "Phase 10 Additional Test A fixture to preserve currently-good staged investor-update behavior."
+}

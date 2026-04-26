@@ -2,12 +2,13 @@ import { extractConstraints } from '../rewrite-core/constraints'
 import { validateRewrite } from '../rewrite-core/validate'
 import type { ValidationResult } from '../rewrite-core/types'
 
-export function validateTextBranchRewrite(sourceText: string, output: string): ValidationResult {
+export function validateTextBranchRewrite(sourceText: string, output: string, admittedContext?: string): ValidationResult {
   const result = validateRewrite({
     branch: 'Text',
     sourceText,
     output,
     constraints: extractConstraints(sourceText),
+    admittedContext,
   })
 
   const issues = [...result.issues]
@@ -33,4 +34,3 @@ export function validateTextBranchRewrite(sourceText: string, output: string): V
     issues,
   }
 }
-

@@ -1,0 +1,9 @@
+{
+  "id": "llm-phase10-mongodb-stress-test",
+  "branch": "LLM",
+  "source": "rewrite this for a better llm that knows mongodb. i need a migration stress test plan fast. the current output keeps handwaving. make it urgent and technical, show what could break, what evidence to gather, and what checks to run before we touch production.",
+  "expected_violation_codes": ["META_PREAMBLE", "DROPPED_PERSONA", "DROPPED_TONE_CUE"],
+  "expected_preserved_constraints": ["embed MongoDB expert persona", "preserve migration stress test plan", "preserve urgency and technical checks", "preserve evidence before production"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 10 Test 4 fixture for plain-English meta preamble and MongoDB persona loss."
+}

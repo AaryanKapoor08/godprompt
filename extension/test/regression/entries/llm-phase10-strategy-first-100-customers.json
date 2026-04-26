@@ -1,0 +1,9 @@
+{
+  "id": "llm-phase10-strategy-first-100-customers",
+  "branch": "LLM",
+  "source": "i need a strategy for getting the first 100 customers. i have ideas like LinkedIn ads and cold outreach but dont make up a business. avoid corporate fluff and ask me if this is B2B or B2C before building the execution plan.",
+  "expected_violation_codes": ["DROPPED_USER_IDEA", "DROPPED_NATURAL_LANGUAGE_CONSTRAINT", "BROKEN_COMPOSITE_DIRECTIVE"],
+  "expected_preserved_constraints": ["preserve first 100 customers", "preserve LinkedIn ads and cold outreach", "preserve do not make up business", "preserve B2B vs B2C question before execution plan"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 10 Test 2 fixture for messy strategy prompt that lost user ideas and ask-first-then-build flow."
+}

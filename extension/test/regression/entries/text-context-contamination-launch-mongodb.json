@@ -1,0 +1,9 @@
+{
+  "id": "text-context-contamination-launch-mongodb",
+  "branch": "Text",
+  "source": "Use API logs, Stripe webhook errors, Sentry screenshots, support tickets, and customer emails to separate confirmed symptoms from user confusion, missing evidence, likely breakage, next checks, customer communication cautions, and a short team update.",
+  "expected_violation_codes": ["INTRODUCED_UNRELATED_CONTEXT"],
+  "expected_preserved_constraints": ["selected launch incident text must not inherit database migration concepts from nearby context"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 12 Text branch fixture for selected launch incident text contaminated with unrelated MongoDB migration terms."
+}

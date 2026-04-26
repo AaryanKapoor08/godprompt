@@ -27,6 +27,11 @@ export interface TokenMessage {
   text: string
 }
 
+export interface ReplaceMessage {
+  type: 'REPLACE'
+  text: string
+}
+
 export interface DoneMessage {
   type: 'DONE'
   rateLimitRemaining?: number
@@ -52,7 +57,7 @@ export interface SettlementMessage {
 }
 
 // Union of all messages the service worker can send back
-export type ServiceWorkerMessage = StartMessage | TokenMessage | DoneMessage | ErrorMessage | ResultMessage | SettlementMessage
+export type ServiceWorkerMessage = StartMessage | TokenMessage | ReplaceMessage | DoneMessage | ErrorMessage | ResultMessage | SettlementMessage
 
 // Union of all messages the content script can send
 export type ContentMessage = EnhanceMessage | ContextEnhanceMessage

@@ -5,15 +5,26 @@ vi.mock('../../src/lib/llm-client', async (importOriginal) => {
   return {
     ...actual,
     callGoogleAPI: vi.fn(),
+    callGoogleStreamingAPI: vi.fn(),
     callOpenRouterCompletionAPI: vi.fn(),
   }
 })
 
-import { callGoogleAPI, callOpenRouterCompletionAPI } from '../../src/lib/llm-client'
+import { callGoogleAPI, callGoogleStreamingAPI, callOpenRouterCompletionAPI } from '../../src/lib/llm-client'
 import { handleContextEnhance, handleEnhance } from '../../src/service-worker'
 
 const googleCall = vi.mocked(callGoogleAPI)
+const googleStreamingCall = vi.mocked(callGoogleStreamingAPI)
 const openRouterCompletionCall = vi.mocked(callOpenRouterCompletionAPI)
+
+function googleStreamResponse(text: string): Response {
+  return new Response(`data: ${JSON.stringify({
+    candidates: [{ finishReason: 'STOP', content: { parts: [{ text }] } }],
+  })}\n\n`, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
 
 function createPort() {
   return {
@@ -32,6 +43,7 @@ function postedMessages(port: ReturnType<typeof createPort>) {
 describe('service worker provider fallback after validator failures', () => {
   beforeEach(() => {
     googleCall.mockReset()
+    googleStreamingCall.mockReset()
     openRouterCompletionCall.mockReset()
     vi.stubGlobal('chrome', {
       storage: {
@@ -65,10 +77,10 @@ describe('service worker provider fallback after validator failures', () => {
   })
 
   it('escalates LLM branch Google output to frozen Gemma after first pass and retry both fail validation', async () => {
-    googleCall
-      .mockResolvedValueOnce('Write a launch update to [recipient] about [project].')
-      .mockResolvedValueOnce('Write a launch update to [recipient] about [project].')
-      .mockResolvedValueOnce('Use the launch docs to draft the checklist, memo, FAQ, and internal summary.')
+    googleStreamingCall
+      .mockResolvedValueOnce(googleStreamResponse('Write a launch update to [recipient] about [project].'))
+      .mockResolvedValueOnce(googleStreamResponse('Write a launch update to [recipient] about [project].'))
+    googleCall.mockResolvedValueOnce('Use the launch docs to draft the checklist, memo, FAQ, and internal summary.')
 
     const port = createPort()
     await handleEnhance(
@@ -82,10 +94,11 @@ describe('service worker provider fallback after validator failures', () => {
       new AbortController().signal
     )
 
-    expect(googleCall).toHaveBeenCalledTimes(3)
-    expect(googleCall.mock.calls[0][3]).toBe('gemini-2.5-flash')
-    expect(googleCall.mock.calls[1][3]).toBe('gemini-2.5-flash')
-    expect(googleCall.mock.calls[2][3]).toBe('gemma-3-27b-it')
+    expect(googleStreamingCall).toHaveBeenCalledTimes(2)
+    expect(googleStreamingCall.mock.calls[0][3]).toBe('gemini-2.5-flash')
+    expect(googleStreamingCall.mock.calls[1][3]).toBe('gemini-2.5-flash')
+    expect(googleCall).toHaveBeenCalledTimes(1)
+    expect(googleCall.mock.calls[0][3]).toBe('gemma-3-27b-it')
     expect(postedMessages(port)).toContainEqual({
       type: 'TOKEN',
       text: 'Use the launch docs to draft the checklist, memo, FAQ, and internal summary.',
@@ -146,9 +159,8 @@ describe('service worker provider fallback after validator failures', () => {
     })
 
     const logSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    googleCall
-      .mockRejectedValueOnce(new Error('Google API returned 503'))
-      .mockRejectedValueOnce(new Error('Google API returned 503'))
+    googleStreamingCall.mockRejectedValueOnce(new Error('Google API returned 404: model not found'))
+    googleCall.mockRejectedValueOnce(new Error('Google API returned 404: model not found'))
     openRouterCompletionCall.mockRejectedValue(new Error('OpenRouter API returned 400'))
 
     const port = createPort()
@@ -176,7 +188,7 @@ describe('service worker provider fallback after validator failures', () => {
         failureChain: expect.arrayContaining([
           expect.objectContaining({ provider: 'Google', model: 'gemini-2.5-flash' }),
           expect.objectContaining({ provider: 'Gemma', model: 'gemma-3-27b-it' }),
-          expect.objectContaining({ provider: 'OpenRouter', model: 'inclusionai/ling-2.6-flash:free' }),
+          expect.objectContaining({ provider: 'OpenRouter', model: 'nvidia/nemotron-3-super-120b-a12b:free' }),
         ]),
       }),
       '[PromptGod] All providers failed for LLM branch'
@@ -238,7 +250,7 @@ describe('service worker provider fallback after validator failures', () => {
         failureChain: expect.arrayContaining([
           expect.objectContaining({ provider: 'Google', model: 'gemini-2.5-flash' }),
           expect.objectContaining({ provider: 'Gemma', model: 'gemma-3-27b-it' }),
-          expect.objectContaining({ provider: 'OpenRouter', model: 'inclusionai/ling-2.6-flash:free' }),
+          expect.objectContaining({ provider: 'OpenRouter', model: 'nvidia/nemotron-3-super-120b-a12b:free' }),
         ]),
       }),
       '[PromptGod] All providers failed for Text branch'

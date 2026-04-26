@@ -609,6 +609,20 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
       if (shouldProgressivelyRender) {
         scheduleRenderLoop()
       }
+    } else if (msg.type === 'REPLACE') {
+      receivedToken = true
+      removeEnhancingStatus()
+      accumulatedText = msg.text
+      renderedIndex = msg.text.length
+      fieldCleared = true
+      finalOutputCommitted = false
+      try {
+        adapter.setPromptText(msg.text)
+      } catch (error) {
+        console.error({ cause: error }, '[PromptGod] Failed to replace streamed text')
+        showToast({ message: 'Could not write the enhanced prompt into the page', variant: 'error' })
+        settle()
+      }
     } else if (msg.type === 'DONE') {
       if (progressTimeout !== null) {
         window.clearTimeout(progressTimeout)

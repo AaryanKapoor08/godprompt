@@ -5,6 +5,7 @@ export type ValidateRewriteInput = {
   sourceText: string
   output: string
   constraints?: ConstraintSet
+  admittedContext?: string
 }
 
 export function validateRewrite(input: ValidateRewriteInput): ValidationResult {
@@ -37,6 +38,14 @@ export function validateRewrite(input: ValidateRewriteInput): ValidationResult {
     'MERGED_SEPARATE_TASKS',
     'Output appears to merge a staged or separated workflow.'
   )
+  const unrelatedContextEvidence = findIntroducedUnrelatedContext(input.sourceText, output, input.admittedContext)
+  if (unrelatedContextEvidence) {
+    issues.push({
+      code: 'INTRODUCED_UNRELATED_CONTEXT',
+      message: `Output introduced unrelated context: ${unrelatedContextEvidence}.`,
+      severity: 'error',
+    })
+  }
 
   return {
     ok: issues.length === 0,
@@ -131,3 +140,70 @@ function normalizeForCompare(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
+type ContaminationFamily = {
+  name: string
+  sourceAnchor: RegExp
+  introducedTerms: Array<[string, RegExp]>
+  minIntroducedTerms: number
+}
+
+const contaminationFamilies: ContaminationFamily[] = [
+  {
+    name: 'database/migration',
+    sourceAnchor: /\b(?:mongodb|database|schema|schemas|collection|collections|migration|migrate|rollback|pre[- ]production|indexes?|queries|backup|restore)\b/i,
+    introducedTerms: [
+      ['MongoDB', /\bmongodb\b/i],
+      ['schema', /\bschemas?\b/i],
+      ['collection names', /\bcollection names?\b/i],
+      ['migration steps', /\bmigration steps?\b/i],
+      ['rollback plan', /\brollback plan\b/i],
+      ['safe rollback', /\bsafe rollback\b/i],
+      ['pre-production checklist', /\bpre[- ]production checklist\b/i],
+      ['script outline', /\b(?:script outlines?|script shapes?)\b/i],
+    ],
+    minIntroducedTerms: 2,
+  },
+  {
+    name: 'incident/support',
+    sourceAnchor: /\b(?:incident|support|launch|stripe|webhook|sentry|tickets?|customer emails?|root[- ]cause|triage)\b/i,
+    introducedTerms: [
+      ['Stripe webhook', /\bstripe webhook/i],
+      ['Sentry', /\bsentry\b/i],
+      ['support tickets', /\bsupport tickets\b/i],
+      ['customer emails', /\bcustomer emails\b/i],
+      ['root-cause paths', /\broot[- ]cause paths?\b/i],
+      ['what not to say to customers', /\bwhat not to (?:say|communicate) to customers\b/i],
+    ],
+    minIntroducedTerms: 2,
+  },
+  {
+    name: 'recruiting/job-post',
+    sourceAnchor: /\b(?:job post|candidate|compensation|remote policy|hiring|recruiting|founding designer)\b/i,
+    introducedTerms: [
+      ['compensation', /\bcompensation\b/i],
+      ['remote policy', /\bremote policy\b/i],
+      ['candidate profile', /\bcandidate profile\b/i],
+      ['job post', /\bjob post\b/i],
+    ],
+    minIntroducedTerms: 2,
+  },
+]
+
+function findIntroducedUnrelatedContext(sourceText: string, output: string, admittedContext?: string): string | undefined {
+  const allowedText = `${sourceText}\n${admittedContext ?? ''}`
+  for (const family of contaminationFamilies) {
+    if (family.sourceAnchor.test(allowedText)) {
+      continue
+    }
+
+    const introduced = family.introducedTerms
+      .filter(([_, pattern]) => pattern.test(output) && !pattern.test(allowedText))
+      .map(([term]) => term)
+
+    if (introduced.length >= family.minIntroducedTerms) {
+      return `${family.name} concepts (${introduced.slice(0, 4).join(', ')})`
+    }
+  }
+
+  return undefined
+}

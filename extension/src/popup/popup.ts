@@ -47,6 +47,10 @@ function isProvider(value: string | undefined): value is Provider {
   return value === 'anthropic' || value === 'openai' || value === 'google' || value === 'openrouter'
 }
 
+function isSelectableProvider(value: string | undefined): value is Extract<Provider, 'google' | 'openrouter'> {
+  return value === 'google' || value === 'openrouter'
+}
+
 function normalizeModelId(model: string | undefined): string | undefined {
   if (!model) return model
 
@@ -104,7 +108,9 @@ async function initPopup() {
 
   const providerApiKeys = { ...(prefs.providerApiKeys ?? {}) } as Partial<Record<Provider, string>>
   const detectedProvider = detectProviderFromApiKey(prefs.apiKey ?? '')
-  const savedProvider = isProvider(prefs.provider) ? prefs.provider : (detectedProvider ?? 'openrouter')
+  const savedProvider = isSelectableProvider(prefs.provider)
+    ? prefs.provider
+    : detectedProvider === 'openrouter' ? 'openrouter' : 'google'
 
   if (prefs.apiKey && savedProvider && !providerApiKeys[savedProvider]) {
     providerApiKeys[savedProvider] = prefs.apiKey

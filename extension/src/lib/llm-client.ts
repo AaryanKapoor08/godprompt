@@ -285,7 +285,7 @@ function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function sanitizeGoogleRewriteResponse(text: string): string {
+export function sanitizeGoogleRewriteResponse(text: string): string {
   let output = text.trim()
   if (!output) return output
 
@@ -370,6 +370,27 @@ function extractGoogleText(payload: unknown): string {
   }
 
   return segments.join('').trim()
+}
+
+function extractGoogleStreamText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+
+  const candidates = (payload as GoogleGenerateResponse).candidates
+  if (!Array.isArray(candidates) || candidates.length === 0) return ''
+
+  const segments: string[] = []
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts
+    if (!Array.isArray(parts)) continue
+
+    for (const part of parts) {
+      if (typeof part?.text === 'string') {
+        segments.push(part.text)
+      }
+    }
+  }
+
+  return segments.join('')
 }
 
 function extractGoogleNoTextReason(payload: unknown): string | null {
@@ -607,6 +628,35 @@ export async function callGoogleAPI(
   }
 
   throw lastError ?? new Error('[LLMClient] Google API request failed')
+}
+
+export async function callGoogleStreamingAPI(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  model: string = GOOGLE_PRIMARY_MODEL,
+  maxTokens: number = 512
+): Promise<Response> {
+  const modelToTry = buildGoogleModelChain(model)[0] ?? GOOGLE_PRIMARY_MODEL
+  const response = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelToTry)}:streamGenerateContent?alt=sse`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(buildGoogleRequestBody(modelToTry, systemPrompt, userMessage, maxTokens)),
+    },
+    REQUEST_TIMEOUT_MS.google
+  )
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    throw new Error(`[LLMClient] Google API returned ${response.status}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+  return response
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
@@ -855,6 +905,63 @@ export async function* parseOpenAIStream(
       } else if (parsed.kind === 'done') {
         return
       }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+export async function* parseGoogleStream(response: Response): AsyncGenerator<string, void, unknown> {
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'Unknown error')
+    throw new Error(`[LLMClient] Google API returned ${response.status}: ${errorBody}`, {
+      cause: new Error(errorBody),
+    })
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('[LLMClient] Response body is null', { cause: new Error('No readable stream') })
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  function* parseEvent(event: string): Generator<string, void, unknown> {
+    const dataLines = event
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.replace(/^data:\s*/, '').trim())
+
+    for (const data of dataLines) {
+      if (!data || data === '[DONE]') continue
+      const parsed = JSON.parse(data) as GoogleGenerateResponse
+      const reason = extractGoogleNoTextReason(parsed)
+      if (isBlockedReason(reason)) {
+        throw new Error(`[LLMClient] Google API returned no text output (${reason})`)
+      }
+      const text = extractGoogleStreamText(parsed)
+      if (text) {
+        yield text
+      }
+    }
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split(/\r?\n\r?\n/)
+      buffer = events.pop() ?? ''
+
+      for (const event of events) {
+        yield* parseEvent(event)
+      }
+    }
+    if (buffer.trim()) {
+      yield* parseEvent(buffer)
     }
   } finally {
     reader.releaseLock()

@@ -2,6 +2,71 @@
 
 Last updated: 2026-04-26
 
+## Branch Quality Review — 2026-04-26 (later session)
+
+Code-level review of both rewrite branches against `productvision.md`.
+
+### LLM branch — solid, one functional gap
+- Prompt size: `303` tokens. Cap `1000`, target `700-850`. Well within cap; below target is fine.
+- Wiring: normalize → constraints → spec → `assertBudget` at every call. Clean.
+- Retry severity ordering and 3-issue cap match `productvision.md` schema.
+- **Gap:** `extension/src/lib/rewrite-llm-branch/retry.ts` `extractFailingSubstring` only emits substrings for `FIRST_PERSON_BRIEF` and `DECORATIVE_MARKDOWN`. The other four codes (`ANSWERED_INSTEAD_OF_REWRITING`, `DROPPED_DELIVERABLE`, `MERGED_SEPARATE_TASKS`, `ASKED_FORBIDDEN_QUESTION`) emit code only. `productvision.md` `Done: Final Token Budget Policy` allows up to one failing substring per issue. The retry payload is intentionally undersized for 4 of 6 codes, weakening feedback for the most severe failures.
+
+### Text branch — tighter contract, narrower retry
+- Prompt size: `233` tokens. Cap `400`, target `280-360`. Within cap.
+- Validator layers source-echo and placeholder regexes on top of shared rules.
+- Repair stays narrow per spec: `[NO_CHANGE]`, `[DIFF:]`, source-echo tail strip.
+- **Gap:** `extension/src/lib/rewrite-text-branch/retry.ts` `shouldRetryTextBranch` only fires on `ANSWERED_INSTEAD_OF_REWRITING`, `ASKED_FORBIDDEN_QUESTION`, `FIRST_PERSON_BRIEF`. A `DROPPED_DELIVERABLE` failure skips retry and escalates straight to provider fallback. Deliverable preservation is core to Text branch per `productvision.md`; treating it as non-catastrophic conflicts with that priority.
+- **Soft:** retry anchor uses `sourceText.slice(0, 180)`. Character-bounded slicing can cut a hard constraint mid-phrase. Sentence-bounded slicing would be safer.
+
+### Cross-cutting notes
+- Token measurement is `length/4` heuristic — deterministic but coarse. Phase 2 risk register already flagged this.
+- Branch separation is clean. Pipeline-isolation rule holds — no shared validator/repair runs against Gemma.
+
+### Suggested follow-ups (not implemented)
+- Extend `extractFailingSubstring` in `rewrite-llm-branch/retry.ts` to cover all 6 issue codes within the `220`-token retry cap.
+- Add `DROPPED_DELIVERABLE` to `shouldRetryTextBranch`'s catastrophic set, or document the deliberate exclusion in `productvision.md`.
+- Replace `slice(0, 180)` with sentence-aware truncation in Text retry anchor.
+
+## Buildflow Gap Audit — 2026-04-26 (later session)
+
+A full audit of `codex/buildflow.md` against the working tree was performed to find any implementation gaps.
+
+Method:
+- Re-read `AGENTS.md`, `codex/productvision.md`, `codex/buildflow.md`, and prior `codex/Progress.md`.
+- Verified the committed module layout matches the Phase 2 commitment in `productvision.md` `Done: Module Layout Commitment`:
+  - `extension/src/lib/rewrite-core/` with `types`, `normalize`, `constraints`, `validate`, `repair`, `fallback`, plus `budget` and `prompt-mode`.
+  - `extension/src/lib/rewrite-llm-branch/` with `spec-builder`, `validator`, `retry`.
+  - `extension/src/lib/rewrite-text-branch/` with `spec-builder`, `validator`, `repair`, `retry`.
+  - `extension/src/lib/rewrite-google/` with `models`, `request-policy`, `retry-policy`, `budget-policy`.
+  - `extension/src/lib/rewrite-openrouter/` with `catalog`, `curation`, `route-policy`, `budget-policy`, `account-status`.
+  - `extension/src/lib/gemma-legacy/` with `llm-branch`, `text-branch`.
+  - `extension/src/lib/meta-prompt.ts` and `extension/src/lib/context-enhance-prompt.ts` are removed.
+- Verified `extension/test/regression/entries/` has 33 JSON entries, plus `runner.test.ts` and `openrouter-primary-eval.test.ts`.
+- Verified `assertBudget` is wired into `rewrite-llm-branch/spec-builder.ts`, `rewrite-llm-branch/retry.ts`, `rewrite-text-branch/spec-builder.ts`, `rewrite-text-branch/retry.ts`, and `rewrite-google/budget-policy.ts`, so token caps run at every spec build (not just in a snapshot test).
+- Verified `extension/test/unit/budget-snapshots.test.ts` snapshots production prompt sizes (`llmFirst: 303`, `textFirst: 233`, both well under the `1000` and `400` hard caps from `productvision.md` `Done: Final Token Budget Policy`).
+- Verified `extension/test/regression/openrouter-primary-eval.test.ts` exists and runs when `OPENROUTER_API_KEY` is set (skipped otherwise).
+- Verified `codex/openrouter-primary-eval.md` records the blocked eval attempts.
+- Grep for `TODO`/`FIXME`/`XXX`/`HACK` under `extension/src/lib`: none.
+
+Result:
+
+There are no implementation gaps left in Phases 1–8. Every checkbox marked `[x]` in `codex/buildflow.md` is backed by code on disk and tests in the suite.
+
+The only remaining `[ ]` boxes are not implementation gaps. They are real-world blockers that cannot be closed by code edits:
+
+- Phase 7 — OpenRouter Primary Eval Gate (`inclusionai/ling-2.6-flash:free` corpus eval).
+  - Blocked: every free OpenRouter key tried so far is in the `50/day` bucket and exhausts before the corpus completes.
+  - Resolution requires either waiting for the daily reset and re-running, or using a `1000/day` bucket key.
+  - Recorded in `codex/openrouter-primary-eval.md`.
+- Phase 9 — Manual browser/provider verification matrix.
+  - Blocked: requires a human to load the unpacked extension, exercise composer flows on ChatGPT/Claude/Gemini/Perplexity, exercise the right-click Text branch, and capture failures.
+  - The checklist is already documented under `Next Session Manual Testing Checklist` in this file.
+- Phase 9 — OpenRouter Primary Eval Gate currency.
+  - Blocked: same root cause as the Phase 7 eval gate.
+
+No code changes were made in this audit pass because there is nothing for code to fix. The next concrete action is the manual browser matrix and the eval-gate rerun once the OpenRouter daily quota allows it.
+
 ## Session Update — 2026-04-26
 
 Phase 8 popup alignment update from this session:

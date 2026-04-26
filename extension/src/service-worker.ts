@@ -8,11 +8,14 @@ import {
   buildUserMessage,
   callAnthropicAPI,
   callGoogleAPI,
+  callGoogleStreamingAPI,
   callOpenAIAPI,
   callOpenRouterCompletionAPI,
   callOpenRouterAPI,
   parseAnthropicStream,
+  parseGoogleStream,
   parseOpenAIStream,
+  sanitizeGoogleRewriteResponse,
 } from './lib/llm-client'
 import {
   shouldRetryOpenRouterSameModel,
@@ -26,6 +29,7 @@ import {
   buildGemmaSelectedTextMetaPrompt,
   cleanContextEnhancementOutput,
 } from './lib/gemma-legacy/text-branch'
+import { admitRecentContext } from './lib/rewrite-core/context-admission'
 import { buildConservativeFallback } from './lib/rewrite-core/fallback'
 import { repairRewrite } from './lib/rewrite-core/repair'
 import type { RewriteProvider } from './lib/rewrite-core/types'
@@ -388,9 +392,13 @@ export async function handleEnhance(
     // BYOK mode — direct API call
     const promptWordCount = msg.rawPrompt.trim().split(/\s+/).length
     const isFrozenGemmaPath = provider === 'google' && isGoogleGemmaModelId(model)
+    const admittedRecentContext = admitRecentContext({
+      sourceText: msg.rawPrompt,
+      recentContext: msg.recentContext,
+    })
 
     if (!isFrozenGemmaPath) {
-      const finalText = await runLlmBranchWithProviderFallback({
+      const result = await runLlmBranchWithProviderFallback({
         apiKey,
         providerApiKeys,
         provider,
@@ -399,11 +407,14 @@ export async function handleEnhance(
         rawPrompt: msg.rawPrompt,
         promptWordCount,
         context: msg.context,
-        recentContext: msg.recentContext,
+        recentContext: admittedRecentContext,
         signal,
+        optimisticPort: port,
       })
 
-      sendMessage(port, { type: 'TOKEN', text: finalText })
+      if (!result.finalTextAlreadySent) {
+        sendMessage(port, { type: 'TOKEN', text: result.text })
+      }
       sendMessage(port, { type: 'DONE' })
       sendMessage(port, { type: 'SETTLEMENT', status: 'DONE' })
       disconnectPortSoon(port)
@@ -417,10 +428,10 @@ export async function handleEnhance(
       msg.context.isNewConversation,
       msg.context.conversationLength,
       promptWordCount,
-      msg.recentContext
+      admittedRecentContext
     )
 
-    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, msg.recentContext)
+    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, admittedRecentContext)
 
     console.info(
       { platform: msg.platform, provider, model },
@@ -589,6 +600,12 @@ type LlmBranchPipelineRequest = {
   recentContext?: string
   signal: AbortSignal
   escalateOnValidationFailure?: boolean
+  optimisticPort?: chrome.runtime.Port
+}
+
+type LlmBranchPipelineResult = {
+  text: string
+  finalTextAlreadySent: boolean
 }
 
 class RewriteValidationFailure extends Error {
@@ -598,17 +615,26 @@ class RewriteValidationFailure extends Error {
   }
 }
 
-async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineRequest): Promise<string> {
+async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineRequest): Promise<LlmBranchPipelineResult> {
+  const admittedRecentContext = admitRecentContext({
+    sourceText: request.rawPrompt,
+    recentContext: request.recentContext,
+  })
+  const admittedRequest: LlmBranchPipelineRequest = {
+    ...request,
+    recentContext: admittedRecentContext,
+  }
+
   if (request.provider !== 'google') {
-    return await runLlmBranchPipeline(request)
+    return await runLlmBranchPipeline(admittedRequest)
   }
 
   const failureChain: ProviderFailureChainEntry[] = []
 
   try {
     return await runLlmBranchPipeline({
-      ...request,
-      model: request.model ?? GOOGLE_PRIMARY_MODEL,
+      ...admittedRequest,
+      model: admittedRequest.model ?? GOOGLE_PRIMARY_MODEL,
       escalateOnValidationFailure: true,
     })
   } catch (error) {
@@ -625,18 +651,21 @@ async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineReques
       request.context.isNewConversation,
       request.context.conversationLength,
       request.promptWordCount,
-      request.recentContext
+      admittedRecentContext
     )
-    const userMessage = buildUserMessage(request.rawPrompt, request.platform, request.context, request.recentContext)
-    return await collectContextEnhancementText({
-      apiKey: request.apiKey,
-      provider: 'google',
-      model: 'gemma-3-27b-it',
-      systemPrompt,
-      userMessage,
-      promptWordCount: request.promptWordCount,
-      signal: request.signal,
-    })
+    const userMessage = buildUserMessage(request.rawPrompt, request.platform, request.context, admittedRecentContext)
+    return {
+      text: await collectContextEnhancementText({
+        apiKey: request.apiKey,
+        provider: 'google',
+        model: 'gemma-3-27b-it',
+        systemPrompt,
+        userMessage,
+        promptWordCount: request.promptWordCount,
+        signal: request.signal,
+      }),
+      finalTextAlreadySent: false,
+    }
   } catch (error) {
     failureChain.push(buildFailureChainEntry('LLM', 'Gemma', 'gemma-3-27b-it', 'fallback', error))
     if (!shouldEscalateGoogleToFallback(error)) {
@@ -659,7 +688,7 @@ async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineReques
 
   try {
     return await runLlmBranchPipeline({
-      ...request,
+      ...admittedRequest,
       apiKey: openRouterKey,
       provider: 'openrouter',
       model: OPENROUTER_PRIMARY_FREE_MODEL,
@@ -682,7 +711,8 @@ async function runLlmBranchPipeline({
   recentContext,
   signal,
   escalateOnValidationFailure = false,
-}: LlmBranchPipelineRequest): Promise<string> {
+  optimisticPort,
+}: LlmBranchPipelineRequest): Promise<LlmBranchPipelineResult> {
   const built = buildLlmBranchSpec({
     sourceText: rawPrompt,
     provider: mapRewriteProvider(provider),
@@ -701,12 +731,15 @@ async function runLlmBranchPipeline({
     userMessage: built.userMessage,
     promptWordCount,
     signal,
+    streamToPort: optimisticPort,
   })
-  const firstFinal = finalizeLlmBranchCandidate(rawPrompt, firstOutput)
+  const firstFinal = finalizeLlmBranchCandidate(rawPrompt, firstOutput, built.admittedContext)
   if (firstFinal.validation.ok) {
-    return firstFinal.text
+    sendOptimisticFinalReplacement(optimisticPort, firstFinal.text)
+    return { text: firstFinal.text, finalTextAlreadySent: Boolean(optimisticPort) }
   }
 
+  resetOptimisticStream(optimisticPort)
   const retryUserMessage = buildLlmRetryUserMessage(rawPrompt, firstOutput, firstFinal.validation.issues)
   const retryOutput = await collectContextEnhancementText({
     apiKey,
@@ -716,20 +749,36 @@ async function runLlmBranchPipeline({
     userMessage: retryUserMessage,
     promptWordCount,
     signal,
+    streamToPort: optimisticPort,
   })
-  const retryFinal = finalizeLlmBranchCandidate(rawPrompt, retryOutput)
+  const retryFinal = finalizeLlmBranchCandidate(rawPrompt, retryOutput, built.admittedContext)
   if (retryFinal.validation.ok) {
-    return retryFinal.text
+    sendOptimisticFinalReplacement(optimisticPort, retryFinal.text)
+    return { text: retryFinal.text, finalTextAlreadySent: Boolean(optimisticPort) }
   }
 
+  resetOptimisticStream(optimisticPort)
   if (escalateOnValidationFailure) {
     throw new RewriteValidationFailure('LLM')
   }
 
-  return buildConservativeFallback({ sourceText: rawPrompt })
+  const fallback = buildConservativeFallback({ sourceText: rawPrompt })
+  return { text: fallback, finalTextAlreadySent: false }
 }
 
-function finalizeLlmBranchCandidate(sourceText: string, output: string): {
+function sendOptimisticFinalReplacement(port: chrome.runtime.Port | undefined, text: string): void {
+  if (port) {
+    sendMessage(port, { type: 'REPLACE', text })
+  }
+}
+
+function resetOptimisticStream(port: chrome.runtime.Port | undefined): void {
+  if (port) {
+    sendMessage(port, { type: 'REPLACE', text: '' })
+  }
+}
+
+function finalizeLlmBranchCandidate(sourceText: string, output: string, admittedContext?: string): {
   text: string
   validation: ReturnType<typeof validateLlmBranchRewrite>
 } {
@@ -737,7 +786,7 @@ function finalizeLlmBranchCandidate(sourceText: string, output: string): {
   const text = normalizeNoChangeOutput(repaired, sourceText)
   return {
     text,
-    validation: validateLlmBranchRewrite(sourceText, text),
+    validation: validateLlmBranchRewrite(sourceText, text, admittedContext),
   }
 }
 
@@ -880,7 +929,7 @@ async function runTextBranchPipeline({
     promptWordCount,
     signal,
   })
-  const firstFinal = finalizeTextBranchCandidate(selectedText, firstOutput)
+  const firstFinal = finalizeTextBranchCandidate(selectedText, firstOutput, built.admittedContext)
   if (firstFinal.validation.ok) {
     return firstFinal.text
   }
@@ -896,7 +945,7 @@ async function runTextBranchPipeline({
       promptWordCount,
       signal,
     })
-    const retryFinal = finalizeTextBranchCandidate(selectedText, retryOutput)
+    const retryFinal = finalizeTextBranchCandidate(selectedText, retryOutput, built.admittedContext)
     if (retryFinal.validation.ok) {
       return retryFinal.text
     }
@@ -909,14 +958,14 @@ async function runTextBranchPipeline({
   return buildConservativeFallback({ sourceText: selectedText })
 }
 
-function finalizeTextBranchCandidate(sourceText: string, output: string): {
+function finalizeTextBranchCandidate(sourceText: string, output: string, admittedContext?: string): {
   text: string
   validation: ReturnType<typeof validateTextBranchRewrite>
 } {
   const text = normalizeNoChangeOutput(repairTextBranchRewrite(sourceText, output), sourceText)
   return {
     text,
-    validation: validateTextBranchRewrite(sourceText, text),
+    validation: validateTextBranchRewrite(sourceText, text, admittedContext),
   }
 }
 
@@ -1055,6 +1104,7 @@ type ContextProviderRequest = {
   userMessage: string
   promptWordCount: number
   signal: AbortSignal
+  streamToPort?: chrome.runtime.Port
 }
 
 async function collectContextEnhancementText({
@@ -1065,6 +1115,7 @@ async function collectContextEnhancementText({
   userMessage,
   promptWordCount,
   signal,
+  streamToPort,
 }: ContextProviderRequest): Promise<string> {
   if (provider === 'openrouter') {
     return await collectOpenRouterCompletionText(apiKey, systemPrompt, userMessage, model, promptWordCount, signal)
@@ -1075,7 +1126,7 @@ async function collectContextEnhancementText({
       () => callAnthropicAPI(apiKey, systemPrompt, userMessage, model),
       signal
     )
-    return await collectStreamText(parseAnthropicStream(response), signal)
+    return await collectStreamText(parseAnthropicStream(response), signal, streamToPort)
   }
 
   if (provider === 'openai') {
@@ -1083,10 +1134,20 @@ async function collectContextEnhancementText({
       () => callOpenAIAPI(apiKey, systemPrompt, userMessage, model),
       signal
     )
-    return await collectStreamText(parseOpenAIStream(response), signal)
+    return await collectStreamText(parseOpenAIStream(response), signal, streamToPort)
   }
 
   if (provider === 'google') {
+    if (streamToPort) {
+      return await collectGoogleStreamingText({
+        apiKey,
+        systemPrompt,
+        userMessage,
+        model,
+        signal,
+        streamToPort,
+      })
+    }
     return await callGoogleAPI(
       apiKey,
       systemPrompt,
@@ -1097,6 +1158,33 @@ async function collectContextEnhancementText({
   }
 
   throw new Error(`Unsupported provider: ${provider}. Use an Anthropic, OpenAI, Google, or OpenRouter key.`)
+}
+
+async function collectGoogleStreamingText({
+  apiKey,
+  systemPrompt,
+  userMessage,
+  model,
+  signal,
+  streamToPort,
+}: {
+  apiKey: string
+  systemPrompt: string
+  userMessage: string
+  model?: string
+  signal: AbortSignal
+  streamToPort: chrome.runtime.Port
+}): Promise<string> {
+  const response = await callWithRetry(
+    () => callGoogleStreamingAPI(apiKey, systemPrompt, userMessage, model ?? GOOGLE_PRIMARY_MODEL, 512),
+    signal
+  )
+  const rawText = await collectStreamText(parseGoogleStream(response), signal, streamToPort)
+  const text = sanitizeGoogleRewriteResponse(rawText)
+  if (!text) {
+    throw new Error('[LLMClient] Google API returned no text output')
+  }
+  return text
 }
 
 async function collectOpenRouterCompletionText(
@@ -1171,7 +1259,11 @@ async function collectOpenRouterCompletionText(
   )
 }
 
-async function collectStreamText(source: AsyncGenerator<string, void, unknown>, signal: AbortSignal): Promise<string> {
+async function collectStreamText(
+  source: AsyncGenerator<string, void, unknown>,
+  signal: AbortSignal,
+  streamToPort?: chrome.runtime.Port
+): Promise<string> {
   const chunks: string[] = []
 
   for await (const text of withStallTimeout(source, STREAM_STALL_TIMEOUT_MS)) {
@@ -1179,6 +1271,9 @@ async function collectStreamText(source: AsyncGenerator<string, void, unknown>, 
       throw new Error('[ServiceWorker] Context enhancement aborted')
     }
     chunks.push(text)
+    if (streamToPort) {
+      sendMessage(streamToPort, { type: 'TOKEN', text })
+    }
   }
 
   return chunks.join('')

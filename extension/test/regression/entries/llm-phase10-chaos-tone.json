@@ -1,0 +1,9 @@
+{
+  "id": "llm-phase10-chaos-tone",
+  "branch": "LLM",
+  "source": "make this prompt sharp and weird. no generic AI assistant garbage. i want it to help me turn chaos notes into a useful plan without pretending the mess is cleaner than it is.",
+  "expected_violation_codes": ["DROPPED_TONE_CUE", "DROPPED_NATURAL_LANGUAGE_CONSTRAINT", "GENERIC_SOFTENING"],
+  "expected_preserved_constraints": ["preserve sharp and weird tone", "preserve no generic AI assistant garbage", "preserve chaos notes and useful plan", "no trailing punctuation artifact"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 10 Test 5 fixture for taste preservation and double-period artifact."
+}

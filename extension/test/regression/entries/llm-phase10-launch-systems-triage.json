@@ -1,0 +1,9 @@
+{
+  "id": "llm-phase10-launch-systems-triage",
+  "branch": "LLM",
+  "source": "force the llm to be an expert systems engineer. use API logs, support tickets, screenshots, Slack notes, and customer complaints for a sharp launch triage. give me root-cause buckets, missing evidence, a team update, and risks. do not soften it.",
+  "expected_violation_codes": ["DROPPED_PERSONA", "DROPPED_TONE_CUE", "DESCRIPTIVE_PROMPT_BRIEF"],
+  "expected_preserved_constraints": ["preserve expert systems engineer persona", "preserve all evidence sources", "preserve root-cause buckets missing evidence team update and risks", "preserve sharp tone"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 10 Test 1 fixture from manual Gemini Flash launch-triage findings."
+}

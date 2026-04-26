@@ -1,0 +1,9 @@
+{
+  "id": "text-context-contamination-mongodb-launch",
+  "branch": "Text",
+  "source": "Assess a production MongoDB migration. Gather current collection names, sample documents, target schema, indexes, write traffic, read paths, backup and restore procedures, rollback limits, downtime tolerance, count verification, and services touching the data before proposing a plan.",
+  "expected_violation_codes": ["INTRODUCED_UNRELATED_CONTEXT"],
+  "expected_preserved_constraints": ["selected database migration text must not inherit launch support concepts from nearby context"],
+  "severity": "regression-must-not-recur",
+  "notes": "Phase 12 Text branch fixture for selected MongoDB migration text contaminated with unrelated launch/support triage terms."
+}

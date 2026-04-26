@@ -1,9 +1,0 @@
-{
-  "id": "llm-context-contamination-launch-mongodb",
-  "branch": "LLM",
-  "source": "Use API logs, Stripe webhook errors, Sentry screenshots, Slack messages from Engineering, support tickets, and customer emails for a hard post-launch support triage. Separate confirmed symptoms from user confusion and missing evidence. Identify likely breakage, top root-cause paths, exact next checks, what not to say to customers yet, and a blunt team update. Do not invent numbers, causes, timelines, customer counts, or evidence.",
-  "expected_violation_codes": ["INTRODUCED_UNRELATED_CONTEXT"],
-  "expected_preserved_constraints": ["must not import MongoDB migration concepts such as schemas, collection names, rollback plans, or pre-production checklists"],
-  "severity": "regression-must-not-recur",
-  "notes": "Phase 12 fixture for Gemini Flash cross-contamination from a nearby MongoDB migration prompt into a standalone launch incident prompt."
-}

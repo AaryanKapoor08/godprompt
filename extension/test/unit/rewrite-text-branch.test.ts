@@ -39,39 +39,5 @@ describe('Text branch compact pipeline pieces', () => {
     const retry = buildTextRetryUserMessage('follow up with them about the docs', validation.issues)
     expect(measureTokens(retry) - measureTokens('follow up with them about the docs')).toBeLessThan(140)
   })
-
-  it('omits recent context for standalone selected text', () => {
-    const built = buildTextBranchSpec({
-      sourceText: 'Use support tickets and customer emails to separate confirmed symptoms from missing evidence.',
-      provider: 'Google',
-      modelId: 'gemini-2.5-flash',
-      recentContext: 'Previous prompt: MongoDB schemas, collection names, rollback plan, and pre-production checklist.',
-    })
-
-    expect(built.admittedContext).toBeUndefined()
-    expect(built.userMessage).not.toContain('MongoDB schemas')
-    expect(built.userMessage).not.toContain('Recent context')
-  })
-
-  it('includes bounded recent context when selected text explicitly references it', () => {
-    const built = buildTextBranchSpec({
-      sourceText: 'Use the previous message as context and tighten this selected text.',
-      provider: 'Google',
-      modelId: 'gemini-2.5-flash',
-      recentContext: 'Previous message: Stripe webhook errors and support tickets.',
-    })
-
-    expect(built.admittedContext).toContain('Stripe webhook')
-    expect(built.userMessage).toContain('Recent context, use only if the selected text explicitly refers to it')
-  })
-
-  it('rejects unrelated context contamination without retrying creatively', () => {
-    const validation = validateTextBranchRewrite(
-      'Use support tickets and customer emails to separate confirmed symptoms from user confusion.',
-      'Use support tickets and customer emails to separate symptoms from confusion. Include schema notes, collection names, rollback plan, and a pre-production checklist.'
-    )
-
-    expect(validation.issues.map((issue) => issue.code)).toContain('INTRODUCED_UNRELATED_CONTEXT')
-    expect(shouldRetryTextBranch(validation.issues)).toBe(false)
-  })
 })
+

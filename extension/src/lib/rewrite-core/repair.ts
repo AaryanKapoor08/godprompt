@@ -37,18 +37,6 @@ export function repairRewrite(input: RepairRewriteInput): RepairResult {
     repaired = withoutDuplicateTail
   }
 
-  const withoutChangeNote = stripKnownChangeNoteContamination(repaired)
-  if (withoutChangeNote !== repaired) {
-    operations.push({ class: 'structural', description: 'removed change-note contamination' })
-    repaired = withoutChangeNote
-  }
-
-  const withoutDotRun = collapseTerminalDotRun(repaired)
-  if (withoutDotRun !== repaired) {
-    operations.push({ class: 'cosmetic', description: 'collapsed terminal punctuation artifact' })
-    repaired = withoutDotRun
-  }
-
   const withNoPlaceholderConstraint = restoreNoPlaceholderConstraint(repaired, input.sourceText)
   if (withNoPlaceholderConstraint !== repaired) {
     operations.push({ class: 'substantive', description: 'restored no-placeholder constraint from source' })
@@ -115,21 +103,6 @@ function removeDuplicateTrailingParagraph(text: string): string {
 
   const overlap = tailTerms.filter((term) => bodyTerms.includes(term)).length / tailTerms.length
   return overlap >= 0.8 ? body : text
-}
-
-function stripKnownChangeNoteContamination(text: string): string {
-  const knownChangeNote = /\bWe fixed markdown\.\s*/i
-  const match = text.match(knownChangeNote)
-  if (!match || match.index === undefined) {
-    return text
-  }
-
-  const before = text.slice(0, match.index).trim()
-  return before.length > 0 ? before : text.replace(knownChangeNote, '').trim()
-}
-
-function collapseTerminalDotRun(text: string): string {
-  return text.replace(/(?<!\.)\.(?:\.|\.{3,})\s*$/u, '.')
 }
 
 function restoreNoPlaceholderConstraint(output: string, sourceText: string): string {

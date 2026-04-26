@@ -45,30 +45,6 @@ describe('rewrite-core validate', () => {
     )).toContain('MERGED_SEPARATE_TASKS')
   })
 
-  it('emits INTRODUCED_UNRELATED_CONTEXT for foreign concept families absent from source and admitted context', () => {
-    expect(issueCodesFor(
-      'Use API logs, Stripe webhook errors, Sentry screenshots, support tickets, and customer emails for a hard launch triage.',
-      'Use the API logs and support tickets for launch triage. Include a rollback plan, pre-production checklist, collection names, and schema notes.'
-    )).toContain('INTRODUCED_UNRELATED_CONTEXT')
-
-    expect(issueCodesFor(
-      'Assess a production MongoDB migration. Gather collection names, sample documents, target schema, indexes, write traffic, rollback limits, downtime tolerance, and count verification.',
-      'Assess the MongoDB migration. Include support tickets, customer emails, root-cause paths, and what not to say to customers.'
-    )).toContain('INTRODUCED_UNRELATED_CONTEXT')
-  })
-
-  it('allows foreign-family terms when admitted context explicitly contains them', () => {
-    const result = validateRewrite({
-      branch: 'LLM',
-      sourceText: 'Use the previous message as context and produce the next prompt.',
-      admittedContext: 'Previous message covered MongoDB schemas, collection names, and rollback plan.',
-      output: 'Use the previous MongoDB schema, collection names, and rollback plan to produce the next prompt.',
-      constraints: extractConstraints('Use the previous message as context and produce the next prompt.'),
-    })
-
-    expect(result.issues.map((issue) => issue.code)).not.toContain('INTRODUCED_UNRELATED_CONTEXT')
-  })
-
   it('accepts a simple valid rewrite', () => {
     expect(validateRewrite({
       branch: 'LLM',
@@ -80,3 +56,4 @@ describe('rewrite-core validate', () => {
     })
   })
 })
+

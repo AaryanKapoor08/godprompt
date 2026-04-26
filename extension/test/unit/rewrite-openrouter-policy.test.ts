@@ -28,30 +28,30 @@ describe('rewrite-openrouter policy modules', () => {
 
   it('keeps the curated free chain in product order', () => {
     expect(OPENROUTER_CURATED_FREE_MODELS.map((model) => model.id)).toEqual([
+      'inclusionai/ling-2.6-flash:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
+      'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
   })
 
   it('never includes openrouter/free or excluded free models in the chain', () => {
     expect(isExcludedOpenRouterModel('openrouter/free')).toBe(true)
-    expect(isExcludedOpenRouterModel('inclusionai/ling-2.6-flash:free')).toBe(true)
-    expect(isExcludedOpenRouterModel('openai/gpt-oss-20b:free')).toBe(true)
     expect(isExcludedOpenRouterModel('meta-llama/llama-3.3-70b-instruct:free')).toBe(true)
 
     const chain = buildCuratedOpenRouterChain('openrouter/free')
     expect(chain).not.toContain('openrouter/free')
-    expect(chain).not.toContain('inclusionai/ling-2.6-flash:free')
-    expect(chain).not.toContain('openai/gpt-oss-20b:free')
     expect(chain).not.toContain('meta-llama/llama-3.3-70b-instruct:free')
   })
 
   it('demotes disappeared live models by filtering them from the runtime projection', () => {
-    const chain = buildCuratedOpenRouterChain('nvidia/nemotron-3-super-120b-a12b:free', [
+    const chain = buildCuratedOpenRouterChain('inclusionai/ling-2.6-flash:free', [
+      'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
 
     expect(chain).toEqual([
+      'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
   })
@@ -73,10 +73,10 @@ describe('rewrite-openrouter policy modules', () => {
 
   it('filters the live catalog to text-capable free models', () => {
     expect(filterOpenRouterFreeTextModels([
-      { id: 'nvidia/nemotron-3-super-120b-a12b:free', architecture: { modality: 'text->text' } },
+      { id: 'openai/gpt-oss-20b:free', architecture: { modality: 'text->text' } },
       { id: 'paid/model', architecture: { modality: 'text->text' } },
       { id: 'image/model:free', architecture: { input_modalities: ['image'] } },
-    ])).toEqual(['nvidia/nemotron-3-super-120b-a12b:free'])
+    ])).toEqual(['openai/gpt-oss-20b:free'])
   })
 
   it('caches live catalog refreshes and uses pinned fallback when fetch fails', async () => {
@@ -92,15 +92,15 @@ describe('rewrite-openrouter policy modules', () => {
 
     const fetchSuccess = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       data: [
-        { id: 'nvidia/nemotron-3-super-120b-a12b:free', architecture: { modality: 'text->text' } },
+        { id: 'openai/gpt-oss-20b:free', architecture: { modality: 'text->text' } },
       ],
     }), { status: 200 }))
     vi.stubGlobal('fetch', fetchSuccess)
 
-    await expect(refreshOpenRouterCatalog(123)).resolves.toEqual(['nvidia/nemotron-3-super-120b-a12b:free'])
+    await expect(refreshOpenRouterCatalog(123)).resolves.toEqual(['openai/gpt-oss-20b:free'])
     expect(set).toHaveBeenCalledWith({
       [OPENROUTER_CATALOG_CACHE_KEY]: {
-        models: ['nvidia/nemotron-3-super-120b-a12b:free'],
+        models: ['openai/gpt-oss-20b:free'],
         timestamp: 123,
         catalogVersion: 1,
       },
@@ -114,9 +114,9 @@ describe('rewrite-openrouter policy modules', () => {
   })
 
   it('keeps free-model output caps conservative', () => {
-    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 20)).toBe(256)
-    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 80)).toBe(320)
-    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 180)).toBe(384)
+    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 20)).toBe(256)
+    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 80)).toBe(320)
+    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 180)).toBe(384)
     expect(getOpenRouterMaxTokens('openai/gpt-4o-mini', 180)).toBe(512)
   })
 })

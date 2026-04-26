@@ -35,14 +35,6 @@ const allowedViolationCodes = new Set([
   'STAGED_WORKFLOW_COLLAPSE',
   'TEMPLATE_OUTPUT',
   'UNNECESSARY_CLARIFYING_QUESTION',
-  'META_PREAMBLE',
-  'DESCRIPTIVE_PROMPT_BRIEF',
-  'DROPPED_PERSONA',
-  'DROPPED_TONE_CUE',
-  'DROPPED_USER_IDEA',
-  'DROPPED_NATURAL_LANGUAGE_CONSTRAINT',
-  'BROKEN_COMPOSITE_DIRECTIVE',
-  'INTRODUCED_UNRELATED_CONTEXT',
 ])
 
 const runTargets: Array<{ branch: Branch; provider: Provider }> = [
@@ -209,3 +201,4 @@ describe('regression corpus target runner', () => {
     }
   })
 })
+

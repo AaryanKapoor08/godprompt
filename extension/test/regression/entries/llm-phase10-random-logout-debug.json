@@ -1,9 +1,0 @@
-{
-  "id": "llm-phase10-random-logout-debug",
-  "branch": "LLM",
-  "source": "debug random logouts in my app. users get kicked out after about 10 minutes. evidence: auth logs, cookie settings, session middleware, recent deploy diff. dont lead with clear cookies. give ranked hypotheses, prove/disprove evidence, and exact next commands/checks. keep it sharp and technical.",
-  "expected_violation_codes": ["DROPPED_PERSONA", "DROPPED_USER_IDEA", "DROPPED_TONE_CUE"],
-  "expected_preserved_constraints": ["preserve random logout and 10 minute clue", "preserve all evidence sources", "preserve do not lead with clear cookies", "preserve ranked hypotheses and exact commands/checks"],
-  "severity": "quality-target",
-  "notes": "Phase 10 Additional Test B fixture for technical debug persona and evidence preservation."
-}

@@ -1,6 +1,422 @@
 # PromptGod — Codex Progress
 
+> [!CAUTION]
+> **CRITICAL: Recent Regression & Reversion (2026-04-26)**
+> Reverted commit `2679a2c` ("fix(rewrite): isolate context and restore optimistic streaming").
+> **Issue:** The "optimistic streaming" implementation caused severe UI instability (flickering, multiple rapid rewrite attempts, and disjointed output) in the non-Gemma LLM branch.
+> **Root Cause:** `resetOptimisticStream` cleared the UI immediately upon validation failure, causing a "wipe-and-restart" effect during the pipeline's targeted retry loop.
+> **Note:** Gemma remained stable as it bypasses the new pipeline (legacy isolation).
+> **Action:** Fully reverted to restore a stable user experience.
+
+## Session Notes — 2026-04-27 LLM Branch Finalization, Prompt 4 Diagnosis, Gemma No-Op Fix
+
+This session focused on identifying why `codex/testing.md` Prompt 4 failed and making the smallest safe fixes needed to keep the LLM branch debuggable.
+
+### 1. Prompt 4 failure was identified from browser logs
+
+Initial browser symptom:
+
+- Full Prompt 4 showed a terminal toast.
+- Before today's error-classification fix, the toast could misleadingly say:
+  - `The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model.`
+
+Actual failure chain from service-worker logs:
+
+- `gemini-2.5-flash`
+  - failed before generation with Google `429 RESOURCE_EXHAUSTED`
+  - quota metric: `generativelanguage.googleapis.com/generate_content_free_tier_requests`
+  - quota id: `GenerateRequestsPerDayPerProjectPerModel-FreeTier`
+  - model: `gemini-2.5-flash`
+  - quota value: `20`
+- `gemma-3-27b-it`
+  - direct and fallback runs returned unchanged / `[NO_CHANGE]`-style output for full Prompt 4
+- OpenRouter curated Nemotron chain
+  - returned no usable text in the terminal fallback path
+
+Conclusion:
+
+- fallback routing itself was working
+- Flash did not receive a true quality attempt because it hit provider quota
+- Gemma was the weak fallback for this long, messy-but-specific support escalation prompt
+- OpenRouter was only the final failure, not the root cause
+
+### 2. All-provider terminal errors no longer get mislabeled as OpenRouter-only
+
+Files changed:
+
+- `extension/src/service-worker.ts`
+- `extension/test/unit/service-worker-provider-fallback.test.ts`
+
+Problem:
+
+- `buildAllProvidersFailedError()` produced a message containing the embedded OpenRouter failure text.
+- `formatErrorMessage()` matched `OpenRouter curated chain exhausted` before checking for `All providers failed`.
+- That made a full-chain failure look like an OpenRouter-only failure.
+
+Fix:
+
+- added typed `AllProvidersFailedError`
+- `formatErrorMessage()` now handles typed/all-provider errors before generic OpenRouter chain-exhausted errors
+- added a regression test proving an all-provider error containing OpenRouter failure text produces:
+  - `No provider returned a usable rewrite. Retry once, or save an OpenRouter key/custom model and try again.`
+
+### 3. Added structured LLM branch diagnostics
+
+File changed:
+
+- `extension/src/service-worker.ts`
+
+Added service-worker logs for the non-Gemma LLM branch pipeline:
+
+- pipeline entry with provider/model/stage
+- first-pass output length, validation status, and issue codes
+- targeted-retry fired marker and retry issue codes
+- retry output length, validation status, and issue codes
+- explicit provider escalation trigger:
+  - `validation-failure`
+  - `provider-fallback-eligible`
+
+These logs intentionally do not print raw model output.
+
+### 4. Gemma LLM branch was narrowly reopened for `[NO_CHANGE]`
+
+Files changed:
+
+- `extension/src/lib/gemma-legacy/llm-branch.ts`
+- `extension/test/unit/meta-prompt.test.ts`
+- `extension/test/unit/budget-snapshots.test.ts`
+
+Issue:
+
+- Gemma's LLM prompt said:
+  - if already strong, return `[NO_CHANGE]`
+- Prompt 4 is ugly and typo-filled, but also very specific.
+- Gemma repeatedly treated it as already strong and returned unchanged.
+
+First attempted fix:
+
+- added an exception saying not to use `[NO_CHANGE]` for rough/triage prompts
+- browser retest still no-oped
+
+Final current fix:
+
+- removed the LLM-branch no-op escape hatch entirely
+- Gemma LLM prompt now says:
+  - `Never use [NO_CHANGE] in this LLM branch. Always return a rewritten prompt that improves clarity, structure, wording, or sendability while preserving the user's intent.`
+  - `For rough, typo-filled, overloaded, support, incident, escalation, launch, ops, debugging, or triage prompts, rewrite them into clearer sendable instructions even when the substance is already specific`
+
+Scope:
+
+- Gemma LLM branch only
+- Gemma Text branch unchanged
+- non-Gemma Gemini/OpenRouter prompts unchanged
+
+Token snapshot:
+
+- Gemma LLM prompt baseline is now `921`
+
+Open status:
+
+- Browser retest after the final `Never use [NO_CHANGE]` change is still pending.
+- If Gemma still no-ops after reloading the latest `extension/dist`, first verify stale bundle is not running.
+
+### 5. Earlier same-day runtime work still present in the worktree
+
+The session also carries forward earlier work from the same dirty state:
+
+- final-only composer replacement for all LLM branch models
+- hardened `replaceText()` fallback when `execCommand()` leaves stale editor content
+- long unchanged LLM outputs are not treated as success
+- strict preserve-token validation remains disabled
+- preserve-token extraction was tightened to avoid false-positive retries
+- OpenRouter free chain reduced to Nemotron Super then Nemotron Nano
+- OpenRouter reasoning/meta leakage is rejected
+- OpenRouter daily-cap errors short-circuit the chain and persist a paused account status with reset timestamp
+
+### Verification
+
+Latest commands:
+
+```powershell
+cd extension
+npm test -- --run test/unit/service-worker-provider-fallback.test.ts
+npm test -- --run test/unit/service-worker-provider-fallback.test.ts test/unit/rewrite-core/validate.test.ts test/unit/rewrite-llm-branch.test.ts test/unit/trigger-button-render-policy.test.ts
+npm test -- --run test/unit/meta-prompt.test.ts test/unit/budget-snapshots.test.ts test/unit/google-api.test.ts
+npm test
+npm run build
+```
+
+Latest result:
+
+- focused tests passed
+- `npm test`: passed, `38` files / `226` tests, `1` skipped live OpenRouter eval
+- `npm run build`: passed
+- expected Vite warning remains:
+  - `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR
+
+### Next session
+
+1. Reload `extension/dist`.
+2. Select `gemma-3-27b-it`.
+3. Retest full Prompt 4.
+4. If Gemma now rewrites it, mark Gemma fallback issue fixed.
+5. After Google quota reset, retest full Prompt 4 on `gemini-2.5-flash`.
+6. If Flash produces output but validation fails, use the new `firstIssueCodes` and `retryIssueCodes` logs before changing validators.
+
+## Session Notes — 2026-04-26 (later) Conservation Tightening + OpenRouter Daily-Cap UX
+
+Two pieces shipped in the same session.
+
+### 1. Conservation extractor false-positive fix
+
+Problem identified during fresh-eyes review: the salient-clause branch of `extractPreserveTokens` walked every comma-separated clause in the source and added the whole clause as a preserve token whenever any indicator word matched (`small | limited | slow | growing | required | mandatory | ...`). On a Prompt 1-shape source, the clause `"a small csv export from the admin panel"` would become a preserve token because of the word `small`, and a perfectly fine paraphrased rewrite (e.g. one that drops `panel` or `export`) would get `DROPPED_PRESERVE_TOKEN`. This forced unnecessary retries and would push valid Flash output toward Gemma fallback.
+
+What changed:
+
+- `extension/src/lib/rewrite-core/constraints.ts` — replaced the broad clause walker with anchored extraction. Salient-clause preserve tokens now only emit from inside an explicit constraint-list anchor:
+  - colon-led lists matching `(?:constraints?|hard constraints?|requirements?|hard requirements?)\s*:`
+  - `keep ... in mind` wrappers
+- Proper-noun extraction and the explicit `knownTechnologyTokens` (`postgres | clickhouse | bigquery | mongodb`) branches were left alone — those are high-precision and matter for Prompt 3.
+
+Tests added:
+
+- `extension/test/unit/rewrite-core/constraints.test.ts`
+  - Prompt 1-shape source emits no clause preserve tokens (no false positives on `small csv export from the admin panel`).
+  - Sources without constraint anchors still emit proper nouns and known tech names (`API`, `CSV`, `Postgres`).
+  - Incidental `slow / growing / required` usage produces zero preserve tokens.
+- `extension/test/unit/rewrite-core/validate.test.ts`
+  - Paraphrased Prompt 1 rewrite that drops `panel` / `export` does not flag `DROPPED_PRESERVE_TOKEN`.
+- `extension/test/unit/rewrite-llm-branch.test.ts`
+  - Retry payload stays under the `220`-token cap when 7 simultaneous `DROPPED_PRESERVE_TOKEN` issues fire.
+
+Verification: 220 tests pass, 1 skipped (live OpenRouter eval). Build clean.
+
+The two Prompt 3-shape tests (`analyticsDecisionPrompt`, `manualPrompt3`) still pass because both have explicit `Constraints:` anchors.
+
+### 2. OpenRouter free-models-per-day daily-cap UX
+
+Browser report from this session: after reloading `extension/dist`, every OpenRouter rewrite returned `"The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model."` The user suspected the Ling / GPT-OSS removal caused it.
+
+DevTools service-worker console showed the actual error:
+
+```
+[ServiceWorker] OpenRouter curated chain exhausted (nvidia/nemotron-3-nano-30b-a3b:free -> nvidia/nemotron-3-super-120b-a12b:free):
+[LLMClient] OpenRouter API returned 429: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day","code":429,"metadata":{"headers":{"X-RateLimit-Limit":"50","X-RateLimit-Remaining":"0","X-RateLimit-Reset":"1777248000000"}}}}
+```
+
+Root cause: account-level OpenRouter `50/day` cap on the user's free key. This cap is shared across all `:free` models, not per-model. The cleanup did not cause it; Ling and GPT-OSS would hit the same wall. Verified that both `nvidia/nemotron-3-super-120b-a12b:free` and `nvidia/nemotron-3-nano-30b-a3b:free` are valid live OpenRouter free model ids by hitting the public `/api/v1/models` endpoint.
+
+What changed (no model id changes; pure UX + short-circuit):
+
+- `extension/src/lib/rewrite-openrouter/route-policy.ts` — new helpers:
+  - `isOpenRouterDailyCapError(error)` — true when error message contains `free-models-per-day`.
+  - `parseOpenRouterDailyCapResetMs(error)` — parses the `X-RateLimit-Reset` ms timestamp from the error body.
+- `extension/src/lib/rewrite-openrouter/account-status.ts` — added `resetAtMs?: number | null` to `OpenRouterAccountStatus`, and a new `markOpenRouterDailyCapReached(resetAtMs)` that flips session status to `paused: true` and persists to `chrome.storage.local`. Subsequent OpenRouter calls in the same session short-circuit on the existing `accountStatus?.paused` guard at the top of `collectOpenRouterCompletionText`.
+- `extension/src/service-worker.ts`:
+  - Both 429 handlers (streaming OpenRouter path around line 432 and completion path around line 1148) now check `isOpenRouterDailyCapError(error)` first. On match: build a structured daily-cap error via `buildOpenRouterDailyCapError()`, mark account paused, and `break` out of the chain immediately. This prevents the chain from spending a second daily-budget request on the next model when the first 429 already proved the bucket is empty.
+  - `formatErrorMessage` gained a new daily-cap branch above the generic OpenRouter chain-exhausted matcher. User-facing message: `"OpenRouter's free daily request cap is exhausted on this key. Resets at <ISO>. Switch to Google or save a paid OpenRouter model."`
+- `extension/test/unit/rewrite-openrouter-policy.test.ts` — added a test covering daily-cap detection vs the generic per-minute 429 case, and the reset-timestamp parser.
+
+Verification: 220 tests pass, 1 skipped (live OpenRouter eval). Build clean.
+
+### Why the user does not need to do anything except wait
+
+- Cap reset timestamp from the screenshot: `1777248000000` ms → `2026-04-27 00:00:00 UTC`.
+- Until reset: switch the popup to Google (Gemini 2.5 Flash) — separate quota, unaffected.
+- After reset: OpenRouter free chain will work again with the existing two Nemotron models.
+- For a permanent `1000/day` allowance, the OpenRouter account would need ≥10 credits purchased.
+
+### Open follow-ups (not done in this session)
+
+- The clean error message was added but the user has not yet seen it in the browser; reload `extension/dist` to confirm.
+- The popup account-status display (`formatOpenRouterAccountStatus`) does not yet read the new `resetAtMs` field. If we want to surface "resets at HH:MM UTC" in the popup near the OpenRouter chain section, that requires a small follow-up in `extension/src/popup/model-options.ts`. Not blocking.
+- `codex/openrouter-primary-eval.md` still references `inclusionai/ling-2.6-flash:free` as the primary; that file is now stale and should be updated whenever the eval gate is rerun against `nvidia/nemotron-3-super-120b-a12b:free`.
+
+## Session Update — 2026-04-26 Conservation / OpenRouter Cleanup
+
+Important guardrail kept:
+- The critical composer/injection lesson above still applies.
+- Do not reintroduce optimistic streaming, progressive non-Gemma composer writes, or `resetOptimisticStream` behavior.
+- Today’s conservation work runs inside the service worker before final output is sent to the content script. It should increase wait time only when a retry is needed; it should not cause composer flicker.
+
+### LLM Branch Conservation Architecture Change
+
+Implemented a narrow conservation check in the existing non-Gemma LLM branch pipeline:
+
+`extractConstraints()` -> `validateLlmBranchRewrite()` -> `buildLlmRetryUserMessage()`
+
+Files changed:
+- `extension/src/lib/rewrite-core/types.ts`
+- `extension/src/lib/rewrite-core/constraints.ts`
+- `extension/src/lib/rewrite-core/validate.ts`
+- `extension/src/lib/rewrite-llm-branch/retry.ts`
+- `extension/test/unit/rewrite-core/constraints.test.ts`
+- `extension/test/unit/rewrite-core/validate.test.ts`
+- `extension/test/unit/rewrite-llm-branch.test.ts`
+
+What changed:
+- Added `preserveTokens: string[]` to `ConstraintSet`.
+- Extractor now records opaque preserve tokens for:
+  - proper-noun / known technology names, including lower-case `postgres`, `clickhouse`, `bigquery`, and `mongodb`
+  - salient operational clauses containing signals such as `small`, `ops time`, `limited`, `near-real-time`, `slow`, `growing`, `customer-facing`, `accuracy`, or `cannot be wrong`
+- LLM branch validation now emits `DROPPED_PRESERVE_TOKEN` when preserved source details are absent from the model output.
+- Retry payload now includes `DROPPED_PRESERVE_TOKEN` in the existing top-3 issue list and names the missing detail, capped by the existing retry budget behavior.
+
+Scope:
+- Applies to non-Gemma `LLM branch` validation.
+- Shared extraction computes `preserveTokens`, but Text branch validation does not enforce `DROPPED_PRESERVE_TOKEN`.
+- Gemma remains frozen and bypasses the shared validator/repair pipeline.
+- No system prompt changes.
+- No deterministic repair/splicing of missing content.
+- No provider routing changes for Google/Gemma fallback in this conservation pass.
+- No composer/injection changes.
+
+Manual Prompt 3 findings after this change:
+- Gemini 2.5 Flash improved and preserved the concrete constraints:
+  - `small team`
+  - `limited ops time`
+  - near-real-time dashboard preference as not mandatory
+  - slow current queries
+  - growing data volume
+  - customer-facing report correctness
+  - MongoDB exclusion / no prior context
+- Gemini 2.5 Flash Lite still produced a compressed version on one browser test.
+  - Root cause found: the exact `codex/testing.md` Prompt 3 uses lower-case and variant wording such as `postgres`, `clickhouse`, `bigquery`, `mongodb`, `not much ops time`, and `customer-facing reports that cannot be wrong`.
+  - Tests were expanded to cover the exact Lite failure and those lower-case / variant phrasings.
+
+### OpenRouter Chain Cleanup
+
+User explicitly removed Ling and GPT-OSS from the desired OpenRouter free chain.
+
+Files changed:
+- `extension/src/lib/rewrite-openrouter/curation.ts`
+- `extension/src/lib/llm-client.ts`
+- `extension/test/unit/rewrite-openrouter-policy.test.ts`
+- `extension/test/unit/popup-model-options.test.ts`
+- `extension/test/unit/service-worker-provider-fallback.test.ts`
+- `extension/test/unit/openrouter-completion.test.ts`
+- `extension/test/unit/rewrite-text-branch.test.ts`
+
+Runtime curated chain is now only:
+1. `nvidia/nemotron-3-super-120b-a12b:free`
+2. `nvidia/nemotron-3-nano-30b-a3b:free`
+
+Removed/excluded from recommendations and runtime curated fallback:
+- `inclusionai/ling-2.6-flash:free`
+- `openai/gpt-oss-20b:free`
+- `openrouter/free` remains excluded
+
+Low-level OpenRouter default model in `llm-client.ts` was also changed from GPT-OSS to `OPENROUTER_PRIMARY_FREE_MODEL`, which now resolves to Nemotron Super.
+
+Verification run so far:
+- `npm test -- --run test/unit/rewrite-core/constraints.test.ts test/unit/rewrite-core/validate.test.ts test/unit/rewrite-llm-branch.test.ts`: passed, 21 tests
+- `npm test`: passed, 38 files / 214 tests, 1 skipped
+- `npm run build`: passed
+- After OpenRouter cleanup:
+  - `npm test -- --run test/unit/rewrite-openrouter-policy.test.ts test/unit/popup-model-options.test.ts test/unit/service-worker-provider-fallback.test.ts test/unit/openrouter-completion.test.ts test/unit/rewrite-text-branch.test.ts`: passed, 5 files / 22 tests
+- Final verification after docs + OpenRouter cleanup:
+  - `npm test`: passed, 38 files / 214 tests, 1 skipped
+  - `npm run build`: passed
+
+Reload `extension/dist` before any browser retest.
+
 Last updated: 2026-04-26
+
+## Session Handoff — 2026-04-26 Evening
+
+User decision:
+- Skip injection/streaming UX work for now after the non-Gemma flicker regression.
+- Focus on manual testing and quality characterization.
+- Gemma remains frozen unless explicitly reopened.
+
+### Injection / Composer Write Status
+
+- The critical regression remains active context: optimistic/progressive non-Gemma injection caused flickering, multiple rapid rewrite-looking writes, pauses, and another write.
+- Root cause identified in this session: non-Gemma LLM branch outputs are already final validated/repaired strings from the service worker, but the content script still rendered them as if they were a stream by repeatedly calling `appendChunk()` into contenteditable composers.
+- Fix kept:
+  - `extension/src/content/ui/trigger-button.ts` now uses final-only composer replacement for non-Gemma models.
+  - Gemma remains on the legacy progressive path except Perplexity, which remains final-only.
+  - Added `extension/test/unit/trigger-button-render-policy.test.ts`.
+- Expected browser behavior after reloading `extension/dist`:
+  - non-Gemma original prompt stays visible while waiting
+  - final rewrite is pasted once
+  - no flicker / no repeated partial rewrites
+- Tradeoff accepted for now:
+  - non-Gemma live typing/injection feel is gone.
+  - Stability is preferred over speed/typing effect.
+
+### LLM Branch Final Manual Prompt Set
+
+- Created `codex/testing.md` with three rough LLM branch prompts:
+  1. launch/billing/onboarding/trial triage with evidence and 45-minute sync constraint
+  2. first-100-customers acquisition strategy with missing context and anti-invention constraints
+  3. Postgres vs ClickHouse vs BigQuery staged workflow with context-isolation and concrete operational constraints
+
+### LLM Branch Manual Test Findings
+
+Gemini 2.5 Flash:
+- Prompt 1: green. Natural coherent rewrite, strong evidence/deliverable preservation.
+- Prompt 2: green. Preserved anti-invention, clarifying-first sequencing, founder usefulness, and channel framing.
+- Prompt 3: mixed but acceptable. Flash usually produces a more natural coherent prompt, but sometimes compresses concrete constraints:
+  - source says small team, limited ops time, near-real-time dashboards optional, slow current queries, growing data volume, and customer-facing reports must be accurate
+  - Flash may compress these into broader phrases such as `data volume characteristics`, `data accuracy requirements`, `latency`, or `operational burden`
+  - this is visually better but less explicit
+
+Gemini 2.5 Flash Lite:
+- Prompt 1: green.
+- Prompt 2: green, with occasional minor detail loss around explicit channel examples.
+- Prompt 3: functionally green but visually weaker.
+  - Lite tends to preserve concrete constraints better than Flash.
+  - Lite often outputs mechanical/spec-like structure:
+    - `Wait for the user's "continue" command`
+    - `Upon receiving...`
+    - `Constraints:`
+    - `User context:`
+    - bullet-heavy sections
+  - This is a soft quality/style issue, not a correctness failure.
+
+Gemma:
+- Tested on the same three prompts.
+- Overall pass.
+- Gemma remains stable and should not be retuned.
+
+OpenRouter:
+- User reports OpenRouter testing focus has been reduced to the two Nemotron models.
+- `Nemotron 3 Super 120B` was manually tested and considered green.
+- Before editing OpenRouter docs/code, verify whether the runtime curated list has actually been reduced; current repo state may still list more than the two Nemotron models.
+
+### Quality Decision
+
+- Do not keep prompt-tweaking the LLM branch based on the Flash vs Lite style tradeoff.
+- A runtime prompt-polish line was tried and then reverted because it could affect Flash quality:
+  - tried intent: prefer natural prompt over checklist/spec sheet while keeping concrete constraints explicit
+  - outcome: not reliably enough better; Flash still compressed constraints, Lite still checklist-like
+  - final state: shared LLM branch prompt contract restored to prior baseline
+- Kept only a non-runtime test documenting that checklist/spec-like style should not be treated as a hard validator failure:
+  - `extension/test/unit/rewrite-llm-branch.test.ts`
+
+### Claude Fresh-Eyes Review Summary
+
+Claude agreed with the conservative path:
+- Flash issue is semantic compression of concrete constraints.
+- Lite issue is surface-form/checklist style.
+- These should not be solved with one shared prompt tweak.
+- Checklist style should not become a hard validator failure because it can cause retry/fallback churn on otherwise correct outputs.
+- Do not touch Gemma, injection, retry count, fallback ordering, or post-processing.
+- Best next move is documentation and fixtures before any runtime quality change.
+
+Recommended future path if this is reopened:
+- Add fixtures first, not runtime changes.
+- Document Flash compression and Lite checklist behavior as model variance.
+- If a real fix is needed later, investigate existing constraint extraction/validation carefully.
+- Do not add deterministic post-processing that rewrites bullets into prose.
+- Do not add model-specific prompt branching until fixture evidence justifies the maintenance cost.
+
+Latest verification after final state:
+- `npm test -- --run test/unit/rewrite-llm-branch.test.ts test/unit/budget-snapshots.test.ts test/unit/trigger-button-render-policy.test.ts`: passed, 3 files / 14 tests
+- `npm test -- --run test/regression/runner.test.ts`: passed, 1 file / 5 tests
+- `npm test`: passed, 38 files / 207 tests; 1 skipped live OpenRouter eval
+- `npm run build`: passed
 
 ## Branch Quality Review — 2026-04-26 (later session)
 
@@ -109,6 +525,17 @@ Latest Phase 9 verification:
 - `npm test -- --run test/regression/runner.test.ts test/unit/budget-snapshots.test.ts test/unit/rewrite-llm-branch.test.ts test/unit/rewrite-text-branch.test.ts test/unit/rewrite-google-policy.test.ts test/unit/rewrite-openrouter-policy.test.ts test/unit/openrouter-account-status.test.ts test/unit/service-worker-provider-fallback.test.ts test/unit/popup-model-options.test.ts`: passed, 9 files / 41 tests
 - `npm test`: passed, 37 files / 202 tests; skipped 1 live OpenRouter eval test
 - `npm run build`: passed
+
+## Recent Manual Verification — 2026-04-26
+
+**LLM Branch (Gemini 2.5 Flash):**
+- [x] Hard Launch Triage (Evidence/Deliverables): **PASS**
+- [x] Missing-Context Strategy (Anti-Invention): **PASS**
+- [x] Staged File Workflow (Sequence): **PASS**
+- [x] MongoDB Stress Test (Bait/Sourcing): **PASS** (Note: Earlier attempts showed brief-framing issues, but final version passed bait)
+- [x] Chaos-Mode (Extreme Bait/Tone): **PASS**
+
+**Summary:** LLM branch logic is robust against "answer-baiting" and preserves deliverables/tone under extreme stress.
 
 ## Next Session Manual Testing Checklist
 
@@ -560,78 +987,10 @@ Docs:
 
 ## Next Session — Start Here
 
-There is no immediate code task queued. The next session should start with manual provider testing, not more edits.
-
-### Primary next task
-
-Once rate limits clear, compare:
-- `gemini-2.5-flash`
-- `gemini-2.5-flash-lite`
-
-Use the LLM branch flow first.
-
-### Prepared test categories
-
-1. Hard triage prompt
-- Use the API logs / support tickets / screenshots / Slack evidence prompt shape
-- Pass if it stays sharp, keeps evidence sources, keeps all deliverables, and does not drift into `Please analyze...`
-
-2. Broad strategy prompt with missing context
-- Use a business-strategy ask with insufficient detail
-- Pass if it asks only the minimum useful clarifying questions instead of inventing specifics
-
-3. File-based staged workflow prompt
-- Use a slides/handout/sample-code prompt where the workflow is:
-  - analyze uploaded material first
-  - solve later
-- Pass if it preserves the staged sequence and does not skip ahead
-
-4. Research / comparison prompt
-- Use a comparison prompt such as Postgres vs ClickHouse vs BigQuery
-- Pass if it stays decision-oriented and does not add filler
-
-5. Already-strong prompt
-- Use a prompt that is already specific and structured
-- Pass if it stays close to the source and does not over-rewrite
-
-### Comparison criteria for Flash vs Flash Lite
-
-Check for:
-- preserves named inputs
-- preserves explicit deliverables
-- preserves anti-invention language
-- avoids placeholders
-- avoids clarifying questions unless truly needed
-- avoids `My goal is...` / `Deliverables include...` / project-brief drift
-- does not turn a sharp operational ask into generic fluff
-
-### If something fails
-
-Do this before changing code:
-- capture the exact provider and model
-- capture the full rewritten output
-- note whether it was:
-  - LLM branch
-  - Text branch
-- note whether the failure is:
-  - dropped deliverables
-  - generic softening
-  - placeholders
-  - unnecessary clarifying questions
-  - staged-workflow collapse
-  - duplicate-summary output
-
-Rule for next session:
-- do not reopen Gemma code just because wording is slightly more polished
-- only reopen code if there is a real regression or a new prompt family failure
-
----
-
-## Recommended Manual Checks
-
-When testing resumes:
+**Immediate Goal:** Complete the manual verification matrix for the Text branch and OpenRouter free chain.
 
 1. Reload the unpacked extension first.
+
 
 2. Run one normal Gemma prompt from each category above to confirm today’s fixes still behave the same in the browser.
 

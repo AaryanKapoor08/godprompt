@@ -1,5 +1,7 @@
 import type { ConstraintSet, ValidationIssue, ValidationIssueCode, ValidationResult, RewriteBranch } from './types'
 
+const ENABLE_LLM_PRESERVE_TOKEN_VALIDATION = false
+
 export type ValidateRewriteInput = {
   branch: RewriteBranch
   sourceText: string
@@ -27,10 +29,19 @@ export function validateRewrite(input: ValidateRewriteInput): ValidationResult {
   )
   addIf(
     issues,
+    input.branch === 'LLM' && isUnchangedRewrite(input.sourceText, output),
+    'UNCHANGED_REWRITE',
+    'Output is unchanged from the source prompt.'
+  )
+  addIf(
+    issues,
     dropsDeliverable(input.sourceText, output),
     'DROPPED_DELIVERABLE',
     'Output dropped an explicit deliverable from the source.'
   )
+  if (ENABLE_LLM_PRESERVE_TOKEN_VALIDATION && input.branch === 'LLM') {
+    issues.push(...droppedPreserveTokenIssues(output, input.constraints))
+  }
   addIf(
     issues,
     mergesSeparateTasks(input.sourceText, output),
@@ -87,6 +98,47 @@ function dropsDeliverable(sourceText: string, output: string): boolean {
   return deliverables.some((deliverable) => !normalizedOutput.includes(deliverable))
 }
 
+function isUnchangedRewrite(sourceText: string, output: string): boolean {
+  const normalizedSource = normalizeForCompare(sourceText)
+  const normalizedOutput = normalizeForCompare(output)
+  return normalizedSource.length > 80 && normalizedSource === normalizedOutput
+}
+
+function droppedPreserveTokenIssues(output: string, constraints?: ConstraintSet): ValidationIssue[] {
+  const preserveTokens = constraints?.preserveTokens ?? []
+  if (preserveTokens.length === 0) {
+    return []
+  }
+
+  return preserveTokens
+    .filter((token) => !preserveTokenSurvives(token, output))
+    .map((token) => ({
+      code: 'DROPPED_PRESERVE_TOKEN' as const,
+      message: `Output dropped preserved source detail: ${token}`,
+      severity: 'error' as const,
+      span: {
+        start: -1,
+        end: -1,
+        text: token,
+      },
+    }))
+}
+
+function preserveTokenSurvives(token: string, output: string): boolean {
+  const normalizedOutput = normalizeForCompare(output)
+  const normalizedToken = normalizeForCompare(token)
+  if (!normalizedToken) {
+    return true
+  }
+  if (normalizedOutput.includes(normalizedToken)) {
+    return true
+  }
+
+  const outputTerms = new Set(significantTerms(output))
+  const tokenTerms = significantTerms(token)
+  return tokenTerms.length > 0 && tokenTerms.every((term) => outputTerms.has(term))
+}
+
 function mergesSeparateTasks(sourceText: string, output: string): boolean {
   const sourceHasSeparation = /\bfirst\b[\s\S]{0,160}\b(?:then|after that|finally)\b/i.test(sourceText) ||
     /\bkeep\b[^.?!\n]{0,50}\b(?:separate|distinct)\b/i.test(sourceText)
@@ -131,3 +183,64 @@ function normalizeForCompare(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
+const stopWords = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'be',
+  'but',
+  'for',
+  'have',
+  'in',
+  'is',
+  'keep',
+  'mind',
+  'much',
+  'must',
+  'not',
+  'of',
+  'on',
+  'or',
+  'some',
+  'the',
+  'two',
+  'to',
+  'with',
+])
+
+function significantTerms(text: string): string[] {
+  return normalizeForCompare(text)
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !stopWords.has(word))
+    .map(canonicalTerm)
+}
+
+function canonicalTerm(word: string): string {
+  if (word === 'accuracy' || word === 'accurate' || word === 'correctness' || word === 'correct' || word === 'wrong') {
+    return 'accur'
+  }
+  if (word === 'ops' || word === 'operational') {
+    return 'oper'
+  }
+  if (word === 'low') {
+    return 'limited'
+  }
+  if (word === 'desirable' || word === 'mandatory' || word === 'optional') {
+    return 'optionality'
+  }
+  if (word === 'queries') {
+    return 'query'
+  }
+  if (word === 'dashboards') {
+    return 'dashboard'
+  }
+  if (word === 'reports') {
+    return 'report'
+  }
+  if (word === 'growing') {
+    return 'grow'
+  }
+  return word
+}

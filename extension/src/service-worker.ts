@@ -396,6 +396,7 @@ export async function handleEnhance(
 
     // BYOK mode — direct API call
     const promptWordCount = msg.rawPrompt.trim().split(/\s+/).length
+    const effectiveRecentContext = selectLlmRecentContext(msg.rawPrompt, msg.context, msg.recentContext)
     const isFrozenGemmaPath = provider === 'google' && isGoogleGemmaModelId(model)
 
     if (!isFrozenGemmaPath) {
@@ -408,7 +409,7 @@ export async function handleEnhance(
         rawPrompt: msg.rawPrompt,
         promptWordCount,
         context: msg.context,
-        recentContext: msg.recentContext,
+        recentContext: effectiveRecentContext,
         signal,
       })
 
@@ -426,10 +427,10 @@ export async function handleEnhance(
       msg.context.isNewConversation,
       msg.context.conversationLength,
       promptWordCount,
-      msg.recentContext
+      effectiveRecentContext
     )
 
-    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, msg.recentContext)
+    const userMessage = buildUserMessage(msg.rawPrompt, msg.platform, msg.context, effectiveRecentContext)
 
     console.info(
       { platform: msg.platform, provider, model },
@@ -626,6 +627,39 @@ class AllProvidersFailedError extends Error {
     super(`All providers failed for ${branch} branch. Failure chain: ${chainSummary}`)
     this.name = 'AllProvidersFailedError'
   }
+}
+
+function selectLlmRecentContext(
+  rawPrompt: string,
+  context: { isNewConversation: boolean; conversationLength: number },
+  recentContext?: string
+): string | undefined {
+  const trimmedContext = recentContext?.trim()
+  if (!trimmedContext || context.isNewConversation) {
+    return undefined
+  }
+
+  const promptWordCount = countWords(rawPrompt)
+  if (promptWordCount <= 18 || explicitlyReferencesPriorContext(rawPrompt)) {
+    return trimmedContext
+  }
+
+  console.info({
+    branch: 'LLM',
+    promptWordCount,
+    recentContextLength: trimmedContext.length,
+  }, '[PromptGod] Dropping recent context for self-contained LLM prompt')
+
+  return undefined
+}
+
+function countWords(text: string): number {
+  const words = text.trim().match(/\S+/g)
+  return words ? words.length : 0
+}
+
+function explicitlyReferencesPriorContext(text: string): boolean {
+  return /\b(?:above|previous|earlier|last (?:message|answer|response|reply)|previous (?:message|answer|response|reply|draft|output)|the (?:above|previous) (?:message|answer|response|reply|draft|output)|this (?:answer|response|reply|conversation|thread|chat)|from (?:this|the) (?:conversation|thread|chat)|as discussed|you just (?:said|wrote|gave|mentioned)|what you (?:just )?(?:said|wrote|gave|mentioned)|use (?:that|the above|the previous)|continue from)\b/i.test(text)
 }
 
 async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineRequest): Promise<string> {
@@ -1212,6 +1246,7 @@ async function collectOpenRouterCompletionText(
   const requestedModel = normalizeOpenRouterModelId((model ?? '').trim() || OPENROUTER_PRIMARY_FREE_MODEL)
   const modelsToTry = await buildOpenRouterModelChain(requestedModel)
 
+  const perModelFailures: Array<{ model: string; failure: string }> = []
   let lastError: unknown = null
   let rateLimitAttempt = 0
 
@@ -1240,7 +1275,9 @@ async function collectOpenRouterCompletionText(
       lastError = error
 
       if (isOpenRouterDailyCapError(error)) {
-        lastError = buildOpenRouterDailyCapError(error)
+        const dailyCapError = buildOpenRouterDailyCapError(error)
+        lastError = dailyCapError
+        perModelFailures.push({ model: currentModel, failure: summarizeProviderFailure(dailyCapError) })
         console.info({ currentModel }, '[PromptGod] OpenRouter free-models-per-day cap reached on context request')
         break
       }
@@ -1253,6 +1290,8 @@ async function collectOpenRouterCompletionText(
         await delay(backoffMs)
       }
 
+      perModelFailures.push({ model: currentModel, failure: summarizeProviderFailure(error) })
+
       const hasFallbackModel = modelIndex < modelsToTry.length - 1
       if (hasFallbackModel && shouldTryNextOpenRouterModel(false, error)) {
         const fallbackModel = modelsToTry[modelIndex + 1]
@@ -1264,10 +1303,12 @@ async function collectOpenRouterCompletionText(
     }
   }
 
+  const failureSummary = perModelFailures.length > 0
+    ? perModelFailures.map((entry) => `${entry.model}: ${entry.failure}`).join(' | ')
+    : lastError instanceof Error ? lastError.message : 'no provider responded'
+
   throw new Error(
-    `[ServiceWorker] OpenRouter curated chain exhausted (${modelsToTry.join(' -> ')}): ${
-      lastError instanceof Error ? lastError.message : 'no provider responded'
-    }`
+    `[ServiceWorker] OpenRouter curated chain exhausted (${modelsToTry.join(' -> ')}): ${failureSummary}`
   )
 }
 

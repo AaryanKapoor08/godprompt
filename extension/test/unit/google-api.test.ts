@@ -118,6 +118,8 @@ describe('Google API client helpers', () => {
   })
 
   it('retries Flash once and then surfaces retryable failures for provider fallback', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(Math, 'random').mockReturnValue(0)
     mockFetch
       .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
       .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
@@ -129,6 +131,21 @@ describe('Google API client helpers', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2)
     const secondUrl = String(mockFetch.mock.calls[1][0])
     expect(secondUrl).toContain('/models/gemini-2.5-flash:generateContent')
+    expect(infoSpy).toHaveBeenCalledWith({
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      status: 503,
+      attempt: 1,
+      maxAttempts: 2,
+      delayMs: 300,
+    }, '[PromptGod] Google request failed with 503; retrying same model after short backoff')
+    expect(infoSpy).toHaveBeenCalledWith({
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      status: 503,
+      attempt: 2,
+      maxAttempts: 2,
+    }, '[PromptGod] Google request attempts exhausted; surfacing failure for provider fallback')
   })
 
   it('uses Gemma-compatible request shape without systemInstruction', async () => {

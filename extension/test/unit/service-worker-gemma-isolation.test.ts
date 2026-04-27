@@ -105,6 +105,48 @@ describe('Gemma pipeline isolation', () => {
     expect(postedMessages(port)).toContainEqual({ type: 'TOKEN', text: 'Rewrite this prompt directly.' })
   })
 
+  it('drops recent context for long self-contained direct Gemma LLM prompts', async () => {
+    const rawPrompt = 'Use the Zendesk thread, Slack threads, customer Loom video, customer CSV, export job logs, and permissions screenshot to triage the customer data export escalation. Separate confirmed facts from assumptions, identify fast disproof checks, and draft customer-facing and internal updates.'
+    googleCall.mockResolvedValueOnce('Triage the customer export escalation using the provided evidence.')
+
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'claude',
+        rawPrompt,
+        context: { isNewConversation: false, conversationLength: 5 },
+        recentContext: 'Stage 1: clean up notes. Stage 2: root cause buckets. Stage 3: internal update for Engineering, Design, and Support.',
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(googleCall).toHaveBeenCalledTimes(1)
+    expect(String(googleCall.mock.calls[0][2])).not.toContain('Stage 1')
+    expect(String(googleCall.mock.calls[0][2])).not.toContain('Engineering, Design, and Support')
+  })
+
+  it('keeps recent context for short direct Gemma follow-up prompts', async () => {
+    googleCall.mockResolvedValueOnce('Make the previous draft sharper.')
+
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'claude',
+        rawPrompt: 'make this sharper',
+        context: { isNewConversation: false, conversationLength: 5 },
+        recentContext: 'Previous draft: customer-facing launch note with cautious legal wording.',
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(googleCall).toHaveBeenCalledTimes(1)
+    expect(String(googleCall.mock.calls[0][2])).toContain('Previous draft: customer-facing launch note')
+  })
+
   it('does not run shared Text branch repair or validation on direct Gemma Text output', async () => {
     googleCall.mockResolvedValueOnce('Follow up with them about the docs.\n[DIFF: clarity]')
 

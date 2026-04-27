@@ -11,6 +11,8 @@ describe('buildGemmaMetaPromptWithIntensity', () => {
     expect(result).toContain('Preserve explicit deliverables nearly verbatim when they are already specific')
     expect(result).toContain('Do not rewrite the prompt as a first-person brief such as "My goal is..."')
     expect(result).toContain('Do not soften a hard operational ask into vague analysis language')
+    expect(result).toContain('Never use [NO_CHANGE] in this LLM branch')
+    expect(result).toContain('For rough, typo-filled, overloaded, support, incident, escalation, launch, ops, debugging, or triage prompts')
     expect(result).toContain('Good rewrite pattern:')
     expect(result).toContain('Use the launch brief, meeting notes, draft customer FAQ, and product screenshots as the source material for a hard launch-readiness triage.')
     expect(result).toContain('This is bad because it softens the original ask')

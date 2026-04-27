@@ -27,15 +27,19 @@ describe('popup model options', () => {
     const options = getModelOptions('openrouter', [
       'nvidia/nemotron-3-super-120b-a12b:free',
       'openai/gpt-oss-20b:free',
+      'inclusionai/ling-2.6-flash:free',
+      'nvidia/nemotron-3-nano-30b-a3b:free',
       'openrouter/free',
     ])
 
     expect(options.map((model) => model.value)).toEqual([
       'nvidia/nemotron-3-super-120b-a12b:free',
-      'openai/gpt-oss-20b:free',
+      'nvidia/nemotron-3-nano-30b-a3b:free',
       'openai/gpt-4o-mini',
     ])
     expect(options.map((model) => model.value)).not.toContain('openrouter/free')
+    expect(options.map((model) => model.value)).not.toContain('openai/gpt-oss-20b:free')
+    expect(options.map((model) => model.value)).not.toContain('inclusionai/ling-2.6-flash:free')
   })
 
   it('keeps custom OpenRouter model validation permissive but format-aware', () => {

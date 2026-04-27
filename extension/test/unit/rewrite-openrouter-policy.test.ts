@@ -7,6 +7,9 @@ import {
 import {
   OPENROUTER_MODEL_COOLDOWN_MS,
   getOpenRouterCooldownRemainingMs,
+  isOpenRouterDailyCapError,
+  isOpenRouterRateLimitError,
+  parseOpenRouterDailyCapResetMs,
   resetOpenRouterCooldowns,
   setOpenRouterModelCooldown,
   shouldTryNextOpenRouterModel,
@@ -28,39 +31,43 @@ describe('rewrite-openrouter policy modules', () => {
 
   it('keeps the curated free chain in product order', () => {
     expect(OPENROUTER_CURATED_FREE_MODELS.map((model) => model.id)).toEqual([
-      'inclusionai/ling-2.6-flash:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
-      'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
   })
 
   it('never includes openrouter/free or excluded free models in the chain', () => {
     expect(isExcludedOpenRouterModel('openrouter/free')).toBe(true)
+    expect(isExcludedOpenRouterModel('inclusionai/ling-2.6-flash:free')).toBe(true)
     expect(isExcludedOpenRouterModel('meta-llama/llama-3.3-70b-instruct:free')).toBe(true)
+    expect(isExcludedOpenRouterModel('inclusionai/ling-2.6-1t:free')).toBe(true)
+    expect(isExcludedOpenRouterModel('openai/gpt-oss-20b:free')).toBe(true)
 
     const chain = buildCuratedOpenRouterChain('openrouter/free')
     expect(chain).not.toContain('openrouter/free')
+    expect(chain).not.toContain('inclusionai/ling-2.6-flash:free')
     expect(chain).not.toContain('meta-llama/llama-3.3-70b-instruct:free')
+    expect(chain).not.toContain('inclusionai/ling-2.6-1t:free')
+    expect(chain).not.toContain('openai/gpt-oss-20b:free')
   })
 
   it('demotes disappeared live models by filtering them from the runtime projection', () => {
     const chain = buildCuratedOpenRouterChain('inclusionai/ling-2.6-flash:free', [
-      'openai/gpt-oss-20b:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
 
     expect(chain).toEqual([
-      'openai/gpt-oss-20b:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
       'nvidia/nemotron-3-nano-30b-a3b:free',
     ])
   })
 
   it('tracks a five-minute per-model cooldown in memory', () => {
     resetOpenRouterCooldowns()
-    setOpenRouterModelCooldown('openai/gpt-oss-20b:free')
+    setOpenRouterModelCooldown('nvidia/nemotron-3-super-120b-a12b:free')
 
-    const remaining = getOpenRouterCooldownRemainingMs('openai/gpt-oss-20b:free')
+    const remaining = getOpenRouterCooldownRemainingMs('nvidia/nemotron-3-super-120b-a12b:free')
     expect(remaining).toBeGreaterThan(0)
     expect(remaining).toBeLessThanOrEqual(OPENROUTER_MODEL_COOLDOWN_MS)
   })
@@ -73,10 +80,10 @@ describe('rewrite-openrouter policy modules', () => {
 
   it('filters the live catalog to text-capable free models', () => {
     expect(filterOpenRouterFreeTextModels([
-      { id: 'openai/gpt-oss-20b:free', architecture: { modality: 'text->text' } },
+      { id: 'nvidia/nemotron-3-super-120b-a12b:free', architecture: { modality: 'text->text' } },
       { id: 'paid/model', architecture: { modality: 'text->text' } },
       { id: 'image/model:free', architecture: { input_modalities: ['image'] } },
-    ])).toEqual(['openai/gpt-oss-20b:free'])
+    ])).toEqual(['nvidia/nemotron-3-super-120b-a12b:free'])
   })
 
   it('caches live catalog refreshes and uses pinned fallback when fetch fails', async () => {
@@ -92,15 +99,15 @@ describe('rewrite-openrouter policy modules', () => {
 
     const fetchSuccess = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       data: [
-        { id: 'openai/gpt-oss-20b:free', architecture: { modality: 'text->text' } },
+        { id: 'nvidia/nemotron-3-super-120b-a12b:free', architecture: { modality: 'text->text' } },
       ],
     }), { status: 200 }))
     vi.stubGlobal('fetch', fetchSuccess)
 
-    await expect(refreshOpenRouterCatalog(123)).resolves.toEqual(['openai/gpt-oss-20b:free'])
+    await expect(refreshOpenRouterCatalog(123)).resolves.toEqual(['nvidia/nemotron-3-super-120b-a12b:free'])
     expect(set).toHaveBeenCalledWith({
       [OPENROUTER_CATALOG_CACHE_KEY]: {
-        models: ['openai/gpt-oss-20b:free'],
+        models: ['nvidia/nemotron-3-super-120b-a12b:free'],
         timestamp: 123,
         catalogVersion: 1,
       },
@@ -114,9 +121,20 @@ describe('rewrite-openrouter policy modules', () => {
   })
 
   it('keeps free-model output caps conservative', () => {
-    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 20)).toBe(256)
-    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 80)).toBe(320)
-    expect(getOpenRouterMaxTokens('openai/gpt-oss-20b:free', 180)).toBe(384)
+    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 20)).toBe(256)
+    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 80)).toBe(320)
+    expect(getOpenRouterMaxTokens('nvidia/nemotron-3-super-120b-a12b:free', 180)).toBe(384)
     expect(getOpenRouterMaxTokens('openai/gpt-4o-mini', 180)).toBe(512)
+  })
+
+  it('detects the OpenRouter free-models-per-day daily-cap error and parses the reset timestamp', () => {
+    const dailyCap = new Error('[LLMClient] OpenRouter API returned 429: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits","code":429,"metadata":{"headers":{"X-RateLimit-Limit":"50","X-RateLimit-Remaining":"0","X-RateLimit-Reset":"1777248000000"}}}}')
+    const transient = new Error('[LLMClient] OpenRouter API returned 429: {"error":{"message":"Rate limit exceeded: free-models-per-min"}}')
+
+    expect(isOpenRouterDailyCapError(dailyCap)).toBe(true)
+    expect(isOpenRouterDailyCapError(transient)).toBe(false)
+    expect(isOpenRouterRateLimitError(dailyCap)).toBe(true)
+    expect(parseOpenRouterDailyCapResetMs(dailyCap)).toBe(1777248000000)
+    expect(parseOpenRouterDailyCapResetMs(transient)).toBeNull()
   })
 })

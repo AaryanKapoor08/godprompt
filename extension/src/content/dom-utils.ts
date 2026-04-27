@@ -12,6 +12,7 @@ export function clearContentEditable(element: HTMLElement): void {
   const selection = window.getSelection()
   if (!selection) {
     element.replaceChildren()
+    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }))
     return
   }
 
@@ -23,9 +24,11 @@ export function clearContentEditable(element: HTMLElement): void {
     ? document.execCommand('delete', false)
     : false
 
-  if (!deleted) {
+  if (!deleted || (element.textContent ?? '').length > 0) {
     element.replaceChildren()
   }
+
+  element.dispatchEvent(new Event('input', { bubbles: true, composed: true }))
 }
 
 /**
@@ -36,13 +39,14 @@ export function clearContentEditable(element: HTMLElement): void {
  */
 export function insertText(element: HTMLElement, text: string): boolean {
   element.focus()
+  const beforeText = element.textContent ?? ''
 
   // Primary strategy: execCommand('insertText')
   // Deprecated but still works and reliably triggers ProseMirror state updates
   const success = typeof document.execCommand === 'function'
     ? document.execCommand('insertText', false, text)
     : false
-  if (success) {
+  if (success && (text === '' || (element.textContent ?? '') !== beforeText)) {
     return true
   }
 
@@ -149,5 +153,15 @@ export function replaceText(element: HTMLElement, text: string): boolean {
     element.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
-  return success
+  if (!success) {
+    return false
+  }
+
+  const currentText = element.textContent ?? ''
+  if (text !== '' && currentText && currentText !== text && currentText.endsWith(text)) {
+    element.replaceChildren(document.createTextNode(text))
+    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }))
+  }
+
+  return true
 }

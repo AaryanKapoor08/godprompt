@@ -8,6 +8,184 @@
 > **Note:** Gemma remained stable as it bypasses the new pipeline (legacy isolation).
 > **Action:** Fully reverted to restore a stable user experience.
 
+## Session Notes — 2026-04-27 Flash Retry Logging + LLM Context Isolation
+
+Goal: stop guessing why Prompt 4/5 were falling back, and fix the observed cross-prompt contamination without reopening broad Gemma tuning.
+
+### What changed
+
+1. **Gemini Flash 503 observability and short backoff**
+
+- File: `extension/src/lib/llm-client.ts`
+- Added explicit logs for Google same-model retry and retry exhaustion.
+- Added a `300-500ms` jittered delay only before retrying HTTP `503`.
+- Kept the existing two-attempt Google policy; no extra retries were added.
+- Browser result: logs now show whether Flash failed attempt `1/2`, then exhausted attempt `2/2` before provider fallback.
+
+2. **Gemma retry experiment was reverted**
+
+- A direct-Gemma no-op retry was briefly tried after Gemma echoed Prompt 4.
+- It fired correctly, but Gemma still produced unchanged or barely changed output.
+- The workaround was removed at the user's request.
+- Direct Gemma LLM behavior is back to the previous path: one Gemma call; if the final composer text is unchanged, the content-script unchanged guard shows the warning instead of fake success.
+- Do not reintroduce the Gemma retry/correction prompt unless explicitly asked.
+
+3. **LLM recent-context isolation**
+
+- File: `extension/src/service-worker.ts`
+- Added `selectLlmRecentContext()`.
+- Long/self-contained LLM prompts now drop scraped recent conversation context even when the popup context toggle is on.
+- Short follow-ups and prompts that explicitly reference prior context still keep recent context.
+- This fixed the observed Prompt 4 contamination where a shortened customer-escalation prompt inherited the previous Stage 1/2/3 messy-notes structure and wrong team audience.
+
+Current policy:
+
+- Drop recent context when the prompt is not a new conversation, has prior context available, but is long/self-contained.
+- Keep recent context when prompt word count is `<= 18`.
+- Keep recent context when the prompt explicitly references prior context, e.g. `above`, `previous`, `last answer`, `this conversation`, `as discussed`, `continue from`, etc.
+
+### Browser findings after context isolation
+
+- Shortened Prompt 4 no longer borrowed the previous Stage 1/2/3 structure.
+- Gemma and Flash both produced outputs focused on the current customer-escalation prompt instead of the earlier messy-notes prompt.
+- Flash output for the complete Prompt 4 shape with a fresh project/key was rated as a pass (`~9/10`) before later quota/rate-limit issues.
+- Remaining Gemma weakness is model quality/no-op behavior on full Prompt 4, not context bleed.
+
+### Verification
+
+```powershell
+cd extension
+npm test -- --run test/unit/service-worker-provider-fallback.test.ts test/unit/service-worker-gemma-isolation.test.ts test/unit/google-api.test.ts
+npm test
+npm run build
+```
+
+Latest result:
+
+- `npm test`: passed, `38` files / `238` tests, `1` skipped live OpenRouter eval
+- `npm run build`: passed
+- Expected Vite warning remains: `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR.
+
+### Files touched in this section
+
+Runtime:
+
+- `extension/src/lib/llm-client.ts`
+- `extension/src/service-worker.ts`
+
+Tests:
+
+- `extension/test/unit/google-api.test.ts`
+- `extension/test/unit/service-worker-gemma-isolation.test.ts`
+- `extension/test/unit/service-worker-provider-fallback.test.ts`
+
+## Session Notes — 2026-04-27 OpenRouter Stability (Reasoning, Wrapper, Echo Guards) — Claude session
+
+This session ran after Codex's earlier 2026-04-27 work. Goal: stabilize the OpenRouter LLM-branch path on Prompt 4 without touching Gemini or Gemma.
+
+### Browser-confirmed result
+
+Final manual run on full Prompt 4 (`promptLength: 1384`) with `provider=openrouter`:
+
+- Service-worker logs: `Retrying context request with fallback model` (Super → Nano), then `LLM branch first-pass validation`, `firstOutputLength: 949`, `Enhancement complete`.
+- Composer received a real structured rewrite (~700 chars, ~250 chars shorter than source after deduplication): ordered checks, separated customer update, separated internal update with team owners. No wrapper framing, no echo, no fake success.
+- Pipeline: Nemotron Super was rejected by the new echo or wrapper guard, chain advanced to Nemotron Nano, Nano produced a valid rewrite that passed all validators.
+
+This is the first time full Prompt 4 has produced a deploy-quality rewrite end-to-end on the OpenRouter direct path.
+
+### What changed
+
+All edits are confined to `extension/src/lib/llm-client.ts` and `extension/src/service-worker.ts`. Gemini Flash and Gemma never traverse `sanitizeOpenRouterRewriteResponse`, `callOpenRouterCompletionAPI`, or `collectOpenRouterCompletionText`, so this work is OpenRouter-only by construction.
+
+#### 1. Diagnostic-rich `no text output` error
+
+Problem: the original `OpenRouter completion returned no text output` error was opaque — couldn't tell whether the failure was a length truncation, a refusal, a top-level routing error, or reasoning-into-the-wrong-field.
+
+Fix in `llm-client.ts`:
+
+- Added module-private `describeOpenRouterNoTextPayload(payload, model)` that inspects the JSON shape and emits a sanitized one-liner: model id, top-level `error.code: error.message` (truncated 120 chars), `choices` length, `finish_reason` (or `native_finish_reason`), `hasContent`, `hasReasoning`, and `refusal` (truncated 80 chars). No raw prompt and no raw output text.
+- `callOpenRouterCompletionAPI` no-text throw now reads `[LLMClient] OpenRouter completion returned no text output (<diagnostic>)`.
+
+This is what surfaced the actual root cause on the first browser repro: `finish=length; hasContent=false; hasReasoning=true` — the Nemotron variants were spending the entire token budget on hidden reasoning before emitting any visible content.
+
+#### 2. Per-model failure attribution in the chain-exhausted error
+
+Problem: `collectOpenRouterCompletionText` in `service-worker.ts` only kept `lastError`, so the chain-exhausted error reported only the last model's failure. Two distinct failures across Super and Nano collapsed to one line.
+
+Fix in `service-worker.ts`: track an array `perModelFailures: Array<{ model, failure }>` populated in each catch branch (rate-limit, daily-cap, generic). The exhausted-chain message now reads `(super -> nano): super: <reason> | nano: <reason>`. The `[ServiceWorker] OpenRouter curated chain exhausted` prefix is preserved so the existing `formatErrorMessage` regex routing keeps working.
+
+#### 3. Disable reasoning on OpenRouter requests
+
+Diagnostic at (1) confirmed the Nemotron-3 reasoning models burned the token budget on chain-of-thought:
+
+- Nemotron Super: emitted CoT in the visible content channel — caught as `OpenRouter completion returned reasoning instead of rewritten prompt`.
+- Nemotron Nano: empty `content`, populated `reasoning`, `finish_reason=length`.
+
+Fix in `llm-client.ts`: added module constant `OPENROUTER_REASONING_DISABLED = { enabled: false } as const` and applied it to both `callOpenRouterAPI` (streaming) and `callOpenRouterCompletionAPI` (non-stream) request bodies. OpenRouter unified field; non-reasoning models ignore it. Test in `openrouter-completion.test.ts` locks the request body shape.
+
+This freed the full 320–384 token budget for visible content and stopped Super from leaking CoT.
+
+#### 4. Wrapper-framing rejection (Nemotron-style anti-pattern)
+
+Browser repro after (3): on a shortened ~250-char prompt, Nemotron returned a 700+ char system-prompt-style rewrite opening with `You are an AI assistant helping with…` and ending with `Output only the plan as a rewritten prompt for the next AI to follow.` Existing validators didn't catch it (`detectsFirstPersonBrief` is first-person only).
+
+Fix in `llm-client.ts` `sanitizeOpenRouterRewriteResponse`: three new tight regexes — first-line role assignment (`^you are (?:an? )?(?:ai|llm|gpt|chatbot|virtual|helpful|expert|knowledgeable|professional|skilled|advanced)\b`), first-line second-person task brief (`^your (?:task|role|goal|job|primary task|main task|objective) is to\b`), and meta self-reference anywhere in output (`output only (?:the|a) (?:plan|prompt|rewrite|response|answer)\b[^.\n]{0,80}\b(?:rewritten prompt|next ai|next assistant|next model|to follow)\b`). Throws `OpenRouter completion returned wrapper framing instead of rewritten prompt`. Three tests added.
+
+#### 5. Echo guard via word-level Levenshtein
+
+Browser repro after (4): on long Prompt 4, Super returned `firstOutputLength: 1385` against `sourceLength: 1384` — essentially an echo with one or two trivial word swaps. The byte-exact `isUnchangedRewrite` validator missed it because the strings differ after normalization, but the rewrite was useless.
+
+Fix in `llm-client.ts`:
+
+- `sanitizeOpenRouterRewriteResponse` now accepts an optional `sourceText` parameter.
+- `callOpenRouterCompletionAPI` extracts source via the existing `extractRewriteSourceText(userMessage)` helper (last `"""..."""` block from the user message). If extraction fails, `sourceText` is `''` and the echo check is silently skipped — fully backward-compatible.
+- New helper `isOpenRouterNearEchoRewrite(source, output)` computes word-level Levenshtein distance using the same lower-case-and-strip normalization as `validate.ts:normalizeForCompare`. Skips when source is < 20 words. Threshold: similarity ≥ 0.9 → reject.
+- New constants `OPENROUTER_ECHO_SIMILARITY_THRESHOLD = 0.9` and `OPENROUTER_ECHO_MIN_SOURCE_WORDS = 20`.
+- Echo check runs **after** fenced-code stripping, reasoning rejection, wrapper rejection, and `Rewritten prompt:` label stripping, so the comparison is on cleaned output.
+- Throws `OpenRouter completion returned near-identical rewrite (echo of source)`. Three tests added (echo rejection, genuine restructuring acceptance, no-delimiter fallback).
+
+### Why Gemini and Gemma are unaffected
+
+Verified by grep and by the test suite:
+
+- `sanitizeOpenRouterRewriteResponse` has exactly one caller: `callOpenRouterCompletionAPI`.
+- Google path uses `extractGoogleText` → `sanitizeGoogleRewriteResponse` or `sanitizeGemmaResponse`. Neither references the new helpers, regexes, or constants.
+- All Gemma/Google tests in `service-worker-provider-fallback.test.ts`, `meta-prompt.test.ts`, `budget-snapshots.test.ts`, and `google-api.test.ts` still pass unchanged.
+
+### Verification
+
+```powershell
+cd extension
+npm test -- --run test/unit/openrouter-completion.test.ts
+npm test
+npm run build
+```
+
+Latest result:
+
+- focused OpenRouter completion tests: passed, 13 tests (was 4 before this session, +9 added)
+- `npm test`: passed, 38 files / 235 tests, 1 skipped live OpenRouter eval
+- `npm run build`: passed
+- Expected Vite warning remains: `src/content/perplexity-main.ts` MAIN-world HMR notice.
+
+### Files touched in this session
+
+Runtime:
+
+- `extension/src/lib/llm-client.ts` — diagnostic helper, reasoning-disabled constant + both request bodies, wrapper-framing rejection, echo guard, sanitizer signature widened.
+- `extension/src/service-worker.ts` — per-model failure attribution in `collectOpenRouterCompletionText`.
+
+Tests:
+
+- `extension/test/unit/openrouter-completion.test.ts` — added 9 tests across diagnostic enrichment, wrapper-framing variants, and echo guard variants.
+
+### Open follow-ups
+
+- The 0.9 similarity threshold is calibrated against the Prompt 4 echo repro and one synthetic genuine-rewrite fixture. If real traffic shows false positives (a legitimately-similar rewrite being rejected), bump to 0.92 in `OPENROUTER_ECHO_SIMILARITY_THRESHOLD`. Single-line change.
+- The wrapper-framing rejection is OpenRouter-only by design. If Gemini Flash ever produces this antipattern (none observed today), the fix would be a separate, narrower addition to the LLM-branch validator — do not promote the OpenRouter regex set into shared validation.
+- Codex's pending Gemma direct-Prompt-4 retest is still open. My changes do not affect the Gemma path.
+- Codex's pending Gemini Flash full-Prompt-4 retest after the Google daily-quota reset is still open. My changes do not affect the Gemini Flash path.
+
 ## Session Notes — 2026-04-27 LLM Branch Finalization, Prompt 4 Diagnosis, Gemma No-Op Fix
 
 This session focused on identifying why `codex/testing.md` Prompt 4 failed and making the smallest safe fixes needed to keep the LLM branch debuggable.

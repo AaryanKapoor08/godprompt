@@ -9,6 +9,7 @@ import { OPENROUTER_PRIMARY_FREE_MODEL } from './rewrite-openrouter/curation'
 import { buildGoogleRequestBody, GOOGLE_REWRITE_TEMPERATURE } from './rewrite-google/request-policy'
 import {
   GOOGLE_MAX_ATTEMPTS_PER_MODEL,
+  GOOGLE_RETRYABLE_STATUS_CODES,
   shouldRetryGoogleSameModel,
 } from './rewrite-google/retry-policy'
 import { normalizeText } from './text-utils'
@@ -450,7 +451,71 @@ function extractOpenAICompatibleText(payload: unknown): string {
   return ''
 }
 
-function sanitizeOpenRouterRewriteResponse(text: string): string {
+function describeOpenRouterNoTextPayload(payload: unknown, model: string): string {
+  const parts: string[] = [model]
+
+  if (!payload || typeof payload !== 'object') {
+    parts.push('no payload')
+    return parts.join('; ')
+  }
+
+  const root = payload as {
+    choices?: unknown[]
+    error?: { code?: string | number; message?: string }
+  }
+
+  if (root.error && typeof root.error === 'object') {
+    const code = root.error.code !== undefined ? String(root.error.code) : ''
+    const message = typeof root.error.message === 'string' ? root.error.message : ''
+    const errorSummary = [code, message].filter(Boolean).join(': ')
+    if (errorSummary) {
+      parts.push(`error=${errorSummary.slice(0, 120)}`)
+    }
+  }
+
+  const choices = Array.isArray(root.choices) ? root.choices : []
+  parts.push(`choices=${choices.length}`)
+
+  const firstChoice = choices[0]
+  if (firstChoice && typeof firstChoice === 'object') {
+    const choice = firstChoice as {
+      finish_reason?: unknown
+      native_finish_reason?: unknown
+      message?: unknown
+    }
+
+    const finishReason = typeof choice.finish_reason === 'string' && choice.finish_reason.length > 0
+      ? choice.finish_reason
+      : typeof choice.native_finish_reason === 'string' && choice.native_finish_reason.length > 0
+        ? choice.native_finish_reason
+        : null
+    if (finishReason) {
+      parts.push(`finish=${finishReason}`)
+    }
+
+    if (choice.message && typeof choice.message === 'object') {
+      const message = choice.message as {
+        content?: unknown
+        reasoning?: unknown
+        refusal?: unknown
+      }
+      const hasContent = typeof message.content === 'string'
+        ? message.content.trim().length > 0
+        : Array.isArray(message.content) && message.content.length > 0
+      parts.push(`hasContent=${hasContent}`)
+      if (typeof message.reasoning === 'string' && message.reasoning.trim().length > 0) {
+        parts.push('hasReasoning=true')
+      }
+      if (typeof message.refusal === 'string' && message.refusal.trim().length > 0) {
+        parts.push(`refusal=${message.refusal.trim().slice(0, 80)}`)
+      }
+    }
+  }
+
+  return parts.join('; ')
+}
+
+function sanitizeOpenRouterRewriteResponse(text: string, sourceText: string = ''): string {
   let output = text.trim()
   if (!output) return output
 
@@ -467,13 +532,93 @@ function sanitizeOpenRouterRewriteResponse(text: string): string {
     throw new Error('[LLMClient] OpenRouter completion returned reasoning instead of rewritten prompt')
   }
 
+  // Nemotron-style wrapper anti-pattern: "You are an AI assistant helping with X. Your task is to..."
+  // and meta self-references like "Output only the plan as a rewritten prompt for the next AI to follow."
+  // A faithful rewrite stays in the user's voice; it does not address a third-party AI in second person.
+  // Gemini/Gemma never reach this sanitizer — the rejection is OpenRouter-only by construction.
+  if (
+    /^you are (?:an? )?(?:ai|llm|gpt|chatbot|virtual|helpful|expert|knowledgeable|professional|skilled|advanced)\b/i.test(firstLine)
+    || /^your (?:task|role|goal|job|primary task|main task|objective) is to\b/i.test(firstLine)
+    || /\boutput only (?:the|a) (?:plan|prompt|rewrite|response|answer)\b[^.\n]{0,80}\b(?:rewritten prompt|next ai|next assistant|next model|to follow)\b/i.test(output)
+  ) {
+    throw new Error('[LLMClient] OpenRouter completion returned wrapper framing instead of rewritten prompt')
+  }
+
   if (/^(?:prompt|rewritten prompt|enhanced prompt|final prompt)\s*:/i.test(firstLine)) {
     const lines = output.split(/\r?\n/)
     lines[0] = firstLine.replace(/^(?:prompt|rewritten prompt|enhanced prompt|final prompt)\s*:\s*/i, '')
-    return lines.join('\n').trim()
+    output = lines.join('\n').trim()
+  }
+
+  // OpenRouter-only echo guard. Nemotron-Super sometimes returns the source verbatim with one
+  // or two trivial word swaps that bypass the byte-exact UNCHANGED_REWRITE validator. Reject
+  // when the cleaned output is fuzzy-identical to the source. Skipped for short prompts and
+  // when source extraction was not possible. Gemini/Gemma do not reach this sanitizer.
+  if (sourceText && isOpenRouterNearEchoRewrite(sourceText, output)) {
+    throw new Error('[LLMClient] OpenRouter completion returned near-identical rewrite (echo of source)')
   }
 
   return output
+}
+
+const OPENROUTER_ECHO_SIMILARITY_THRESHOLD = 0.9
+const OPENROUTER_ECHO_MIN_SOURCE_WORDS = 20
+
+function isOpenRouterNearEchoRewrite(sourceText: string, output: string): boolean {
+  const sourceWords = normalizeForSimilarity(sourceText)
+  const outputWords = normalizeForSimilarity(output)
+
+  if (sourceWords.length < OPENROUTER_ECHO_MIN_SOURCE_WORDS) {
+    return false
+  }
+  if (outputWords.length === 0) {
+    return false
+  }
+
+  const editDistance = wordEditDistance(sourceWords, outputWords)
+  const maxLength = Math.max(sourceWords.length, outputWords.length)
+  if (maxLength === 0) {
+    return false
+  }
+  const similarity = 1 - editDistance / maxLength
+  return similarity >= OPENROUTER_ECHO_SIMILARITY_THRESHOLD
+}
+
+function normalizeForSimilarity(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((word) => word.length > 0)
+}
+
+function wordEditDistance(a: string[], b: string[]): number {
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+
+  let prev = new Array<number>(n + 1)
+  let curr = new Array<number>(n + 1)
+  for (let j = 0; j <= n; j++) prev[j] = j
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost
+      )
+    }
+    const swap = prev
+    prev = curr
+    curr = swap
+  }
+
+  return prev[n]
 }
 
 function extractGoogleOutputIssue(payload: unknown, text: string): string | null {
@@ -585,10 +730,12 @@ export async function callGoogleAPI(
 
         if (shouldRetryGoogleSameModel(response.status, attempt)) {
           lastError = error
+          await waitBeforeGoogleRetry(response.status, modelToTry, attempt)
           continue
         }
 
         lastError = error
+        logGoogleAttemptsExhausted(response.status, modelToTry, attempt)
         break
       }
 
@@ -634,6 +781,49 @@ export async function callGoogleAPI(
   }
 
   throw lastError ?? new Error('[LLMClient] Google API request failed')
+}
+
+const GOOGLE_503_RETRY_DELAY_MIN_MS = 300
+const GOOGLE_503_RETRY_DELAY_JITTER_MS = 200
+
+async function waitBeforeGoogleRetry(status: number, model: string, attempt: number): Promise<void> {
+  const maxAttempts = GOOGLE_MAX_ATTEMPTS_PER_MODEL
+  if (status !== 503) {
+    console.info({
+      provider: 'google',
+      model,
+      status,
+      attempt,
+      maxAttempts,
+    }, '[PromptGod] Google request failed; retrying same model')
+    return
+  }
+
+  const delayMs = GOOGLE_503_RETRY_DELAY_MIN_MS
+    + Math.floor(Math.random() * (GOOGLE_503_RETRY_DELAY_JITTER_MS + 1))
+
+  console.info({
+    provider: 'google',
+    model,
+    status,
+    attempt,
+    maxAttempts,
+    delayMs,
+  }, '[PromptGod] Google request failed with 503; retrying same model after short backoff')
+
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
+}
+
+function logGoogleAttemptsExhausted(status: number, model: string, attempt: number): void {
+  if (!GOOGLE_RETRYABLE_STATUS_CODES.has(status)) return
+
+  console.info({
+    provider: 'google',
+    model,
+    status,
+    attempt,
+    maxAttempts: GOOGLE_MAX_ATTEMPTS_PER_MODEL,
+  }, '[PromptGod] Google request attempts exhausted; surfacing failure for provider fallback')
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
@@ -961,6 +1151,13 @@ export async function callOpenAIAPI(
   return response
 }
 
+// OpenRouter unified flag: prompt-rewrite has no use for chain-of-thought.
+// Reasoning models (e.g. Nemotron-3) otherwise spend the token budget on hidden
+// reasoning, leaving content empty (Nano: finish=length, hasContent=false) or
+// leaking reasoning into the visible content channel (Super). Models that don't
+// support reasoning ignore this field.
+const OPENROUTER_REASONING_DISABLED = { enabled: false } as const
+
 // Make a streaming request to OpenRouter (OpenAI-compatible format)
 export async function callOpenRouterAPI(
   apiKey: string,
@@ -982,6 +1179,7 @@ export async function callOpenRouterAPI(
       max_tokens: maxTokens,
       temperature: REWRITE_TEMPERATURE,
       stream: true,
+      reasoning: OPENROUTER_REASONING_DISABLED,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
@@ -1021,6 +1219,7 @@ export async function callOpenRouterCompletionAPI(
       max_tokens: maxTokens,
       temperature: REWRITE_TEMPERATURE,
       stream: false,
+      reasoning: OPENROUTER_REASONING_DISABLED,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
@@ -1038,9 +1237,11 @@ export async function callOpenRouterCompletionAPI(
   }
 
   const payload = await response.json().catch(() => null)
-  const text = sanitizeOpenRouterRewriteResponse(extractOpenAICompatibleText(payload))
+  const sourceText = extractRewriteSourceText(userMessage)
+  const text = sanitizeOpenRouterRewriteResponse(extractOpenAICompatibleText(payload), sourceText)
   if (!text) {
-    throw new Error('[LLMClient] OpenRouter completion returned no text output')
+    const diagnostic = describeOpenRouterNoTextPayload(payload, model)
+    throw new Error(`[LLMClient] OpenRouter completion returned no text output (${diagnostic})`)
   }
 
   return text

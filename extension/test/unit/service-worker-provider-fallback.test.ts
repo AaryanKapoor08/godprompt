@@ -92,6 +92,28 @@ describe('service worker provider fallback after validator failures', () => {
     })
   })
 
+  it('drops recent context for long self-contained non-Gemma LLM prompts', async () => {
+    const rawPrompt = 'Use the Zendesk thread, Slack threads, customer Loom video, customer CSV, export job logs, and permissions screenshot to triage the customer data export escalation. Separate confirmed facts from assumptions, identify fast disproof checks, assign owners, draft a cautious customer update, and draft a separate internal update for Engineering, Support, and Customer Success.'
+    googleCall.mockResolvedValueOnce('Use the Zendesk thread, Slack threads, Loom video, customer CSV, export job logs, and permissions screenshot to triage the export escalation. Separate facts from assumptions, list fast disproof checks, assign owners, draft a cautious customer update, and draft a separate internal update for Engineering, Support, and Customer Success.')
+
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'claude',
+        rawPrompt,
+        context: { isNewConversation: false, conversationLength: 8 },
+        recentContext: 'Stage 1: clean up notes. Stage 2: root cause buckets. Stage 3: internal update for Engineering, Design, and Support.',
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(googleCall).toHaveBeenCalledTimes(1)
+    expect(String(googleCall.mock.calls[0][2])).not.toContain('Stage 1')
+    expect(String(googleCall.mock.calls[0][2])).not.toContain('Engineering, Design, and Support')
+  })
+
   it('does not treat unchanged Gemma fallback output as a successful LLM rewrite', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/api/v1/key')) {

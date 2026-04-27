@@ -92,6 +92,112 @@ describe('service worker provider fallback after validator failures', () => {
     })
   })
 
+  it('does not treat unchanged Gemma fallback output as a successful LLM rewrite', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/v1/key')) {
+        return new Response(JSON.stringify({ data: { limit: 50, usage: 0 } }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 })
+    }))
+
+    vi.mocked(chrome.storage.local.get).mockImplementation(async (keys: string[] | string) => {
+      const keyList = Array.isArray(keys) ? keys : [keys]
+      if (keyList.includes('apiKey')) {
+        return {
+          apiKey: 'AIzaTestKey',
+          provider: 'google',
+          model: 'gemini-2.5-flash',
+          includeConversationContext: true,
+          providerApiKeys: { openrouter: 'sk-or-test' },
+        }
+      }
+      return {
+        totalEnhancements: 0,
+        enhancementsByPlatform: {},
+      }
+    })
+
+    const rawPrompt = 'Use the Zendesk thread, Slack notes, customer CSV, export job logs, and permissions screenshot to separate known facts, guesses, next checks, customer update, and internal update for a data export escalation.'
+    googleCall
+      .mockResolvedValueOnce(rawPrompt)
+      .mockResolvedValueOnce(rawPrompt)
+      .mockResolvedValueOnce(`[NO_CHANGE] ${rawPrompt}`)
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'chatgpt',
+        rawPrompt,
+        context: { isNewConversation: true, conversationLength: 0 },
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(postedMessages(port)).not.toContainEqual({
+      type: 'TOKEN',
+      text: rawPrompt,
+    })
+    expect(postedMessages(port)).toContainEqual({
+      type: 'ERROR',
+      message: 'No provider returned a usable rewrite. Retry once, or save an OpenRouter key/custom model and try again.',
+    })
+  })
+
+  it('keeps all-provider terminal failures from being masked as OpenRouter-only failures', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/v1/key')) {
+        return new Response(JSON.stringify({ data: { limit: 50, usage: 0 } }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 })
+    }))
+
+    vi.mocked(chrome.storage.local.get).mockImplementation(async (keys: string[] | string) => {
+      const keyList = Array.isArray(keys) ? keys : [keys]
+      if (keyList.includes('apiKey')) {
+        return {
+          apiKey: 'AIzaTestKey',
+          provider: 'google',
+          model: 'gemini-2.5-flash',
+          includeConversationContext: true,
+          providerApiKeys: { openrouter: 'sk-or-test' },
+        }
+      }
+      return {
+        totalEnhancements: 0,
+        enhancementsByPlatform: {},
+      }
+    })
+
+    const rawPrompt = 'Use the Zendesk thread, Slack notes, customer CSV, export job logs, and permissions screenshot to separate known facts, guesses, next checks, customer update, and internal update for a data export escalation.'
+    googleCall
+      .mockResolvedValueOnce(rawPrompt)
+      .mockResolvedValueOnce(rawPrompt)
+      .mockResolvedValueOnce(`[NO_CHANGE] ${rawPrompt}`)
+    openRouterCompletionCall.mockRejectedValue(new Error('[LLMClient] OpenRouter completion returned no text output'))
+
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'chatgpt',
+        rawPrompt,
+        context: { isNewConversation: true, conversationLength: 0 },
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(postedMessages(port)).toContainEqual({
+      type: 'ERROR',
+      message: 'No provider returned a usable rewrite. Retry once, or save an OpenRouter key/custom model and try again.',
+    })
+    expect(postedMessages(port)).not.toContainEqual({
+      type: 'ERROR',
+      message: 'The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model.',
+    })
+  })
+
   it('escalates Text branch Google output to frozen Gemma after catastrophic retry also fails validation', async () => {
     googleCall
       .mockResolvedValueOnce('Who is the recipient?')
@@ -176,7 +282,7 @@ describe('service worker provider fallback after validator failures', () => {
         failureChain: expect.arrayContaining([
           expect.objectContaining({ provider: 'Google', model: 'gemini-2.5-flash' }),
           expect.objectContaining({ provider: 'Gemma', model: 'gemma-3-27b-it' }),
-          expect.objectContaining({ provider: 'OpenRouter', model: 'inclusionai/ling-2.6-flash:free' }),
+          expect.objectContaining({ provider: 'OpenRouter', model: 'nvidia/nemotron-3-super-120b-a12b:free' }),
         ]),
       }),
       '[PromptGod] All providers failed for LLM branch'
@@ -238,7 +344,7 @@ describe('service worker provider fallback after validator failures', () => {
         failureChain: expect.arrayContaining([
           expect.objectContaining({ provider: 'Google', model: 'gemini-2.5-flash' }),
           expect.objectContaining({ provider: 'Gemma', model: 'gemma-3-27b-it' }),
-          expect.objectContaining({ provider: 'OpenRouter', model: 'inclusionai/ling-2.6-flash:free' }),
+          expect.objectContaining({ provider: 'OpenRouter', model: 'nvidia/nemotron-3-super-120b-a12b:free' }),
         ]),
       }),
       '[PromptGod] All providers failed for Text branch'

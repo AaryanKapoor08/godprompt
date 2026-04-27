@@ -47,7 +47,8 @@ Rules:
 - Do not soften a hard operational ask into vague analysis language
 - Do not replace a specific deliverable with a broader substitute
 - Add only the missing context that materially improves the answer
-- If the prompt is already strong, return [NO_CHANGE] followed by the original prompt
+- Never use [NO_CHANGE] in this LLM branch. Always return a rewritten prompt that improves clarity, structure, wording, or sendability while preserving the user's intent.
+- For rough, typo-filled, overloaded, support, incident, escalation, launch, ops, debugging, or triage prompts, rewrite them into clearer sendable instructions even when the substance is already specific
 - For broad learning prompts, prefer a practical roadmap, clear structure, and project-based steps
 - For short follow-up prompts in an ongoing conversation, apply light edits only
 - Never invent concrete personal facts

@@ -349,7 +349,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   // Service-worker output is finalized before insertion, so commit it once at
   // DONE. Repeated contenteditable writes caused visible flicker and append
-  // duplication on rich editors, especially with long Gemma outputs.
+  // duplication on rich editors.
   let accumulatedText = ''
   let renderedIndex = 0
   let fieldCleared = false

@@ -13,22 +13,20 @@
   </div>
   <p class="subtitle">Make your AI prompts smarter with one click.</p>
 
-  <p class="byok-hint">Bring your own API key to get started. Get one from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or use any other key you have (Anthropic, OpenAI, etc.).</p>
+  <p class="byok-hint">Bring your own API key to get started. Recommended: get a Gemini API key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. You can also use an OpenRouter key, but Gemini is recommended.</p>
 
   <!-- API Key Settings -->
   <div id="byok-section" class="section">
     <label for="api-key">API Key</label>
-    <input type="password" id="api-key" placeholder="Paste any provider key here" autocomplete="off" spellcheck="false">
+    <input type="password" id="api-key" placeholder="Paste your API key here" autocomplete="off" spellcheck="false">
     <div id="key-status" class="status"></div>
 
     <div class="model-label-row">
       <label for="provider-select" class="label--model">Provider</label>
     </div>
     <select id="provider-select" class="model-select">
-      <option value="openrouter">OpenRouter</option>
-      <option value="openai">OpenAI</option>
-      <option value="anthropic">Anthropic</option>
       <option value="google">Google</option>
+      <option value="openrouter">OpenRouter</option>
     </select>
 
     <div class="model-label-row">

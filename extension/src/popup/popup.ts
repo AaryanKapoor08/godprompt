@@ -31,9 +31,9 @@ const saveStatus = document.getElementById('save-status') as HTMLDivElement
 
 headerLogo.src = chrome.runtime.getURL('assets/icon-48.png')
 
-const PROVIDER_NAMES: Record<Provider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
+const ALL_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'openrouter']
+
+const SELECTABLE_PROVIDER_NAMES: Record<Extract<Provider, 'google' | 'openrouter'>, string> = {
   google: 'Google',
   openrouter: 'OpenRouter',
 }
@@ -43,8 +43,12 @@ const savedApiKeysByProvider: Partial<Record<Provider, string>> = {}
 const draftApiKeysByProvider: Partial<Record<Provider, string>> = {}
 let openRouterLiveModelIds: string[] | undefined
 
-function isProvider(value: string | undefined): value is Provider {
-  return value === 'anthropic' || value === 'openai' || value === 'google' || value === 'openrouter'
+function isSelectableProvider(value: string | undefined): value is Extract<Provider, 'google' | 'openrouter'> {
+  return value === 'google' || value === 'openrouter'
+}
+
+function getSelectableProviderName(provider: Provider): string {
+  return isSelectableProvider(provider) ? SELECTABLE_PROVIDER_NAMES[provider] : 'selected provider'
 }
 
 function normalizeModelId(model: string | undefined): string | undefined {
@@ -86,7 +90,7 @@ function replaceApiKeyMap(
   target: Partial<Record<Provider, string>>,
   source: Partial<Record<Provider, string>>
 ): void {
-  for (const provider of Object.keys(PROVIDER_NAMES) as Provider[]) {
+  for (const provider of ALL_PROVIDERS) {
     delete target[provider]
   }
 
@@ -104,7 +108,11 @@ async function initPopup() {
 
   const providerApiKeys = { ...(prefs.providerApiKeys ?? {}) } as Partial<Record<Provider, string>>
   const detectedProvider = detectProviderFromApiKey(prefs.apiKey ?? '')
-  const savedProvider = isProvider(prefs.provider) ? prefs.provider : (detectedProvider ?? 'openrouter')
+  const savedProvider = isSelectableProvider(prefs.provider)
+    ? prefs.provider
+    : isSelectableProvider(detectedProvider)
+      ? detectedProvider
+      : 'google'
 
   if (prefs.apiKey && savedProvider && !providerApiKeys[savedProvider]) {
     providerApiKeys[savedProvider] = prefs.apiKey
@@ -270,17 +278,20 @@ function updateKeyValidationUI(key: string, provider: Provider): void {
   if (analysis.recognizedFormat) {
     apiKeyInput.classList.add('input--valid')
     if (analysis.detectedProvider === provider) {
-      keyStatus.textContent = `${PROVIDER_NAMES[provider]} key format recognized. Click Save to apply changes.`
+      keyStatus.textContent = `${getSelectableProviderName(provider)} key format recognized. Click Save to apply changes.`
       keyStatus.className = 'status status--saved'
       return
     }
 
-    keyStatus.textContent = `This key looks like ${PROVIDER_NAMES[analysis.detectedProvider!]}. It will still be saved for ${PROVIDER_NAMES[provider]}.`
+    const detectedProviderName = isSelectableProvider(analysis.detectedProvider)
+      ? SELECTABLE_PROVIDER_NAMES[analysis.detectedProvider]
+      : 'another provider'
+    keyStatus.textContent = `This key looks like ${detectedProviderName}. It will still be saved for ${getSelectableProviderName(provider)}.`
     keyStatus.className = 'status status--warning'
     return
   }
 
-  keyStatus.textContent = `Format not recognized. The key will still be saved for ${PROVIDER_NAMES[provider]}.`
+  keyStatus.textContent = `Format not recognized. The key will still be saved for ${getSelectableProviderName(provider)}.`
   keyStatus.className = 'status status--warning'
 }
 
@@ -315,10 +326,6 @@ function updateModelDropdown(provider: Provider, selectedModel?: string): void {
 function updateModelHint(provider: Provider): void {
   if (provider === 'openrouter') {
     modelHint.textContent = 'Curated free chain'
-  } else if (provider === 'openai') {
-    modelHint.textContent = '4o-mini recommended'
-  } else if (provider === 'anthropic') {
-    modelHint.textContent = 'Haiku 3.5 is cheapest | Sonnet 4 for quality'
   } else {
     modelHint.textContent = 'Gemini 2.5 Flash recommended | Gemma 3 27B is free'
   }

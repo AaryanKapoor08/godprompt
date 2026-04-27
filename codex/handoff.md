@@ -474,3 +474,69 @@ Then browser retest:
 1. reload `extension/dist`
 2. direct Gemma full Prompt 4
 3. Gemini Flash full Prompt 4 after quota reset
+
+## Addendum — 2026-04-27 Popup Copy + Direct Paste Decision
+
+This addendum was appended after the earlier handoff. It does not replace the Prompt 4/Gemma/Flash follow-up above.
+
+### What changed
+
+1. **Popup onboarding copy now recommends Google AI Studio / Gemini**
+
+- File: `extension/src/popup/popup.html`
+- Replaced the old OpenRouter-first BYOK hint with Gemini-first wording.
+- New key link: `https://aistudio.google.com/apikey`
+- Popup copy now says Gemini is recommended, with OpenRouter as an optional alternative.
+- Removed the Anthropic/OpenAI mention from the visible onboarding copy.
+
+2. **Provider dropdown is now Google + OpenRouter only**
+
+- Files:
+  - `extension/src/popup/popup.html`
+  - `extension/src/popup/popup.ts`
+- Removed OpenAI and Anthropic from the visible provider dropdown.
+- First-open/default provider is now Google when no saved selectable provider exists.
+- Existing hidden provider storage is not destroyed; the popup simply does not expose those providers as selectable options.
+- Popup key-status text no longer surfaces the hidden provider display names if a pasted key looks like one of those older providers.
+
+3. **Direct paste everywhere**
+
+- File: `extension/src/content/ui/trigger-button.ts`
+- User chose reliability over typed/progressive injection.
+- `shouldUseProgressiveComposerRender()` remains `false` for all platforms and models.
+- Composer insertion stays final-only: the content script commits the accepted rewrite once after the service worker has finalized the output.
+- This is intentionally aligned with the critical 2026-04-26 warning at the top of `codex/Progress.md`: do not reintroduce optimistic streaming/progressive composer writes.
+
+4. **Safety tests added/updated**
+
+- Files:
+  - `extension/test/unit/trigger-button-render-policy.test.ts`
+  - `extension/test/unit/service-worker-provider-fallback.test.ts`
+- Render-policy tests assert final-only replacement for Google, OpenRouter, Gemma, Perplexity, and unknown models.
+- Provider-fallback tests now prove rejected first-pass LLM output is never emitted to the content script as a `TOKEN`; only accepted retry/fallback output reaches the page.
+
+### Verification
+
+Latest commands:
+
+```powershell
+cd extension
+npm test -- --run test/unit/trigger-button-render-policy.test.ts test/unit/service-worker-provider-fallback.test.ts test/unit/popup-model-options.test.ts
+npm test
+npm run build
+```
+
+Latest result:
+
+- focused tests: passed, `3` files / `18` tests
+- `npm test`: passed, `38` files / `240` tests, `1` skipped live OpenRouter eval
+- `npm run build`: passed
+- Expected Vite warning remains:
+  - `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR
+
+### Next-session reminder
+
+- Keep direct paste everywhere unless the user explicitly reopens injection/typing UX.
+- Do not reintroduce optimistic streaming or progressive composer writes.
+- If testing the popup, verify the provider dropdown only shows `Google` and `OpenRouter`.
+- Continue Prompt 4 browser verification from the earlier handoff: direct Gemma full Prompt 4, then Gemini Flash full Prompt 4 after quota reset.

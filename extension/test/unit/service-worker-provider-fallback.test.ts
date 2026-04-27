@@ -64,6 +64,34 @@ describe('service worker provider fallback after validator failures', () => {
     vi.restoreAllMocks()
   })
 
+  it('emits only the accepted LLM retry output, never the rejected first-pass candidate', async () => {
+    googleCall
+      .mockResolvedValueOnce('Write a launch update to [recipient] about [project].')
+      .mockResolvedValueOnce('Use the launch docs to draft the checklist, memo, FAQ, and internal summary.')
+
+    const port = createPort()
+    await handleEnhance(
+      port,
+      {
+        type: 'ENHANCE',
+        platform: 'chatgpt',
+        rawPrompt: 'Use the launch docs to draft a checklist, memo, FAQ, and internal summary.',
+        context: { isNewConversation: true, conversationLength: 0 },
+      } as never,
+      new AbortController().signal
+    )
+
+    expect(googleCall).toHaveBeenCalledTimes(2)
+    expect(postedMessages(port)).not.toContainEqual({
+      type: 'TOKEN',
+      text: 'Write a launch update to [recipient] about [project].',
+    })
+    expect(postedMessages(port)).toContainEqual({
+      type: 'TOKEN',
+      text: 'Use the launch docs to draft the checklist, memo, FAQ, and internal summary.',
+    })
+  })
+
   it('escalates LLM branch Google output to frozen Gemma after first pass and retry both fail validation', async () => {
     googleCall
       .mockResolvedValueOnce('Write a launch update to [recipient] about [project].')
@@ -86,6 +114,10 @@ describe('service worker provider fallback after validator failures', () => {
     expect(googleCall.mock.calls[0][3]).toBe('gemini-2.5-flash')
     expect(googleCall.mock.calls[1][3]).toBe('gemini-2.5-flash')
     expect(googleCall.mock.calls[2][3]).toBe('gemma-3-27b-it')
+    expect(postedMessages(port)).not.toContainEqual({
+      type: 'TOKEN',
+      text: 'Write a launch update to [recipient] about [project].',
+    })
     expect(postedMessages(port)).toContainEqual({
       type: 'TOKEN',
       text: 'Use the launch docs to draft the checklist, memo, FAQ, and internal summary.',

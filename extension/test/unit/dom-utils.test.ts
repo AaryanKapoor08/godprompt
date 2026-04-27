@@ -36,6 +36,7 @@ function installDomGlobals(options: { execCommand?: () => boolean } = {}) {
     createRange: vi.fn(() => ({
       selectNodeContents: vi.fn(),
     })),
+    createTextNode: vi.fn((text: string) => ({ textContent: text })),
     execCommand: vi.fn(options.execCommand ?? (() => false)),
   })
 }
@@ -46,8 +47,8 @@ function makeEditable(initialText = '') {
     focus: vi.fn(),
     dispatchEvent: vi.fn(() => true),
     contains: vi.fn(() => false),
-    replaceChildren: vi.fn(function replaceChildren(this: { textContent: string }) {
-      this.textContent = ''
+    replaceChildren: vi.fn(function replaceChildren(this: { textContent: string }, node?: { textContent?: string }) {
+      this.textContent = node?.textContent ?? ''
     }),
   }
 
@@ -89,6 +90,16 @@ describe('dom-utils text insertion fallback', () => {
 
   it('replaces stale content when execCommand delete and insert both fail', () => {
     installDomGlobals({ execCommand: () => false })
+    const element = makeEditable('old prompt')
+
+    expect(replaceText(element, 'new prompt')).toBe(true)
+
+    expect(element.textContent).toBe('new prompt')
+    expect(element.replaceChildren).toHaveBeenCalled()
+  })
+
+  it('falls back when execCommand delete reports success but leaves stale text behind', () => {
+    installDomGlobals({ execCommand: () => true })
     const element = makeEditable('old prompt')
 
     expect(replaceText(element, 'new prompt')).toBe(true)

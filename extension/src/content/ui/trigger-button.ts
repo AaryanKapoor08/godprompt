@@ -41,6 +41,12 @@ function shouldSkipNormalCleanup(model: unknown): boolean {
   return typeof model === 'string' && /\bgemma\b/i.test(model)
 }
 
+export function shouldUseProgressiveComposerRender(platform: string, model: unknown): boolean {
+  void platform
+  void model
+  return false
+}
+
 export function injectTriggerButton(adapter: PlatformAdapter): void {
   // Don't double-inject
   if (injectedButton && document.body.contains(injectedButton)) {
@@ -232,7 +238,7 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
 
   const platform = adapter.getPlatform()
   const context = adapter.getConversationContext()
-  const shouldProgressivelyRender = platform !== 'perplexity'
+  let shouldProgressivelyRender = false
 
   // Re-enhance logic: if text matches last enhanced output, use stored original
   // If user has edited the text, treat current text as new original
@@ -305,12 +311,14 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     const settings = await chrome.storage.local.get(['includeConversationContext', 'model'])
     const includeContext = settings.includeConversationContext !== false // default: on
     selectedModel = typeof settings.model === 'string' ? settings.model : undefined
+    shouldProgressivelyRender = shouldUseProgressiveComposerRender(platform, selectedModel)
     if (includeContext && !context.isNewConversation) {
       const scraped = adapter.getRecentMessages(500)
       if (scraped) recentContext = scraped
     }
   } catch {
     // storage access failed — proceed without context
+    shouldProgressivelyRender = false
   }
 
   // Send ENHANCE message
@@ -339,10 +347,9 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     return
   }
 
-  // Progressive rendering: tokens feed into a buffer, and the render loop
-  // drains one word per frame for smooth real-time typing.
-  // Field is NOT cleared until the first token arrives, so the user's
-  // original prompt stays visible during the API wait.
+  // Service-worker output is finalized before insertion, so commit it once at
+  // DONE. Repeated contenteditable writes caused visible flicker and append
+  // duplication on rich editors, especially with long Gemma outputs.
   let accumulatedText = ''
   let renderedIndex = 0
   let fieldCleared = false
@@ -440,8 +447,8 @@ async function handleEnhanceClick(adapter: PlatformAdapter): Promise<void> {
     const normalizedText = shouldSkipNormalCleanup(selectedModel)
       ? normalizeText(accumulatedText)
       : cleanEnhancedPromptOutput(accumulatedText, effectivePrompt)
-    if (normalizedText.startsWith('[NO_CHANGE]')) {
-      showToast({ message: 'Your prompt is already strong', variant: 'info' })
+    if (normalizedText.startsWith('[NO_CHANGE]') || normalizeText(normalizedText) === normalizeText(originalPrompt)) {
+      showToast({ message: 'Model returned the prompt unchanged. Try another model or shorten the prompt.', variant: 'warning' })
       try {
         adapter.setPromptText(originalPrompt)
       } catch {

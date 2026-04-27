@@ -42,6 +42,19 @@ export function isOpenRouterRateLimitError(error: unknown): boolean {
   return extractHttpStatus(error) === 429
 }
 
+export function isOpenRouterDailyCapError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return /free-models-per-day/i.test(error.message)
+}
+
+export function parseOpenRouterDailyCapResetMs(error: unknown): number | null {
+  if (!(error instanceof Error)) return null
+  const match = error.message.match(/"X-RateLimit-Reset"\s*:\s*"?(\d{10,16})"?/i)
+  if (!match) return null
+  const value = Number.parseInt(match[1], 10)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
 export function parseRetryAfterMs(error: unknown): number | null {
   if (!(error instanceof Error)) return null
   const match = error.message.match(/retry-after\s*(\d+)/i)

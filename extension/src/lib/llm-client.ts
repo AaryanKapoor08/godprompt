@@ -5,6 +5,7 @@
 import type { ConversationContext } from '../content/adapters/types'
 import { detectProviderFromApiKey, type Provider } from './provider-policy'
 import { GOOGLE_PRIMARY_MODEL, isGoogleGemmaModel, normalizeGoogleModelName } from './rewrite-google/models'
+import { OPENROUTER_PRIMARY_FREE_MODEL } from './rewrite-openrouter/curation'
 import { buildGoogleRequestBody, GOOGLE_REWRITE_TEMPERATURE } from './rewrite-google/request-policy'
 import {
   GOOGLE_MAX_ATTEMPTS_PER_MODEL,
@@ -447,6 +448,32 @@ function extractOpenAICompatibleText(payload: unknown): string {
   }
 
   return ''
+}
+
+function sanitizeOpenRouterRewriteResponse(text: string): string {
+  let output = text.trim()
+  if (!output) return output
+
+  const fencedMatch = output.match(/^```(?:\w+)?\s*([\s\S]*?)\s*```$/)
+  if (fencedMatch) {
+    output = fencedMatch[1].trim()
+  }
+
+  const firstLine = output.split(/\r?\n/, 1)[0]?.trim() ?? ''
+  if (
+    /^(?:we need to|let'?s|i need to|the user wants|the source prompt|must preserve|need to rewrite)\b/i.test(firstLine)
+    || /\b(?:output only the rewritten prompt|must not answer the prompt|as per contract|let'?s craft a rewritten prompt)\b/i.test(output.slice(0, 900))
+  ) {
+    throw new Error('[LLMClient] OpenRouter completion returned reasoning instead of rewritten prompt')
+  }
+
+  if (/^(?:prompt|rewritten prompt|enhanced prompt|final prompt)\s*:/i.test(firstLine)) {
+    const lines = output.split(/\r?\n/)
+    lines[0] = firstLine.replace(/^(?:prompt|rewritten prompt|enhanced prompt|final prompt)\s*:\s*/i, '')
+    return lines.join('\n').trim()
+  }
+
+  return output
 }
 
 function extractGoogleOutputIssue(payload: unknown, text: string): string | null {
@@ -939,7 +966,7 @@ export async function callOpenRouterAPI(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string = 'openai/gpt-oss-20b:free',
+  model: string = OPENROUTER_PRIMARY_FREE_MODEL,
   maxTokens: number = 512
 ): Promise<Response> {
   const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
@@ -978,7 +1005,7 @@ export async function callOpenRouterCompletionAPI(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  model: string = 'openai/gpt-oss-20b:free',
+  model: string = OPENROUTER_PRIMARY_FREE_MODEL,
   maxTokens: number = 512
 ): Promise<string> {
   const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
@@ -1011,7 +1038,7 @@ export async function callOpenRouterCompletionAPI(
   }
 
   const payload = await response.json().catch(() => null)
-  const text = extractOpenAICompatibleText(payload)
+  const text = sanitizeOpenRouterRewriteResponse(extractOpenAICompatibleText(payload))
   if (!text) {
     throw new Error('[LLMClient] OpenRouter completion returned no text output')
   }

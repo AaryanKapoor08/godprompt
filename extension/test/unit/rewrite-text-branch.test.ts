@@ -10,7 +10,7 @@ describe('Text branch compact pipeline pieces', () => {
     const built = buildTextBranchSpec({
       sourceText: 'look at support complaints and figure out whats bug vs confusing ux and make internal update',
       provider: 'OpenRouter',
-      modelId: 'openai/gpt-oss-20b:free',
+      modelId: 'nvidia/nemotron-3-super-120b-a12b:free',
     })
 
     const sourceApprox = Math.ceil(built.spec.sourceText.length / 4)

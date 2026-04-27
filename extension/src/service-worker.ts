@@ -38,7 +38,7 @@ import { buildTextRetryUserMessage, shouldRetryTextBranch } from './lib/rewrite-
 import { validateTextBranchRewrite } from './lib/rewrite-text-branch/validator'
 import { GOOGLE_PRIMARY_MODEL, isGoogleGemmaModel } from './lib/rewrite-google/models'
 import { shouldEscalateGoogleToFallback } from './lib/rewrite-google/retry-policy'
-import { inspectOpenRouterAccountStatus, resetOpenRouterAccountStatusSession } from './lib/rewrite-openrouter/account-status'
+import { inspectOpenRouterAccountStatus, markOpenRouterDailyCapReached, resetOpenRouterAccountStatusSession } from './lib/rewrite-openrouter/account-status'
 import { getOpenRouterMaxTokens } from './lib/rewrite-openrouter/budget-policy'
 import {
   OPENROUTER_CATALOG_TTL_MS,
@@ -51,7 +51,9 @@ import {
   buildOpenRouterRouteChain,
   computeOpenRouterRateLimitBackoffMs,
   getOpenRouterCooldownRemainingMs,
+  isOpenRouterDailyCapError,
   isOpenRouterRateLimitError,
+  parseOpenRouterDailyCapResetMs,
   setOpenRouterModelCooldown,
   shouldTryNextOpenRouterModel,
 } from './lib/rewrite-openrouter/route-policy'
@@ -169,6 +171,13 @@ async function getSettings(): Promise<{
 async function buildOpenRouterModelChain(requestedModel: string): Promise<string[]> {
   const liveModelIds = await getOpenRouterCatalogWithPinnedFallback()
   return buildOpenRouterRouteChain(requestedModel, liveModelIds)
+}
+
+function buildOpenRouterDailyCapError(error: unknown): Error {
+  const resetAtMs = parseOpenRouterDailyCapResetMs(error)
+  markOpenRouterDailyCapReached(resetAtMs)
+  const resetSuffix = resetAtMs ? ` (resets at ${new Date(resetAtMs).toISOString()})` : ''
+  return new Error(`[ServiceWorker] OpenRouter free-models-per-day cap reached${resetSuffix}`)
 }
 
 export function validateContextSelection(selectionText: string | undefined): ContextSelectionValidation {
@@ -469,6 +478,13 @@ export async function handleEnhance(
             lastError = error
             sentAnyToken = attemptProgress.sentAnyToken || sentAnyToken
 
+            if (isOpenRouterDailyCapError(error)) {
+              const dailyCapError = buildOpenRouterDailyCapError(error)
+              console.info({ currentModel }, '[PromptGod] OpenRouter free-models-per-day cap reached; pausing chain')
+              lastError = dailyCapError
+              break outer
+            }
+
             if (isOpenRouterRateLimitError(error)) {
               rateLimitAttempt++
               const backoffMs = computeOpenRouterRateLimitBackoffMs(error, rateLimitAttempt)
@@ -598,6 +614,20 @@ class RewriteValidationFailure extends Error {
   }
 }
 
+class AllProvidersFailedError extends Error {
+  constructor(
+    readonly branch: 'LLM' | 'Text',
+    readonly failureChain: ProviderFailureChainEntry[]
+  ) {
+    const chainSummary = failureChain
+      .map((entry) => `${entry.provider}/${entry.model}: ${entry.failure}`)
+      .join(' | ')
+
+    super(`All providers failed for ${branch} branch. Failure chain: ${chainSummary}`)
+    this.name = 'AllProvidersFailedError'
+  }
+}
+
 async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineRequest): Promise<string> {
   if (request.provider !== 'google') {
     return await runLlmBranchPipeline(request)
@@ -616,7 +646,12 @@ async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineReques
     if (!(error instanceof RewriteValidationFailure) && !shouldEscalateGoogleToFallback(error)) {
       throw error
     }
-    console.info({ cause: error }, '[PromptGod] Escalating Google LLM branch request to frozen Gemma fallback')
+    console.info({
+      cause: error,
+      from: 'Google',
+      to: 'Gemma',
+      trigger: error instanceof RewriteValidationFailure ? 'validation-failure' : 'provider-fallback-eligible',
+    }, '[PromptGod] Escalating Google LLM branch request to frozen Gemma fallback')
   }
 
   try {
@@ -628,7 +663,7 @@ async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineReques
       request.recentContext
     )
     const userMessage = buildUserMessage(request.rawPrompt, request.platform, request.context, request.recentContext)
-    return await collectContextEnhancementText({
+    const gemmaOutput = await collectContextEnhancementText({
       apiKey: request.apiKey,
       provider: 'google',
       model: 'gemma-3-27b-it',
@@ -637,12 +672,21 @@ async function runLlmBranchWithProviderFallback(request: LlmBranchPipelineReques
       promptWordCount: request.promptWordCount,
       signal: request.signal,
     })
+    if (isNoChangeLlmOutput(request.rawPrompt, gemmaOutput)) {
+      throw new RewriteValidationFailure('LLM')
+    }
+    return gemmaOutput
   } catch (error) {
     failureChain.push(buildFailureChainEntry('LLM', 'Gemma', 'gemma-3-27b-it', 'fallback', error))
-    if (!shouldEscalateGoogleToFallback(error)) {
+    if (!(error instanceof RewriteValidationFailure) && !shouldEscalateGoogleToFallback(error)) {
       throw error
     }
-    console.info({ cause: error }, '[PromptGod] Escalating LLM branch request from Gemma to OpenRouter chain')
+    console.info({
+      cause: error,
+      from: 'Gemma',
+      to: 'OpenRouter',
+      trigger: error instanceof RewriteValidationFailure ? 'validation-failure' : 'provider-fallback-eligible',
+    }, '[PromptGod] Escalating LLM branch request from Gemma to OpenRouter chain')
   }
 
   const openRouterKey = request.providerApiKeys?.openrouter
@@ -683,6 +727,13 @@ async function runLlmBranchPipeline({
   signal,
   escalateOnValidationFailure = false,
 }: LlmBranchPipelineRequest): Promise<string> {
+  console.info({
+    branch: 'LLM',
+    provider,
+    model: model ?? '',
+    stage: 'pipeline-entry',
+  }, '[PromptGod] LLM branch pipeline start')
+
   const built = buildLlmBranchSpec({
     sourceText: rawPrompt,
     provider: mapRewriteProvider(provider),
@@ -703,11 +754,30 @@ async function runLlmBranchPipeline({
     signal,
   })
   const firstFinal = finalizeLlmBranchCandidate(rawPrompt, firstOutput)
+  console.info({
+    branch: 'LLM',
+    provider,
+    model: model ?? '',
+    stage: 'first-pass',
+    firstOutputLength: firstOutput.length,
+    firstValidationOk: firstFinal.validation.ok,
+    firstIssueCodes: validationIssueCodes(firstFinal.validation),
+  }, '[PromptGod] LLM branch first-pass validation')
+
   if (firstFinal.validation.ok) {
     return firstFinal.text
   }
 
   const retryUserMessage = buildLlmRetryUserMessage(rawPrompt, firstOutput, firstFinal.validation.issues)
+  console.info({
+    branch: 'LLM',
+    provider,
+    model: model ?? '',
+    stage: 'targeted-retry',
+    retryFired: true,
+    retryIssueCodes: validationIssueCodes(firstFinal.validation),
+  }, '[PromptGod] LLM branch targeted retry fired')
+
   const retryOutput = await collectContextEnhancementText({
     apiKey,
     provider,
@@ -718,6 +788,16 @@ async function runLlmBranchPipeline({
     signal,
   })
   const retryFinal = finalizeLlmBranchCandidate(rawPrompt, retryOutput)
+  console.info({
+    branch: 'LLM',
+    provider,
+    model: model ?? '',
+    stage: 'targeted-retry-result',
+    retryOutputLength: retryOutput.length,
+    retryValidationOk: retryFinal.validation.ok,
+    retryIssueCodes: validationIssueCodes(retryFinal.validation),
+  }, '[PromptGod] LLM branch retry validation')
+
   if (retryFinal.validation.ok) {
     return retryFinal.text
   }
@@ -739,6 +819,24 @@ function finalizeLlmBranchCandidate(sourceText: string, output: string): {
     text,
     validation: validateLlmBranchRewrite(sourceText, text),
   }
+}
+
+function validationIssueCodes(validation: { issues: Array<{ code: string }> }): string[] {
+  return validation.issues.map((issue) => issue.code)
+}
+
+function isNoChangeLlmOutput(sourceText: string, output: string): boolean {
+  const cleanOutput = output
+    .replace(/\[DIFF:[\s\S]*?\]/gi, '')
+    .replace(/^\s*\[NO_CHANGE\]\s*/i, '')
+    .trim()
+  const normalizedSource = normalizeForNoChangeCompare(sourceText)
+  const normalizedOutput = normalizeForNoChangeCompare(cleanOutput)
+  return normalizedSource.length > 80 && normalizedSource === normalizedOutput
+}
+
+function normalizeForNoChangeCompare(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 type TextBranchPipelineRequest = {
@@ -849,11 +947,7 @@ function buildAllProvidersFailedError(branch: 'LLM' | 'Text', failureChain: Prov
     `[PromptGod] All providers failed for ${branch} branch`
   )
 
-  const chainSummary = failureChain
-    .map((entry) => `${entry.provider}/${entry.model}: ${entry.failure}`)
-    .join(' | ')
-
-  return new Error(`All providers failed for ${branch} branch. Failure chain: ${chainSummary}`)
+  return new AllProvidersFailedError(branch, failureChain)
 }
 
 async function runTextBranchPipeline({
@@ -1145,6 +1239,12 @@ async function collectOpenRouterCompletionText(
     } catch (error) {
       lastError = error
 
+      if (isOpenRouterDailyCapError(error)) {
+        lastError = buildOpenRouterDailyCapError(error)
+        console.info({ currentModel }, '[PromptGod] OpenRouter free-models-per-day cap reached on context request')
+        break
+      }
+
       if (isOpenRouterRateLimitError(error)) {
         rateLimitAttempt++
         const backoffMs = computeOpenRouterRateLimitBackoffMs(error, rateLimitAttempt)
@@ -1212,12 +1312,18 @@ function formatErrorMessage(error: unknown): string {
     return 'API request blocked — if you\'re using Brave or a privacy browser, allow requests from extensions in your shield/privacy settings'
   }
 
-  if (/OpenRouter completion returned no text output|OpenRouter curated chain exhausted|ended before emitting tokens|timed out while waiting for tokens|stream stalled/i.test(error.message)) {
-    return 'The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model.'
+  if (/free-models-per-day|OpenRouter daily limit reached|OpenRouter free-models-per-day cap reached/i.test(error.message)) {
+    const resetMatch = error.message.match(/resets at\s+([0-9T:\-Z.]+)/i)
+    const resetSuffix = resetMatch ? ` Resets at ${resetMatch[1]}.` : ' Resets at the next OpenRouter daily reset (midnight UTC).'
+    return `OpenRouter's free daily request cap is exhausted on this key.${resetSuffix} Switch to Google or save a paid OpenRouter model.`
   }
 
-  if (/All providers failed/i.test(error.message)) {
+  if (error instanceof AllProvidersFailedError || /All providers failed/i.test(error.message)) {
     return 'No provider returned a usable rewrite. Retry once, or save an OpenRouter key/custom model and try again.'
+  }
+
+  if (/OpenRouter completion returned no text output|OpenRouter curated chain exhausted|ended before emitting tokens|timed out while waiting for tokens|stream stalled/i.test(error.message)) {
+    return 'The OpenRouter free chain did not return usable text. Retry once, or switch to a saved custom model.'
   }
 
   if (/Google API returned unusable output|Google API returned no text output/i.test(error.message)) {

@@ -7,6 +7,7 @@ export type OpenRouterAccountStatus = {
   remaining: number | null
   paused: boolean
   checkedAt: number
+  resetAtMs?: number | null
 }
 
 export const OPENROUTER_ACCOUNT_STATUS_KEY = 'openrouterAccountStatus'
@@ -19,6 +20,31 @@ export function resetOpenRouterAccountStatusSession(): void {
 
 export function getSessionOpenRouterAccountStatus(): OpenRouterAccountStatus | null {
   return sessionStatus
+}
+
+export function markOpenRouterDailyCapReached(
+  resetAtMs: number | null = null,
+  now: number = Date.now()
+): OpenRouterAccountStatus {
+  const previous = sessionStatus
+  const limit = previous?.limit ?? 50
+  const usage = previous?.usage ?? limit
+  const next: OpenRouterAccountStatus = {
+    bucket: previous?.bucket && previous.bucket !== 'unknown' ? previous.bucket : '50/day',
+    limit,
+    usage,
+    remaining: 0,
+    paused: true,
+    checkedAt: now,
+    resetAtMs,
+  }
+  sessionStatus = next
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    void chrome.storage.local.set({ [OPENROUTER_ACCOUNT_STATUS_KEY]: next })
+  }
+
+  return next
 }
 
 export async function inspectOpenRouterAccountStatus(

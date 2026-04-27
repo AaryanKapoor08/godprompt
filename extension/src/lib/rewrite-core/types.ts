@@ -34,6 +34,7 @@ export type ExtractedConstraint = {
 export type ConstraintSet = {
   sourceMode: SourceMode
   constraints: ExtractedConstraint[]
+  preserveTokens: string[]
 }
 
 export type RewriteRequest = {
@@ -60,11 +61,13 @@ export type RewriteSpec = {
 
 export type ValidationIssueCode =
   | 'DROPPED_DELIVERABLE'
+  | 'DROPPED_PRESERVE_TOKEN'
   | 'ASKED_FORBIDDEN_QUESTION'
   | 'DECORATIVE_MARKDOWN'
   | 'FIRST_PERSON_BRIEF'
   | 'MERGED_SEPARATE_TASKS'
   | 'ANSWERED_INSTEAD_OF_REWRITING'
+  | 'UNCHANGED_REWRITE'
 
 export type ValidationIssue = {
   code: ValidationIssueCode

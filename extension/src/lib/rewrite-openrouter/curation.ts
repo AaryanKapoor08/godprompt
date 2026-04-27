@@ -7,16 +7,16 @@ export type CuratedOpenRouterModel = {
 }
 
 export const OPENROUTER_CURATED_FREE_MODELS: CuratedOpenRouterModel[] = [
-  { id: 'inclusionai/ling-2.6-flash:free', label: 'Ling 2.6 Flash', tier: 'stable free' },
   { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron 3 Super 120B', tier: 'stable free' },
-  { id: 'openai/gpt-oss-20b:free', label: 'GPT-OSS 20B', tier: 'stable free' },
   { id: 'nvidia/nemotron-3-nano-30b-a3b:free', label: 'Nemotron 3 Nano 30B', tier: 'experimental free' },
 ]
 
 export const OPENROUTER_PRIMARY_FREE_MODEL = OPENROUTER_CURATED_FREE_MODELS[0].id
 export const OPENROUTER_EXCLUDED_FREE_MODELS = new Set([
   'openrouter/free',
+  'inclusionai/ling-2.6-flash:free',
   'inclusionai/ling-2.6-1t:free',
+  'openai/gpt-oss-20b:free',
   'meta-llama/llama-3.3-70b-instruct:free',
 ])
 

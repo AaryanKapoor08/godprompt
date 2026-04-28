@@ -52,6 +52,12 @@ export const VISIBLE_PROVIDER_CHAIN: VisibleChainItem[] = [
   { label: 'OpenRouter Free Chain', value: 'openrouter-free-chain' },
 ]
 
+export const RECOMMENDED_GOOGLE_MODELS: VisibleChainItem[] = [
+  { label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+  { label: 'Gemma 3 27B IT', value: 'gemma-3-27b-it' },
+  { label: 'Gemini 2.5 Flash Lite', value: 'gemini-2.5-flash-lite' },
+]
+
 export function getOpenRouterFreeChainOptions(liveModelIds?: string[]): ModelOption[] {
   const curatedById = new Map(OPENROUTER_CURATED_FREE_MODELS.map((model) => [model.id, model]))
   return buildCuratedOpenRouterChain(undefined, liveModelIds)

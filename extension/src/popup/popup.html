@@ -39,11 +39,13 @@
     <span id="cost-hint" class="cost-hint"></span>
     <div id="openrouter-account-status" class="status"></div>
 
-    <div class="chain-panel" aria-label="Provider fallback chain">
-      <div class="chain-title">Fallback chain</div>
-      <ol id="visible-chain" class="chain-list"></ol>
-      <div class="chain-title chain-title--sub">OpenRouter Free Chain</div>
-      <ol id="openrouter-chain" class="chain-list chain-list--openrouter"></ol>
+    <div class="chain-panel" aria-label="Recommended models and fallback chain">
+      <div class="chain-title">Recommended models</div>
+      <ol id="recommended-models" class="chain-list"></ol>
+      <div class="fallback-note">
+        <span class="fallback-note__label">Fallback</span>
+        <span id="visible-chain" class="fallback-note__chain"></span>
+      </div>
     </div>
 
     <div id="custom-model-section" class="custom-model-section" style="display:none;">

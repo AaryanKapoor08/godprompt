@@ -8,6 +8,66 @@
 > **Note:** Gemma remained stable as it bypasses the new pipeline (legacy isolation).
 > **Action:** Fully reverted to restore a stable user experience.
 
+## Session Notes — 2026-04-28 Popup Recommended Models UI
+
+Goal: simplify the popup model guidance so users see recommended Google models first, with the actual fallback order demoted to a compact note.
+
+### What changed
+
+- `extension/src/popup/model-options.ts`
+  - Added `RECOMMENDED_GOOGLE_MODELS`:
+    - `Gemini 2.5 Flash`
+    - `Gemma 3 27B IT`
+    - `Gemini 2.5 Flash Lite`
+- `extension/src/popup/popup.html`
+  - Replaced the large fallback-chain panel with a `Recommended models` list and a small fallback note.
+- `extension/src/popup/popup.ts`
+  - Renders the recommended model list from `RECOMMENDED_GOOGLE_MODELS`.
+  - Keeps the real runtime fallback order visible as a compact text line:
+    - `Gemini 2.5 Flash -> Gemma -> OpenRouter Free Chain`
+  - Shortened the Google model hint to `Flash first | Gemma free`.
+- `extension/src/popup/popup.css`
+  - Removed the old OpenRouter-chain row styling from the popup panel.
+  - Added compact fallback-note styling.
+  - Kept the color scheme unchanged after the user rejected the heavier polish/animation pass.
+- `extension/test/unit/popup-model-options.test.ts`
+  - Added coverage for the recommended model guidance.
+
+### Rejected / reverted design work
+
+- A second-pass "smooth" popup polish attempt added heavier motion, custom checkbox styling, and stronger interaction effects.
+- The user did not like the direction.
+- That styling was removed before committing.
+- No hell/demon/dark-fantasy redesign was implemented in the repo; that discussion remained design exploration only.
+
+### Verification
+
+```powershell
+cd extension
+npm test -- --run test/unit/popup-model-options.test.ts
+npm run build
+```
+
+Latest result:
+
+- focused popup test passed: `1` file / `6` tests
+- `npm run build`: passed
+- Expected Vite warning remains: `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR.
+
+### Commits pushed to GitHub
+
+- `0ef0c17` — `feat(popup): add recommended model list`
+- `c273294` — `feat(popup): show recommended models panel`
+- `90b57bd` — `feat(popup): render compact fallback note`
+- `dd6cfc0` — `style(popup): compact fallback chain display`
+- `ae371d3` — `test(popup): cover recommended model guidance`
+
+Status:
+
+- commits were pushed to `origin/main`
+- `.claude/settings.local.json` remains modified locally and unrelated
+- `codex/Progress.md` documentation update is the only intentional follow-up from this note
+
 ## Session Notes — 2026-04-27 Flash Retry Logging + LLM Context Isolation
 
 Goal: stop guessing why Prompt 4/5 were falling back, and fix the observed cross-prompt contamination without reopening broad Gemma tuning.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { OPENROUTER_CURATED_FREE_MODELS } from '../../src/lib/rewrite-openrouter/curation'
 import {
+  RECOMMENDED_GOOGLE_MODELS,
   VISIBLE_PROVIDER_CHAIN,
   formatOpenRouterAccountStatus,
   getModelOptions,
@@ -9,6 +10,14 @@ import {
 } from '../../src/popup/model-options'
 
 describe('popup model options', () => {
+  it('renders recommended Google models before the compact fallback chain', () => {
+    expect(RECOMMENDED_GOOGLE_MODELS.map((item) => item.label)).toEqual([
+      'Gemini 2.5 Flash',
+      'Gemma 3 27B IT',
+      'Gemini 2.5 Flash Lite',
+    ])
+  })
+
   it('renders the visible provider chain in runtime fallback order', () => {
     expect(VISIBLE_PROVIDER_CHAIN.map((item) => item.label)).toEqual([
       'Gemini 2.5 Flash',

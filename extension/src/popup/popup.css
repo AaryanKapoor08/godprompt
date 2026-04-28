@@ -87,7 +87,7 @@ h1 {
   font-size: 16px;
   font-weight: 650;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .subtitle {
@@ -292,10 +292,6 @@ input[type="password"].input--invalid {
   color: var(--pp-fg-muted);
 }
 
-.chain-title--sub {
-  margin-top: 9px;
-}
-
 .chain-list {
   margin: 0;
   padding-left: 18px;
@@ -308,22 +304,26 @@ input[type="password"].input--invalid {
   padding: 1px 0;
 }
 
-.chain-list--openrouter li {
+.fallback-note {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pp-border);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.chain-tier {
-  flex: 0 0 auto;
-  color: var(--pp-success);
+  align-items: baseline;
+  gap: 6px;
+  color: var(--pp-fg-subtle);
   font-size: 10.5px;
-  text-transform: uppercase;
+  line-height: 1.35;
 }
 
-.chain-tier--experimental {
-  color: var(--pp-warning);
+.fallback-note__label {
+  flex: 0 0 auto;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+.fallback-note__chain {
+  min-width: 0;
 }
 
 /* === Toggle === */

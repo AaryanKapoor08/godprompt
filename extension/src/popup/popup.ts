@@ -4,10 +4,10 @@ import { listGoogleModels } from '../lib/llm-client'
 import { OPENROUTER_ACCOUNT_STATUS_KEY, type OpenRouterAccountStatus } from '../lib/rewrite-openrouter/account-status'
 import { getOpenRouterCatalogWithPinnedFallback } from '../lib/rewrite-openrouter/catalog'
 import {
+  RECOMMENDED_GOOGLE_MODELS,
   VISIBLE_PROVIDER_CHAIN,
   formatOpenRouterAccountStatus,
   getModelOptions,
-  getOpenRouterFreeChainOptions,
   validateCustomOpenRouterModelId,
 } from './model-options'
 
@@ -19,8 +19,8 @@ const modelSelect = document.getElementById('model-select') as HTMLSelectElement
 const modelHint = document.getElementById('model-hint') as HTMLSpanElement
 const costHint = document.getElementById('cost-hint') as HTMLSpanElement
 const openRouterAccountStatus = document.getElementById('openrouter-account-status') as HTMLDivElement
-const visibleChainList = document.getElementById('visible-chain') as HTMLOListElement
-const openRouterChainList = document.getElementById('openrouter-chain') as HTMLOListElement
+const recommendedModelsList = document.getElementById('recommended-models') as HTMLOListElement
+const visibleChain = document.getElementById('visible-chain') as HTMLSpanElement
 const contextToggle = document.getElementById('context-toggle') as HTMLInputElement
 const enhancementCountEl = document.getElementById('enhancement-count') as HTMLSpanElement
 const customModelSection = document.getElementById('custom-model-section') as HTMLDivElement
@@ -131,7 +131,7 @@ async function initPopup() {
   }
 
   updateModelDropdown(savedProvider, normalizedModel)
-  renderRoutingChain()
+  renderModelGuidance()
 
   if (typeof extraPrefs.customModel === 'string') {
     customModelInput.value = extraPrefs.customModel
@@ -327,7 +327,7 @@ function updateModelHint(provider: Provider): void {
   if (provider === 'openrouter') {
     modelHint.textContent = 'Curated free chain'
   } else {
-    modelHint.textContent = 'Gemini 2.5 Flash recommended | Gemma 3 27B is free'
+    modelHint.textContent = 'Flash first | Gemma free'
   }
 }
 
@@ -371,7 +371,7 @@ async function loadOpenRouterModels(): Promise<void> {
     if (getSelectedProvider() === 'openrouter') {
       updateModelDropdown('openrouter', currentValue)
     }
-    renderRoutingChain()
+    renderModelGuidance()
   } catch (error) {
     console.error({ cause: error }, '[PromptGod] Failed to load OpenRouter models')
   }
@@ -386,27 +386,15 @@ async function updateOpenRouterAccountStatus(): Promise<void> {
   openRouterAccountStatus.className = view.className
 }
 
-function renderRoutingChain(): void {
-  visibleChainList.innerHTML = ''
-  for (const item of VISIBLE_PROVIDER_CHAIN) {
+function renderModelGuidance(): void {
+  recommendedModelsList.innerHTML = ''
+  for (const item of RECOMMENDED_GOOGLE_MODELS) {
     const row = document.createElement('li')
     row.textContent = item.label
-    visibleChainList.appendChild(row)
+    recommendedModelsList.appendChild(row)
   }
 
-  openRouterChainList.innerHTML = ''
-  for (const model of getOpenRouterFreeChainOptions(openRouterLiveModelIds)) {
-    const row = document.createElement('li')
-    const label = document.createElement('span')
-    const tier = document.createElement('span')
-    label.textContent = model.label
-    tier.textContent = model.curationTier ?? 'stable free'
-    tier.className = model.curationTier === 'experimental free'
-      ? 'chain-tier chain-tier--experimental'
-      : 'chain-tier'
-    row.append(label, tier)
-    openRouterChainList.appendChild(row)
-  }
+  visibleChain.textContent = VISIBLE_PROVIDER_CHAIN.map((item) => item.label).join(' -> ')
 }
 
 async function loadGoogleModels(apiKey: string, selectedModel?: string): Promise<void> {

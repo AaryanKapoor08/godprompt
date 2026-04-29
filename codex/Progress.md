@@ -1,5 +1,28 @@
 # PromptGod — Codex Progress
 
+## Experiment Note — Simplified LLM Constraints Rollback Plan (2026-04-29)
+
+Current known-good rollback anchor:
+
+- `ddb0e19` — `fix(gemma): avoid unchanged specific prompts`
+
+If experimenting with a smaller LLM/Gemma prompt contract, keep the experiment in its own separate commit. The intended experiment shape is:
+
+- keep only the minimum hard constraints, e.g. amplify the prompt, preserve all concrete context, do not answer the prompt, do not invent facts, do not merge separate tasks/audiences, do not return unchanged, output only the rewritten prompt
+- remove or reduce overly conservative lines such as "do minimal surgery" if they cause weak/no-op rewrites
+- do not mix the experiment with unrelated popup, routing, OpenRouter, or injection changes
+
+Rollback rule:
+
+- If browser testing shows quality regression, revert only the experiment commit:
+
+```powershell
+git revert <experiment-commit>
+git push origin main
+```
+
+Avoid hard resets/force-pushes unless explicitly requested. `.claude/settings.local.json` may remain locally modified and should not be included in the experiment commit.
+
 > [!CAUTION]
 > **CRITICAL: Recent Regression & Reversion (2026-04-26)**
 > Reverted commit `2679a2c` ("fix(rewrite): isolate context and restore optimistic streaming").

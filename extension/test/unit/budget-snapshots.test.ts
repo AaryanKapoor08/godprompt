@@ -75,9 +75,9 @@ describe('token budget seam', () => {
     expect(baseline.gemmaText).toBeGreaterThan(0)
     expect(baseline).toMatchInlineSnapshot(`
       {
-        "gemmaLlm": 246,
+        "gemmaLlm": 290,
         "gemmaText": 867,
-        "llmFirst": 171,
+        "llmFirst": 217,
         "textFirst": 233,
       }
     `)

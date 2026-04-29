@@ -26,6 +26,28 @@ Analyze the notes and draft a team update.
     }).output).toBe('Rewrite the project update clearly.')
   })
 
+  it('strips decorative markdown emphasis before validation retry is needed', () => {
+    const result = repairRewrite({
+      sourceText: 'write a plain text customer escalation prompt',
+      output: '**Customer Escalation Plan**\n\nSeparate known facts from guesses and draft the customer update.',
+    })
+
+    expect(result).toMatchObject({
+      output: 'Customer Escalation Plan\n\nSeparate known facts from guesses and draft the customer update.',
+      changed: true,
+      usedFallback: false,
+    })
+  })
+
+  it('preserves markdown emphasis when the source explicitly asks for markdown', () => {
+    const result = repairRewrite({
+      sourceText: 'write this as markdown with bold section headings',
+      output: '**Customer Escalation Plan**\n\nSeparate known facts from guesses.',
+    })
+
+    expect(result.output).toBe('**Customer Escalation Plan**\n\nSeparate known facts from guesses.')
+  })
+
   it('uses fallback when repair diverges past threshold', () => {
     const result = repairRewrite({
       sourceText: 'Analyze complaints and draft an internal update.',

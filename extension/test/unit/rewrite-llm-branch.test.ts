@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { measureTokens } from '../../src/lib/rewrite-core/budget'
 import type { ValidationIssue } from '../../src/lib/rewrite-core/types'
+import { repairRewrite } from '../../src/lib/rewrite-core/repair'
 import { buildLlmBranchSpec } from '../../src/lib/rewrite-llm-branch/spec-builder'
 import { buildLlmRetryUserMessage } from '../../src/lib/rewrite-llm-branch/retry'
 import { validateLlmBranchRewrite } from '../../src/lib/rewrite-llm-branch/validator'
@@ -68,6 +69,17 @@ Constraints:
 - Current queries are slow, data volume is growing, and customer-facing reports must be accurate.`
 
     expect(validateLlmBranchRewrite(source, output).ok).toBe(true)
+  })
+
+  it('accepts repaired decorative markdown without requiring targeted retry', () => {
+    const source = 'write a clear customer escalation prompt that separates facts, guesses, checks, customer update, and internal update'
+    const output = `**Customer Escalation Prompt**
+
+Use the available evidence to separate confirmed facts from guesses. Provide ordered checks, a customer update, and a separate internal update.`
+    const repaired = repairRewrite({ sourceText: source, output }).output
+
+    expect(repaired).not.toContain('**')
+    expect(validateLlmBranchRewrite(source, repaired).ok).toBe(true)
   })
 
   it('does not retry valid paraphrases for preserve-token compression while the runtime gate is disabled', () => {

@@ -19,6 +19,12 @@ export function repairRewrite(input: RepairRewriteInput): RepairResult {
     repaired = withoutWrappers
   }
 
+  const withoutMarkdownEmphasis = stripDecorativeMarkdownEmphasis(repaired, input.sourceText)
+  if (withoutMarkdownEmphasis !== repaired) {
+    operations.push({ class: 'cosmetic', description: 'stripped decorative markdown emphasis' })
+    repaired = withoutMarkdownEmphasis
+  }
+
   const withoutSourceEcho = stripSourceEcho(repaired)
   if (withoutSourceEcho !== repaired) {
     operations.push({ class: 'structural', description: 'removed source echo block' })
@@ -69,6 +75,23 @@ function stripDecorativeWrappers(text: string): string {
     .replace(/^\s*(?:here(?:'s| is) the rewritten prompt:|rewritten prompt:|enhanced prompt:)\s*/i, '')
     .replace(/\[DIFF:[\s\S]*?\]/gi, '')
     .trim()
+}
+
+function stripDecorativeMarkdownEmphasis(text: string, sourceText: string): string {
+  if (requestsLiteralMarkdownFormatting(sourceText)) {
+    return text
+  }
+
+  return text
+    .replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, '$1')
+    .replace(/__(?=\S)([^_\n]*?\S)__/g, '$1')
+}
+
+function requestsLiteralMarkdownFormatting(text: string): boolean {
+  return /\b(?:markdown|gfm|github-flavored markdown|markdown table|markdown headings?|md table)\b/i.test(text)
+    || /```/.test(text)
+    || /^\s*#{1,6}\s/m.test(text)
+    || /\*\*[^*\n]+\*\*/.test(text)
 }
 
 function stripSourceEcho(text: string): string {

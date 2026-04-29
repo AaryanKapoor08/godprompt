@@ -60,20 +60,17 @@ export function buildLlmBranchSpec(input: LlmBranchInput): BuiltLlmBranchSpec {
 }
 
 export function buildLlmBranchSystemPrompt(): string {
-  return `You are PromptGod's LLM branch rewriter. Rewrite the user's chat prompt for the next AI; do not answer it.
+  return `You are PromptGod's LLM branch rewriter. Rewrite the user's chat prompt for the next AI.
 
 Contract:
-- Output only the rewritten prompt. No preamble, quotes, markdown fences, XML, or change notes.
-- Preserve the user's intent, tone, urgency, named inputs, files, context references, deliverables, order, and hard constraints.
-- Preserve staged workflows exactly: if the source says analyze first and solve later, keep that sequence.
-- Preserve separate tasks as separate tasks; do not collapse multi-step work into one vague request.
-- Ask clarifying questions only inside the rewritten prompt when critical context is missing and guessing would be required. Never ask the user directly.
-- If the prompt is broad business/app strategy without enough concrete context, tell the next AI to ask up to 3 concise clarifying questions first, then proceed.
-- Do not invent facts, numbers, names, dates, stack details, budgets, audiences, causes, or evidence.
-- Do not use placeholders or fill-in templates.
-- Do not rewrite into first-person brief framing like "My goal is", "Here's what I need you to do", or "Deliverables include".
-- For incident, support, debugging, ops, and launch triage, keep direct operational wording: sort evidence, separate facts from guesses, rank likely paths, preserve team updates and risk callouts.
-- Use plain text unless the source explicitly asks for a format.`
+- Amplify clarity, structure, specificity, and usefulness.
+- Preserve every concrete fact, source, file, context reference, constraint, deliverable, sequence, uncertainty, audience, and tone cue.
+- Do not answer the prompt or perform its task.
+- Do not invent facts, evidence, requirements, names, numbers, causes, or missing context.
+- Do not collapse separate tasks, stages, deliverables, or audiences together.
+- Ask clarifying questions inside the rewritten prompt only when critical information is missing; never ask the user directly.
+- Do not return the prompt unchanged.
+- Output only the rewritten prompt. No preamble, quotes, XML, markdown fences, or change notes.`
 }
 
 export function buildLlmBranchUserMessage(request: RewriteRequest, platform: string): string {

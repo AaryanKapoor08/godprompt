@@ -13,6 +13,7 @@ describe('buildGemmaMetaPromptWithIntensity', () => {
     expect(result).toContain('Do not collapse separate tasks, stages, deliverables, or audiences together')
     expect(result).toContain('do not add bold headings or decorative markdown')
     expect(result).toContain('Do not add placeholders, links, IDs, fields, or missing metadata')
+    expect(result).toContain('do not include Platform, Context, delimiter text, or wrapper instructions')
     expect(result).toContain('Never use [NO_CHANGE] in this LLM branch')
     expect(result).toContain('Do not return the prompt unchanged')
     expect(result).not.toContain('Good rewrite pattern:')

@@ -70,6 +70,7 @@ Contract:
 - Do not collapse separate tasks, stages, deliverables, or audiences together.
 - Use plain text unless the source explicitly asks for markdown; do not add bold headings or decorative markdown.
 - Do not add placeholders, links, IDs, fields, or missing metadata that are not in the source.
+- Rewrite only the source prompt inside the triple quotes; do not include Platform, Context, delimiter text, or wrapper instructions.
 - Ask clarifying questions inside the rewritten prompt only when critical information is missing; never ask the user directly.
 - Do not return the prompt unchanged.
 - Output only the rewritten prompt. No preamble, quotes, XML, markdown fences, or change notes.`

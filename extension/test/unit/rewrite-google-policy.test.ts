@@ -37,12 +37,17 @@ describe('rewrite-google policy modules', () => {
 
   it('retries only within the two-attempt Google transient window', () => {
     expect(shouldRetryGoogleSameModel(429, 1)).toBe(true)
+    expect(shouldRetryGoogleSameModel(502, 1)).toBe(true)
+    expect(shouldRetryGoogleSameModel(599, 1)).toBe(true)
     expect(shouldRetryGoogleSameModel(429, 2)).toBe(false)
+    expect(shouldRetryGoogleSameModel(502, 2)).toBe(false)
     expect(shouldRetryGoogleSameModel(401, 1)).toBe(false)
+    expect(shouldRetryGoogleSameModel(499, 1)).toBe(false)
   })
 
   it('classifies only product-approved Google fallback failures', () => {
     expect(classifyGoogleEscalation(new Error('[LLMClient] Google API returned 429: quota'))).toBe('rate-limit')
+    expect(classifyGoogleEscalation(new Error('[LLMClient] Google API returned 502: bad gateway'))).toBe('server-error')
     expect(classifyGoogleEscalation(new Error('[LLMClient] Google API returned unusable output (truncated output)'))).toBe('unusable-output')
     expect(classifyGoogleEscalation(new Error('[LLMClient] Google API returned 401: bad key'))).toBeNull()
   })

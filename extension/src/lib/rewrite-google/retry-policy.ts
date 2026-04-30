@@ -1,5 +1,4 @@
 export const GOOGLE_MAX_ATTEMPTS_PER_MODEL = 2
-export const GOOGLE_RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
 
 export type GoogleEscalationReason =
   | 'rate-limit'
@@ -17,8 +16,12 @@ export function extractHttpStatus(error: unknown): number | null {
 
 export function shouldRetryGoogleSameModel(status: number | null, attempt: number): boolean {
   return status !== null
-    && GOOGLE_RETRYABLE_STATUS_CODES.has(status)
+    && isGoogleRetryableStatus(status)
     && attempt < GOOGLE_MAX_ATTEMPTS_PER_MODEL
+}
+
+export function isGoogleRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599)
 }
 
 export function classifyGoogleEscalation(error: unknown): GoogleEscalationReason | null {

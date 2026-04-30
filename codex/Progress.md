@@ -1,5 +1,50 @@
 # PromptGod — Codex Progress
 
+## Session Notes — 2026-04-30 Google 5xx Retry Fix
+
+Goal: find why the previously fixed Gemini 2.5 Flash `502` fallback behavior appeared to be back after the 2026-04-29 prompt experiment rollback.
+
+### What changed
+
+- `extension/src/lib/rewrite-google/retry-policy.ts`
+  - Replaced the narrow Google retryable status set (`429`, `500`, `503`) with `isGoogleRetryableStatus(status)`.
+  - Google same-model retry now treats `429` and any `5xx` as retryable.
+  - This closes the `502 Bad Gateway` gap: Flash now retries once before provider fallback.
+- `extension/src/lib/llm-client.ts`
+  - Updated Google retry logging/backoff from `503`-specific wording to `5xx`.
+  - Retry exhaustion logging now uses the shared Google retryable predicate.
+- `extension/src/service-worker.ts`
+  - Updated the generic streaming provider retry helper to treat `429` and any `5xx` as transient.
+- `extension/test/unit/google-api.test.ts`
+  - Converted the focused Google retry test to cover repeated `502`.
+- `extension/test/unit/rewrite-google-policy.test.ts`
+  - Added policy coverage for `502`, `599`, second-attempt stop behavior, and non-retryable `499`.
+
+### Diagnosis
+
+- Local `main` matched `origin/main`; this was not caused by missing pulled files.
+- The 2026-04-29 experiment rollback commit did not touch Google retry code.
+- Root cause: the Google retry policy still hard-coded only `429`, `500`, and `503`, while the product/buildflow policy says repeated provider/server failures are `5xx`.
+- A later browser log showing `429 RESOURCE_EXHAUSTED` is a separate Google free-tier quota failure. The code can retry and fall back, but it cannot bypass the provider quota.
+
+### Verification
+
+```powershell
+cd extension
+npm test -- --run test/unit/google-api.test.ts test/unit/rewrite-google-policy.test.ts
+npm test -- --run test/unit/service-worker-provider-fallback.test.ts test/unit/retry-policy.test.ts
+npm test
+npm run build
+```
+
+Latest result:
+
+- focused Google tests passed: `2` files / `19` tests
+- focused fallback tests passed: `2` files / `14` tests
+- `npm test`: passed, `38` files / `244` tests, `1` skipped
+- `npm run build`: passed
+- expected Vite warning remains: `src/content/perplexity-main.ts` is a `MAIN` world content script and does not support HMR
+
 ## Experiment Note — Simplified LLM Constraints Rollback Plan (2026-04-29)
 
 Current known-good rollback anchor:

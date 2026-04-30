@@ -121,12 +121,12 @@ describe('Google API client helpers', () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
     vi.spyOn(Math, 'random').mockReturnValue(0)
     mockFetch
-      .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
-      .mockResolvedValueOnce(new Response('temporary outage', { status: 503 }))
+      .mockResolvedValueOnce(new Response('temporary outage', { status: 502 }))
+      .mockResolvedValueOnce(new Response('temporary outage', { status: 502 }))
 
     await expect(
       callGoogleAPI('AIzaTestKey', 'system', 'user', 'gemini-2.5-flash')
-    ).rejects.toThrow('Google API returned 503')
+    ).rejects.toThrow('Google API returned 502')
 
     expect(mockFetch).toHaveBeenCalledTimes(2)
     const secondUrl = String(mockFetch.mock.calls[1][0])
@@ -134,15 +134,15 @@ describe('Google API client helpers', () => {
     expect(infoSpy).toHaveBeenCalledWith({
       provider: 'google',
       model: 'gemini-2.5-flash',
-      status: 503,
+      status: 502,
       attempt: 1,
       maxAttempts: 2,
       delayMs: 300,
-    }, '[PromptGod] Google request failed with 503; retrying same model after short backoff')
+    }, '[PromptGod] Google request failed with 5xx; retrying same model after short backoff')
     expect(infoSpy).toHaveBeenCalledWith({
       provider: 'google',
       model: 'gemini-2.5-flash',
-      status: 503,
+      status: 502,
       attempt: 2,
       maxAttempts: 2,
     }, '[PromptGod] Google request attempts exhausted; surfacing failure for provider fallback')

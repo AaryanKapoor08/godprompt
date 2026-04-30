@@ -108,8 +108,7 @@ type ProviderFailureChainEntry = {
   failure: string
 }
 
-// Retryable HTTP status codes (pre-first-token only)
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 503])
+// Retryable HTTP statuses (pre-first-token only)
 const RETRY_DELAY_MS = 1000
 
 const supervisor = new RequestSupervisor({
@@ -1411,7 +1410,7 @@ function formatErrorMessage(error: unknown): string {
   return genericTranslated
 }
 
-/** Single retry with 1s backoff for 429/500/503. No retry on 401/403/422. */
+/** Single retry with 1s backoff for 429 and 5xx. No retry on 401/403/422. */
 async function callWithRetry(
   callFn: () => Promise<Response>,
   signal: AbortSignal
@@ -1422,7 +1421,7 @@ async function callWithRetry(
     if (signal.aborted) throw error
 
     const status = extractHttpStatus(error)
-    if (status !== null && RETRYABLE_STATUS_CODES.has(status)) {
+    if (status !== null && isRetryableHttpStatus(status)) {
       console.info({ status }, '[PromptGod] Retrying after transient error')
       await delay(RETRY_DELAY_MS)
       if (signal.aborted) throw error
@@ -1431,6 +1430,10 @@ async function callWithRetry(
 
     throw error
   }
+}
+
+function isRetryableHttpStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599)
 }
 
 function extractHttpStatus(error: unknown): number | null {

@@ -9,7 +9,7 @@ import { OPENROUTER_PRIMARY_FREE_MODEL } from './rewrite-openrouter/curation'
 import { buildGoogleRequestBody, GOOGLE_REWRITE_TEMPERATURE } from './rewrite-google/request-policy'
 import {
   GOOGLE_MAX_ATTEMPTS_PER_MODEL,
-  GOOGLE_RETRYABLE_STATUS_CODES,
+  isGoogleRetryableStatus,
   shouldRetryGoogleSameModel,
 } from './rewrite-google/retry-policy'
 import { normalizeText } from './text-utils'
@@ -783,12 +783,12 @@ export async function callGoogleAPI(
   throw lastError ?? new Error('[LLMClient] Google API request failed')
 }
 
-const GOOGLE_503_RETRY_DELAY_MIN_MS = 300
-const GOOGLE_503_RETRY_DELAY_JITTER_MS = 200
+const GOOGLE_SERVER_RETRY_DELAY_MIN_MS = 300
+const GOOGLE_SERVER_RETRY_DELAY_JITTER_MS = 200
 
 async function waitBeforeGoogleRetry(status: number, model: string, attempt: number): Promise<void> {
   const maxAttempts = GOOGLE_MAX_ATTEMPTS_PER_MODEL
-  if (status !== 503) {
+  if (status < 500 || status > 599) {
     console.info({
       provider: 'google',
       model,
@@ -799,8 +799,8 @@ async function waitBeforeGoogleRetry(status: number, model: string, attempt: num
     return
   }
 
-  const delayMs = GOOGLE_503_RETRY_DELAY_MIN_MS
-    + Math.floor(Math.random() * (GOOGLE_503_RETRY_DELAY_JITTER_MS + 1))
+  const delayMs = GOOGLE_SERVER_RETRY_DELAY_MIN_MS
+    + Math.floor(Math.random() * (GOOGLE_SERVER_RETRY_DELAY_JITTER_MS + 1))
 
   console.info({
     provider: 'google',
@@ -809,13 +809,13 @@ async function waitBeforeGoogleRetry(status: number, model: string, attempt: num
     attempt,
     maxAttempts,
     delayMs,
-  }, '[PromptGod] Google request failed with 503; retrying same model after short backoff')
+  }, '[PromptGod] Google request failed with 5xx; retrying same model after short backoff')
 
   await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
 function logGoogleAttemptsExhausted(status: number, model: string, attempt: number): void {
-  if (!GOOGLE_RETRYABLE_STATUS_CODES.has(status)) return
+  if (!isGoogleRetryableStatus(status)) return
 
   console.info({
     provider: 'google',

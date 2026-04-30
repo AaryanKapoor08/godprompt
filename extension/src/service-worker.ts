@@ -62,7 +62,7 @@ const STREAM_STALL_TIMEOUT_MS = 45000
 const OPENROUTER_FIRST_TOKEN_TIMEOUT_MS = 20000
 const REQUEST_SUPERVISOR_TIMEOUT_MS = 65000
 export const CONTEXT_MENU_ID = 'promptgod-context-enhance'
-export const CONTEXT_MENU_TITLE = 'Run Text Branch'
+export const CONTEXT_MENU_TITLE = 'Enhance with PromptGod'
 export const CONTEXT_SELECTION_MAX_CHARS = 10000
 const CONTEXT_PORT_NAME = 'context-enhance'
 

@@ -1,1 +1,0 @@
-Read claude/Progress.md and claude/BuildFlow.md. Tell me: current phase, what's complete, what's next, and the exact first command to run.

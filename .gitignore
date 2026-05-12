@@ -6,3 +6,16 @@ dist/
 *.zip
 .opencode/
 .specify/
+.claude/
+.vscode/
+claude/
+codex/
+error_screenshots/
+specs/
+AGENTS.md
+CLAUDE.md
+PromptPilot_Project_Spec_v1.md
+PromptPilot_Techniques_to_Codebase_Guide.md
+likit-prompt-*.md
+prompt_for_building_buildflow.txt
+critique.md

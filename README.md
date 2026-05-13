@@ -183,3 +183,5 @@ PromptGod is currently in a stabilization-heavy architecture pass focused on:
 - branch-specific rewrite quality
 
 The goal is simple: make prompt enhancement feel instant, sharp, and boringly reliable, even when the source prompt is ugly.
+
+<!-- metadata refresh -->
